@@ -42,6 +42,8 @@ function cleanRemote(body) {
     if (!Array.isArray(it.boards) || it.boards.some((x) => typeof x !== 'string')) bad('item boards');
     if (it.deletedAt != null && !isIso(it.deletedAt)) bad('bin date');
     if (typeof it.title !== 'string') bad('item title');
+    if (it.stack != null && (typeof it.stack !== 'string' || !ID_RE.test(it.stack))) bad('item stack');
+    delete it.phone; // "show on phone" belongs to the PC; whatever the phone sends is ignored
     if (it.kind === 'note') {
       if (it.file != null) bad('a note with a file');
     } else {
@@ -120,6 +122,7 @@ function mergeInto(data, remote, nowMs = Date.now()) {
     if (time(ri.updatedAt) > time(li.updatedAt)) {
       const keep = { thumb: li.thumb, w: li.w, h: li.h, duration: li.duration };
       const next = { ...ri };
+      if (li.phone === false) next.phone = false; // the PC's "show on phone" survives a newer phone edit
       if ('thumb' in keep && keep.thumb !== undefined) next.thumb = keep.thumb; else delete next.thumb;
       for (const k of ['w', 'h', 'duration']) if (next[k] == null && keep[k] != null) next[k] = keep[k];
       replaceInPlace(li, next);
@@ -146,4 +149,11 @@ function mergeInto(data, remote, nowMs = Date.now()) {
   return { removed };
 }
 
-module.exports = { cleanRemote, mergeInto, unionTombstones, pruneTombstones, SyncError, TOMBSTONE_DAYS, ID_RE };
+// What the phone gets back: everything except items the PC has set not to show on the phone.
+// A hidden item whose file the PC hasn't received yet is still sent, so the phone keeps (and uploads) it.
+function forPhone(items, pcNeeds) {
+  const waiting = new Set(pcNeeds);
+  return items.filter((it) => it.phone !== false || waiting.has(it.id));
+}
+
+module.exports = { cleanRemote, mergeInto, forPhone, unionTombstones, pruneTombstones, SyncError, TOMBSTONE_DAYS, ID_RE };

@@ -256,6 +256,39 @@ class Library {
     await this.save();
   }
 
+  // "Show on phone" (on unless switched off). Not a synced edit, so updatedAt stays: the PC just
+  // stops sending the item, and the phone removes its copy on the next sync.
+  async setOnPhone(ids, on) {
+    for (const id of ids) {
+      const it = this.item(id);
+      if (on) delete it.phone; else it.phone = false;
+    }
+    await this.save();
+  }
+
+  // Stacks: items sharing a `stack` id show as one fanned card you can flick through.
+  // Stacking items that are already in stacks joins those stacks together.
+  async stackItems(ids) {
+    const picked = ids.map((id) => this.item(id));
+    if (picked.length < 2) throw new FriendlyError('Pick at least two things to stack.');
+    const joining = new Set(picked.map((it) => it.stack).filter(Boolean));
+    const members = new Set(picked.concat(this.data.items.filter((it) => it.stack && joining.has(it.stack))));
+    const stack = newId();
+    for (const it of members) { it.stack = stack; it.updatedAt = now(); }
+    await this.save();
+    return stack;
+  }
+
+  // Takes one item out of its stack; a stack left with one item stops being a stack.
+  async unstackItem(id) {
+    const it = this.item(id);
+    if (!it.stack) return;
+    const rest = this.data.items.filter((x) => x.stack === it.stack && x !== it);
+    it.stack = null; it.updatedAt = now();
+    if (rest.length === 1) { rest[0].stack = null; rest[0].updatedAt = now(); }
+    await this.save();
+  }
+
   async saveThumb(id, bytes, meta) {
     const it = this.item(id);
     const rel = `thumbs/${id}.jpg`;

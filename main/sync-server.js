@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
-const { SyncError, ID_RE } = require('./merge');
+const { SyncError, ID_RE, forPhone } = require('./merge');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 8;
@@ -319,7 +319,7 @@ class SyncServer {
     const body = await readJson(req);
     const { pcNeeds, changed } = await this.lib.mergeRemote(body);
     const d = this.lib.data;
-    const answer = { boards: d.boards, items: d.items, tombstones: d.tombstones, pcNeeds, serverTime: nowIso() };
+    const answer = { boards: d.boards, items: forPhone(d.items, pcNeeds), tombstones: d.tombstones, pcNeeds, serverTime: nowIso() };
     device.lastSyncAt = answer.serverTime;
     try { this.saveSettings(); } catch (err) { this.log.error('sync settings', err); }
     if (changed || pcNeeds.length) this.onLibraryChanged({ arrived: [] });

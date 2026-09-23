@@ -246,6 +246,35 @@ public class Library {
         save();
     }
 
+    // Stacks (docs/SYNC.md): items sharing a `stack` id show as one card you flick through.
+    // Stacking items already in stacks joins those stacks; a stack left with one item stops being one.
+    synchronized String stackItems(JSONArray ids) throws IOException, JSONException {
+        if (ids.length() < 2) throw new JSONException("Pick at least two things to stack.");
+        Set<String> picked = new HashSet<>(), joining = new HashSet<>();
+        for (int i = 0; i < ids.length(); i++) { JSONObject it = item(ids.getString(i)); picked.add(it.getString("id")); if (!it.isNull("stack") && it.has("stack")) joining.add(it.getString("stack")); }
+        String stack = UUID.randomUUID().toString();
+        JSONArray a = items();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject it = a.getJSONObject(i);
+            String s = it.has("stack") && !it.isNull("stack") ? it.getString("stack") : null;
+            if (picked.contains(it.getString("id")) || (s != null && joining.contains(s))) it.put("stack", stack).put("updatedAt", now());
+        }
+        save();
+        return stack;
+    }
+
+    synchronized void unstackItem(String id) throws IOException, JSONException {
+        JSONObject it = item(id);
+        if (!it.has("stack") || it.isNull("stack")) return;
+        String s = it.getString("stack");
+        it.put("stack", JSONObject.NULL).put("updatedAt", now());
+        JSONObject last = null; int left = 0;
+        JSONArray a = items();
+        for (int i = 0; i < a.length(); i++) { JSONObject x = a.getJSONObject(i); if (x.has("stack") && s.equals(x.optString("stack", null))) { left++; last = x; } }
+        if (left == 1) last.put("stack", JSONObject.NULL).put("updatedAt", now());
+        save();
+    }
+
     synchronized void moveToBin(String id) throws IOException, JSONException { item(id).put("deletedAt", now()).put("updatedAt", now()); save(); }
 
     synchronized void restore(String id) throws IOException, JSONException {

@@ -175,6 +175,16 @@ const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
   assert.equal(r.status, 401);
   ok('download streams the file with Content-Type, Content-Length and X-Notebook-File; 404 when missing');
 
+  const nothing = { deviceId: 'phone-1', boards: [], items: [], tombstones: { items: [], boards: [] } };
+  await lib.setOnPhone([pId], false);
+  r = await api('POST', '/api/sync', { token, json: nothing });
+  assert.equal(r.status, 200);
+  assert.ok(!r.body.items.some((i) => i.id === pId), 'switched-off item not sent');
+  await lib.setOnPhone([pId], true);
+  r = await api('POST', '/api/sync', { token, json: nothing });
+  assert.ok(r.body.items.some((i) => i.id === pId), 'back on: sent again');
+  ok('items switched off for the phone are left out of the sync answer, and come back when switched on');
+
   // ---------- discovery ----------
   const reply = await new Promise((resolve, reject) => {
     const sock = dgram.createSocket('udp4');

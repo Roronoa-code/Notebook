@@ -237,5 +237,37 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   assert.ok(bytes.equals(await sl.readMedia(qId)));
   ok('receiving media: size checked, nothing half-written kept, only for a known item whose file is missing');
 
+  // ---------- show on phone ----------
+  const { forPhone } = require('../main/merge');
+  const pBefore = sl.item(pId).updatedAt;
+  await sl.setOnPhone([pId], false);
+  assert.equal(sl.item(pId).phone, false);
+  assert.equal(sl.item(pId).updatedAt, pBefore, 'switching it off for the phone is not a synced edit');
+  const emptyT = { items: [], boards: [] };
+  await sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT,
+    items: [{ ...JSON.parse(JSON.stringify(sl.item(pId))), phone: true, title: 'renamed on phone again', updatedAt: iso(120000) }] });
+  assert.equal(sl.item(pId).title, 'renamed on phone again', 'the newer phone edit still arrives');
+  assert.equal(sl.item(pId).phone, false, 'but the phone can\'t switch it back on');
+  assert.ok(!forPhone(sl.data.items, []).some((i) => i.id === pId), 'not sent to the phone');
+  assert.ok(forPhone(sl.data.items, [pId]).some((i) => i.id === pId), 'still sent while the PC waits for its file');
+  await sl.setOnPhone([pId], true);
+  assert.ok(!('phone' in sl.item(pId)));
+  ok('show on phone: off by the PC only, survives newer phone edits, not a synced edit, kept while a file is on its way');
+
+  // ---------- stacks ----------
+  await assert.rejects(sl.stackItems([pId]), /at least two/);
+  const st1 = await sl.stackItems([pId, qId]);
+  assert.ok(sl.item(pId).stack === st1 && sl.item(qId).stack === st1);
+  const st2 = await sl.stackItems([qnId, pId]);
+  assert.ok([pId, qId, qnId].every((id) => sl.item(id).stack === st2), 'stacking into a stack joins it');
+  await sl.unstackItem(qnId);
+  assert.ok(sl.item(qnId).stack == null && sl.item(pId).stack === st2 && sl.item(qId).stack === st2);
+  await sl.unstackItem(pId);
+  assert.ok(sl.item(pId).stack == null && sl.item(qId).stack == null, 'a stack of one stops being a stack');
+  await sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(qnId))), stack: 'phone-stack', updatedAt: iso(180000) }] });
+  assert.equal(sl.item(qnId).stack, 'phone-stack', 'a stack made on the phone arrives');
+  await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(qnId))), stack: '../x', updatedAt: iso(240000) }] }), /couldn't read/);
+  ok('stacks: need two, join when overlapping, dissolve at one, sync from the phone, bad stack ids refused');
+
   console.log(`\nAll ${passed} checks passed.`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

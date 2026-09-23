@@ -24,6 +24,7 @@ import com.google.mlkit.vision.barcode.common.Barcode;
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
@@ -327,6 +328,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String update(String id, String json) { return changed(change(() -> { Core.library(MainActivity.this).updateItem(id, new JSONObject(json)); return null; })); }
         @JavascriptInterface public String bin(String id) { return changed(change(() -> { Core.library(MainActivity.this).moveToBin(id); return null; })); }
         @JavascriptInterface public String restore(String id) { return changed(change(() -> { Core.library(MainActivity.this).restore(id); return null; })); }
+        @JavascriptInterface public String stack(String idsJson) { return changed(change(() -> Core.library(MainActivity.this).stackItems(new JSONArray(idsJson)))); }
+        @JavascriptInterface public String unstack(String id) { return changed(change(() -> { Core.library(MainActivity.this).unstackItem(id); return null; })); }
         @JavascriptInterface public String deleteForever(String id) { return changed(change(() -> String.valueOf(Core.library(MainActivity.this).deleteForever(id)))); }
         @JavascriptInterface public String addBoard(String name) { return changed(change(() -> Core.library(MainActivity.this).addBoard(name))); }
         @JavascriptInterface public String renameBoard(String id, String name) { return changed(change(() -> { Core.library(MainActivity.this).renameBoard(id, name); return null; })); }

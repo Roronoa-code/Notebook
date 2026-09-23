@@ -12,7 +12,8 @@
   const S = {
     screen: 'home', prev: 'home', tab: 'recent', board: null, item: null, lift: false,
     add: false, cover: false, sheet: null, pos: Number(pref('wheel', '0')) || 0,
-    coverId: pref('coverId', ''), coverDots: pref('coverDots', '1') === '1', tidyUndo: null, syncing: false
+    coverId: pref('coverId', ''), coverDots: pref('coverDots', '1') === '1', tidyUndo: null, syncing: false,
+    stackTop: {}, select: null
   };
   const boards = () => DB.boards;
   const live = () => DB.items.filter((it) => !it.deletedAt);
@@ -69,20 +70,58 @@
   const tick = () => { try { N.tick(); } catch (e) { /* no haptics */ } };
 
   // ---------- pieces ----------
-  function card(it, n) {
-    const d = `--d:${Math.min(n * 40, 400)}ms`;
-    const binned = !!it.deletedAt; // in the Bin, tapping a card offers Put back / Delete forever instead of opening it
+  const aspect = (it) => (it.w && it.h ? `${it.w} / ${it.h}` : '4 / 5');
+  // The picture (or note text) inside a card. `fill` makes it fill a fixed box (cards in a stack).
+  function inner(it, fill) {
     if (it.kind === 'note') {
       const body = textOf(it.html).slice(0, 180);
-      return `<button type="button" class="card" data-a="${binned ? 'binItem' : 'open'}" data-v="${it.id}" style="${d}" aria-label="Open ${esc(it.title)}"><div class="notecard"><div class="t">${esc(it.title)}</div><div class="p">${esc(body.startsWith(it.title) ? body.slice(it.title.length).trim() : body)}</div></div></button>`;
+      return `<div class="notecard${fill ? ' fill' : ''}"><div class="t">${esc(it.title)}</div><div class="p">${esc(body.startsWith(it.title) ? body.slice(it.title.length).trim() : body)}</div></div>`;
     }
-    const ar = it.w && it.h ? `${it.w} / ${it.h}` : '4 / 5';
+    const size = fill ? '' : ` style="aspect-ratio:${aspect(it)}"`;
     const src = url(it.thumb || (it.kind === 'photo' ? it.file : ''));
-    const media = src ? `<img src="${src}" alt="" loading="lazy" decoding="async" style="aspect-ratio:${ar}">` : `<div class="ph" style="aspect-ratio:${ar}">${svg(it.kind === 'video' ? P.camera : P.photo, 22, 1.6)}</div>`;
-    return `<button type="button" class="card" data-a="${binned ? 'binItem' : 'open'}" data-v="${it.id}" style="${d}" aria-label="Open ${esc(it.title)}">
-      <div class="media">${media}${it.kind === 'video' ? `<span class="badge" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></span>` : ''}</div></button>`;
+    const media = src ? `<img src="${src}" alt="" loading="lazy" decoding="async"${size}>` : `<div class="ph"${size}>${svg(it.kind === 'video' ? P.camera : P.photo, 22, 1.6)}</div>`;
+    return `<div class="media${fill ? ' fill' : ''}">${media}${it.kind === 'video' ? `<span class="badge" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></span>` : ''}</div>`;
   }
-  const gridHTML = (list, empty) => list.map(card).join('') || `<p class="empty">${empty}</p>`;
+  function card(it, n) {
+    const binned = !!it.deletedAt; // in the Bin, tapping a card offers Put back / Delete forever instead of opening it
+    return `<button type="button" class="card" data-a="${binned ? 'binItem' : 'open'}" data-v="${it.id}" style="--d:${Math.min(n * 40, 400)}ms" aria-label="Open ${esc(it.title)}">${inner(it)}</button>`;
+  }
+  // A stack: its pictures fanned in the space of one card (the first one's shape). Flick left or right to go through them.
+  const FAN = [
+    { t: 'none', o: 1 },
+    { t: 'translate(10%, 2%) rotate(7deg) scale(.92)', o: 1 },
+    { t: 'translate(-9%, 3%) rotate(-8deg) scale(.88)', o: 1 },
+    { t: 'translate(0, 5%) scale(.86)', o: 0 }
+  ];
+  const fanStyle = (k) => { const f = FAN[Math.min(k, 3)]; return `--t:${f.t};opacity:${f.o};z-index:${10 - k}${k ? ';pointer-events:none' : ''}`; };
+  function stackCard(members, n) {
+    const id = members[0].stack, len = members.length;
+    const top = (((S.stackTop[id] || 0) % len) + len) % len;
+    return `<div class="card stackcard" data-stack="${id}" style="--d:${Math.min(n * 40, 400)}ms">
+      <div class="fan" style="aspect-ratio:${aspect(members[0])}">${members.map((m, i) => `<button type="button" class="fanitem" data-a="open" data-v="${m.id}" style="${fanStyle((i - top + len) % len)}" aria-label="Open ${esc(m.title)}, ${i + 1} of ${len} in a stack">${inner(m, true)}</button>`).join('')}</div>
+      <span class="stackct" aria-hidden="true">${top + 1}/${len}</span></div>`;
+  }
+  function gridHTML(list, empty) {
+    const done = new Set(), out = [];
+    for (const it of list) {
+      if (it.stack && !it.deletedAt) {
+        if (done.has(it.stack)) continue;
+        const members = list.filter((x) => x.stack === it.stack);
+        if (members.length > 1) { done.add(it.stack); out.push(stackCard(members, out.length)); continue; }
+      }
+      out.push(card(it, out.length));
+    }
+    return out.join('') || `<p class="empty">${empty}</p>`;
+  }
+  // Brings a stack's next (+1) or previous (-1) picture to the top.
+  function turnStack(el, dir) {
+    const items = [...el.querySelectorAll('.fanitem')], len = items.length, id = el.dataset.stack;
+    const top = ((((S.stackTop[id] || 0) + dir) % len) + len) % len;
+    S.stackTop[id] = top;
+    items.forEach((b, i) => { b.style.cssText = fanStyle((i - top + len) % len); });
+    el.querySelector('.stackct').textContent = `${top + 1}/${len}`;
+    tick();
+  }
   const homeList = () => (S.tab === 'notes' ? live().filter((x) => x.kind === 'note') : live());
 
   function pillsHTML() {
@@ -163,6 +202,7 @@
         ${it.kind !== 'note' ? `<details class="media-details"><summary><span>${esc(it.title)}</span><small>Details & boards</small></summary><div class="media-fields">` : '<div class="handle"></div>'}
         ${it.kind !== 'note' ? `<div style="display:flex;flex-direction:column;gap:8px"><label class="lbl" for="note">Note</label><textarea id="note" class="notebox" placeholder="Why did you save this?">${esc(it.caption || '')}</textarea></div>` : ''}
         <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Boards</span><div class="chips">${chips}</div></div>
+        ${it.stack ? `<button type="button" class="btn" data-a="unstack" style="align-self:flex-start">Take out of stack</button>` : ''}
         <div style="display:flex;gap:10px"><button type="button" class="btn danger" data-a="bin">${svg(P.bin, 16)}<span>Move to Bin</span></button><span style="flex:1"></span><button type="button" class="btn white" data-a="back">Done</button></div>
         ${it.kind !== 'note' ? '</div></details>' : ''}
       </div>
@@ -255,6 +295,7 @@
       <div class="tiles" id="tiles"></div>
     </div>
     <div class="popsheet frost formsheet" id="formsheet" hidden></div>
+    <div class="popsheet frost selbar" id="selbar" hidden><span id="selcount" style="flex:1;font-weight:600"></span><button type="button" class="btn" data-a="selCancel">Cancel</button><button type="button" class="btn white" data-a="selStack" id="selstack">Stack</button></div>
     <div id="toastbox"></div>`;
   }
 
@@ -283,111 +324,20 @@
     $('#seg-dots').classList.toggle('on', S.coverDots);
     $('#seg-plain').classList.toggle('on', !S.coverDots);
     $('#formsheet').hidden = !S.sheet;
-  }
-
-  // ---------- board wheel: a loop, about five showing, fading out towards the edges ----------
-  const STEP = 58;
-  const count = () => wheel().length;
-  const looped = () => count() >= 5;
-  const wrapIndex = (x) => ((Math.round(x) % count()) + count()) % count();
-  const focusIndex = () => (looped() ? wrapIndex(S.pos) : Math.max(0, Math.min(count() - 1, Math.round(S.pos))));
-  function circ(k, pos) {
-    if (!looped()) return k - pos;
-    const n = count();
-    let d = (((k - pos) % n) + n) % n;
-    if (d > n / 2) d -= n;
-    return d;
-  }
-  function layoutPills() {
-    const stack = homeEl && homeEl.querySelector('#stack');
-    if (!stack) return;
-    stack.querySelectorAll('.pill').forEach((el) => {
-      const d = circ(+el.dataset.pill, S.pos), a = Math.abs(d);
-      el.style.transform = `translateY(${(d * STEP).toFixed(1)}px) scale(${(1 - Math.min(a, 3) * 0.04).toFixed(3)})`;
-      el.style.opacity = a >= 2.6 ? '0' : Math.max(0, 1 - a * 0.28 - Math.max(0, a - 1.8) * 0.9).toFixed(3);
-      el.style.setProperty('--glow', Math.max(0, 0.22 - a * 0.09).toFixed(3)); // the middle board is lit
-      el.style.zIndex = String(10 - Math.round(a));
-      el.style.pointerEvents = a > 2.2 ? 'none' : 'auto';
-    });
-  }
-  // Spins the wheel to a board. The position itself is animated (not each pill), so on a loop every
-  // board moves round in the same direction and nothing ever slides the wrong way across the middle.
-  let spinFrame = 0;
-  function settle(target) {
-    if (!looped()) target = Math.max(0, Math.min(count() - 1, target));
-    cancelAnimationFrame(spinFrame);
-    const start = S.pos, dist = target - start;
-    if (Math.abs(dist) < 0.001) { S.pos = target; layoutPills(); return; }
-    const dur = Math.min(900, 340 + 190 * Math.sqrt(Math.abs(dist)));
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { S.pos = target; layoutPills(); return; }
-    const t0 = performance.now();
-    let lastFocus = focusIndex();
-    const ease = (t) => 1 - Math.pow(1 - t, 3); // quick start, gentle landing
-    const step = (now) => {
-      const t = Math.min(1, (now - t0) / dur);
-      S.pos = start + dist * ease(t);
-      layoutPills();
-      const f = focusIndex();
-      if (f !== lastFocus) { lastFocus = f; tick(); } // a tick for every board that passes the middle
-      if (t < 1) spinFrame = requestAnimationFrame(step);
-      else { S.pos = target; layoutPills(); N.setPref('wheel', String(wrapIndex(S.pos))); }
-    };
-    spinFrame = requestAnimationFrame(step);
-  }
-  function rebuildWheel() {
-    const stack = homeEl && homeEl.querySelector('#stack');
-    if (!stack) return;
-    stack.classList.add('drag');
-    stack.innerHTML = pillsHTML();
-    layoutPills();
-    void stack.offsetWidth;
-    stack.classList.remove('drag');
-  }
-  // Drag follows your finger; letting go snaps to the nearest board (a quick flick carries on a few).
-  function wireWheel(root) {
-    const stack = root.querySelector('#stack');
-    let y0 = 0, pos0 = 0, lastY = 0, lastT = 0, vel = 0, moved = false, lastFocus = 0;
-    stack.addEventListener('touchstart', (e) => {
-      cancelAnimationFrame(spinFrame); // catching the wheel mid-spin stops it where it is
-      y0 = lastY = e.touches[0].clientY; lastT = e.timeStamp; pos0 = S.pos; vel = 0; moved = false; lastFocus = focusIndex();
-    }, { passive: true });
-    stack.addEventListener('touchmove', (e) => {
-      const y = e.touches[0].clientY;
-      if (Math.abs(y - y0) > 6) moved = true;
-      const dt = Math.max(1, e.timeStamp - lastT);
-      vel = 0.7 * vel + 0.3 * ((lastY - y) / STEP / dt);
-      lastY = y; lastT = e.timeStamp;
-      S.pos = pos0 + (y0 - y) / STEP;
-      if (!looped()) S.pos = Math.max(-0.4, Math.min(count() - 0.6, S.pos));
-      layoutPills();
-      const f = focusIndex();
-      if (f !== lastFocus) { lastFocus = f; tick(); }
-    }, { passive: true });
-    const end = (e) => {
-      if (!moved) return;
-      // A flick keeps going in the same direction: faster flicks travel further.
-      const recent = e && e.timeStamp - lastT < 80 ? vel : 0;
-      const fling = Math.max(-6, Math.min(6, recent * 220));
-      settle(Math.round(S.pos + fling));
-      stack.dataset.swiped = '1';
-      setTimeout(() => { stack.dataset.swiped = ''; }, 80);
-    };
-    stack.addEventListener('touchend', end, { passive: true });
-    stack.addEventListener('touchcancel', end, { passive: true });
-    stack.addEventListener('wheel', (e) => { e.preventDefault(); settle(Math.round(S.pos) + Math.sign(e.deltaY)); }, { passive: false });
-    stack.addEventListener('click', (e) => {
-      const el = e.target.closest('.pill');
-      if (!el || stack.dataset.swiped) return;
-      const k = +el.dataset.pill;
-      if (k !== focusIndex()) { settle(Math.round(S.pos + circ(k, S.pos))); return; }
-      const b = wheel()[k];
-      if (b.isNew) { openForm('newBoard'); return; }
-      go('board', { board: b.id }, 'push');
-    });
+    const n = S.select ? S.select.size : 0;
+    $('#selbar').hidden = !S.select;
+    if (S.select) { $('#selcount').textContent = n ? `${n} picked` : 'Tap things to stack'; $('#selstack').disabled = n < 2; }
   }
 
   // ---------- screens: build only the one you move to; Home is kept as you left it ----------
   let homeEl = null, currentEl = null, homeVer = 0, boardSig = '';
+  const Wh = NBWheel({ S, N, tick, home: () => homeEl, wheel, pillsHTML, openForm: (k) => openForm(k), go: (...x) => go(...x) });
+  const { layoutPills, settle, rebuildWheel, wireWheel, circ } = Wh;
+  const M = NBMotion({
+    S, app, tick, $, url, updateChrome: () => updateChrome(), home: () => homeEl, current: () => currentEl,
+    actions: () => A, db: () => DB, turnStack
+  });
+  const { animateSwap, setLift, wireHome, wireGrid, wireDismiss, markSelection, toggleSelect, endSelect } = M;
   const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML, search: searchHTML, bin: binHTML };
   const sigOf = () => boards().map((b) => b.id + ':' + b.name).join('|');
 
@@ -413,6 +363,10 @@
 
   // After any library change: update whatever screen is showing, in place.
   function refresh() {
+    refreshScreen();
+    if (S.select) markSelection();
+  }
+  function refreshScreen() {
     if (S.screen === 'home') refreshHome();
     else if (S.screen === 'board') {
       const b = boards().find((x) => x.id === S.board);
@@ -438,95 +392,8 @@
     }
   }
 
-  // Transform and opacity stay on compositor layers; clipping a whole frosted screen repaints it.
-  const EASE = 'cubic-bezier(.2,.75,.25,1)', DUR = 460;
-
-  // Photos and videos fly between their card and the open screen, so it reads as the same thing
-  // moving rather than one screen swapping for another. Returns null when there's nothing to fly.
-  let flight = null;
-  function mediaFlight(itemScreen, homeScreen, opening) {
-    const it = DB.items.find((x) => x.id === S.item);
-    const card = homeScreen.querySelector(`.card[data-v="${CSS.escape(S.item || '')}"] .media`);
-    const target = itemScreen.querySelector('.stage img, .stage video');
-    if (!it || !card || !target) return null;
-    const c = card.getBoundingClientRect(), box = target.getBoundingClientRect();
-    if (!c.width || !box.width || c.bottom < 0 || c.top > innerHeight) return null;
-    const ar = it.w && it.h ? it.w / it.h : c.width / c.height;
-    const w = Math.min(box.width, box.height * ar), h = w / ar;
-    const t = { x: box.x + (box.width - w) / 2, y: box.y + (box.height - h) / 2 };
-    const ghost = document.createElement('div');
-    ghost.className = 'ghost';
-    ghost.style.width = w + 'px'; ghost.style.height = h + 'px';
-    const img = document.createElement('img');
-    img.src = card.querySelector('img')?.src || url(it.thumb);
-    ghost.append(img);
-    app.append(ghost);
-    const small = { transform: `translate(${c.x}px,${c.y}px) scale(${c.width / w},${c.height / h})`, borderRadius: `${20 * w / c.width}px / ${20 * h / c.height}px` };
-    const big = { transform: `translate(${t.x}px,${t.y}px)`, borderRadius: '22px' };
-    card.style.opacity = '0'; target.style.opacity = '0';
-    Object.assign(ghost.style, opening ? big : small); // where it rests if it has to wait for the full photo
-    const anim = ghost.animate(opening ? [small, big] : [big, small], { duration: DUR, easing: EASE });
-    const done = () => { target.style.opacity = ''; card.style.opacity = ''; ghost.remove(); if (flight === anim) flight = null; };
-    // Opening: keep the small copy up until the full photo is ready, so it never flashes.
-    anim.onfinish = () => { if (opening && target.tagName === 'IMG') target.decode().catch(() => {}).then(done); else done(); };
-    anim.oncancel = done;
-    flight = anim;
-    return anim;
-  }
-
   // The photo's shape (width / height) for the rounded media frame; the stage falls back to a plain fit without it.
   const arStyle = (it) => (it.w > 0 && it.h > 0 ? `--ar:${(it.w / it.h).toFixed(4)}` : '');
-
-  function animateSwap(oldEl, el, kind) {
-    const stage = $('#stage');
-    if (!oldEl || oldEl === el) return;
-    if (flight) flight.finish(); // a new move starts from where things really are
-    oldEl.inert = true;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { if (oldEl !== homeEl) oldEl.remove(); else oldEl.style.visibility = 'hidden'; return; }
-    const back = kind === 'unzoom' || kind === 'pop';
-    if (back) stage.insertBefore(el, oldEl); // the screen being left stays on top while it goes
-    const o = { duration: DUR, easing: EASE };
-    const card = (kind === 'zoom' ? oldEl : el).querySelector(`.card[data-v="${CSS.escape(S.item || '')}"]`);
-    const rect = card?.getBoundingClientRect();
-    const scale = rect ? Math.min(rect.width / innerWidth, rect.height / innerHeight) : .84;
-    const origin = rect ? `translate(${rect.x + rect.width / 2 - innerWidth / 2}px,${rect.y + rect.height / 2 - innerHeight / 2}px) scale(${scale})` : 'translateY(70px) scale(.84)';
-    let outAnim;
-    const sheet = (kind === 'zoom' ? el : oldEl).querySelector('.sheet');
-    const fly = (kind === 'zoom' || kind === 'unzoom') && (kind === 'zoom' ? mediaFlight(el, oldEl, true) : mediaFlight(oldEl, el, false));
-    if (kind === 'zoom' && fly) {
-      // Home stays where it is and sinks back slightly; the dark screen fades in behind the flying photo.
-      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.7, easing: 'ease-out' });
-      sheet?.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], o);
-      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.96)', opacity: .6 }], o);
-    } else if (kind === 'unzoom' && fly) {
-      el.animate([{ transform: 'scale(.96)', opacity: .6 }, { transform: 'none', opacity: 1 }], o);
-      sheet?.animate([{ transform: 'none' }, { transform: 'translateY(100%)' }], o);
-      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: DUR * 0.7, easing: 'ease-in', fill: 'forwards' });
-      outAnim.onfinish = null;
-      const wait = oldEl.animate([{ visibility: 'visible' }, { visibility: 'visible' }], o); // remove only once the photo has landed
-      wait.onfinish = () => oldEl.remove();
-      oldEl.style.pointerEvents = 'none';
-      return;
-    } else if (kind === 'zoom') {
-      // Notes (or a card that's off screen): the screen grows out of the card over Home.
-      el.animate([{ transform: origin, opacity: .25 }, { transform: 'none', opacity: 1 }], o);
-      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.96)', opacity: .6 }], o);
-    } else if (kind === 'unzoom') {
-      el.animate([{ transform: 'scale(.96)', opacity: .6 }, { transform: 'none', opacity: 1 }], o);
-      outAnim = oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: origin }], o);
-    } else if (kind === 'push') {
-      el.animate([{ transform: 'translateX(100%)' }, { transform: 'none' }], o);
-      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(-22%)', opacity: 0.4 }], o);
-    } else if (kind === 'pop') {
-      el.animate([{ transform: 'translateX(-22%)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], o);
-      outAnim = oldEl.animate([{ transform: 'none' }, { transform: 'translateX(100%)' }], o);
-    } else {
-      el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE });
-      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
-    }
-    oldEl.style.pointerEvents = 'none';
-    outAnim.onfinish = () => { if (oldEl !== homeEl) oldEl.remove(); else oldEl.style.visibility = 'hidden'; oldEl.style.pointerEvents = ''; }; // Home is kept, just hidden
-  }
 
   function showScreen(kind) {
     const stage = $('#stage');
@@ -557,6 +424,7 @@
     currentEl = el;
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
     if (S.screen === 'item') { wireItem(el); wireDismiss(el); }
+    el.querySelectorAll('.grid').forEach(wireGrid);
     if (S.screen === 'sync') $('#syncbody').innerHTML = syncBodyHTML();
     if (S.screen === 'search') {
       const q = el.querySelector('#q');
@@ -569,120 +437,8 @@
   }
 
   function go(screen, extra, kind) {
-    Object.assign(S, extra || {}, { screen, add: false, cover: false, sheet: null });
+    Object.assign(S, extra || {}, { screen, add: false, cover: false, sheet: null, select: null });
     showScreen(kind || 'fade');
-  }
-
-  // The items panel's two resting places: down under the boards, or up under the top bar.
-  const liftStops = () => ({ up: (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--st')) || 0) + 58, down: parseFloat(app.style.getPropertyValue('--hero')) || 560 });
-  const liftY = (el) => new DOMMatrix(getComputedStyle(el).transform).m42;
-  let liftFrame = 0;
-  function paintLift(el, y) {
-    const { up, down } = liftStops();
-    el.style.transform = `translateY(${y.toFixed(1)}px)`;
-    homeEl.querySelector('#topglass').style.opacity = Math.max(0, Math.min(1, (down - y) / (down - up))).toFixed(3);
-  }
-  // A small spring: a hard flick arrives fast and bounces a little past, a gentle one just settles.
-  function springLift(el, to, v0) {
-    cancelAnimationFrame(liftFrame);
-    let y = liftY(el), v = v0 || 0, last = performance.now();
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) y = to;
-    const step = (now) => {
-      const dt = Math.min(32, now - last) / 1000; last = now;
-      const a = -210 * (y - to) - 24 * v; // stiffness, damping (slightly under-damped)
-      v += a * dt; y += v * dt;
-      if (Math.abs(y - to) < 0.4 && Math.abs(v) < 8) { liftFrame = 0; el.style.transform = ''; homeEl.querySelector('#topglass').style.opacity = ''; return; }
-      paintLift(el, y);
-      liftFrame = requestAnimationFrame(step);
-    };
-    liftFrame = requestAnimationFrame(step);
-  }
-  function setLift(v, velocity) {
-    S.lift = v;
-    const el = homeEl && homeEl.querySelector('#lift');
-    if (!el) return;
-    const from = liftY(el);
-    el.classList.toggle('up', v);
-    homeEl.querySelector('#topglass').classList.toggle('on', v);
-    el.querySelector('.grip').setAttribute('aria-label', v ? 'Lower items' : 'Lift items up');
-    if (!v) el.scrollTop = 0;
-    paintLift(el, from); // start the spring from wherever the panel is now
-    springLift(el, v ? liftStops().up : liftStops().down, velocity);
-  }
-
-  function wireHome(root) {
-    const lift = root.querySelector('#lift');
-    let y0 = 0, start = 0, dragging = false, caught = false, samples = [];
-    lift.addEventListener('touchstart', (e) => {
-      caught = !!liftFrame; cancelAnimationFrame(liftFrame); liftFrame = 0; // a finger catches it mid-spring
-      y0 = e.touches[0].clientY; start = liftY(lift); dragging = false; samples = [{ y: y0, t: e.timeStamp }];
-    }, { passive: true });
-    lift.addEventListener('touchmove', (e) => {
-      const y = e.touches[0].clientY, dy = y - y0;
-      samples.push({ y, t: e.timeStamp }); if (samples.length > 6) samples.shift();
-      if (!dragging) {
-        // Down: any drag moves it. Up: only a pull-down from the very top of the list (otherwise it scrolls).
-        if (Math.abs(dy) < 6 || (S.lift && (lift.scrollTop > 0 || dy < 0))) return;
-        dragging = true;
-      }
-      const { up, down } = liftStops();
-      let to = start + (y - y0);
-      if (to < up) to = up - (up - to) * 0.25; // rubbery past the ends
-      if (to > down) to = down + (to - down) * 0.3;
-      paintLift(lift, to);
-    }, { passive: true });
-    const end = () => {
-      if (!dragging) { if (caught) setLift(S.lift); return; } // caught but not dragged: carry on to where it was going
-      dragging = false;
-      const a = samples[0], b = samples[samples.length - 1];
-      const v = b && a && b.t > a.t ? ((b.y - a.y) / (b.t - a.t)) * 1000 : 0; // px per second, + is down
-      const { up, down } = liftStops(), y = liftY(lift);
-      const goUp = Math.abs(v) > 350 ? v < 0 : y < (up + down) / 2;
-      setLift(goUp, v);
-    };
-    lift.addEventListener('touchend', end, { passive: true });
-    lift.addEventListener('touchcancel', end, { passive: true });
-    lift.addEventListener('wheel', (e) => { if (!S.lift && e.deltaY > 0) setLift(true); else if (S.lift && lift.scrollTop <= 0 && e.deltaY < 0) setLift(false); }, { passive: true });
-  }
-
-  // Swipe down on an open photo or video to go back: it follows the finger, shrinking a little,
-  // with Home showing behind it; let go past the line (or flick) and it flies back into its card.
-  function wireDismiss(root) {
-    const stage = root.querySelector('.media-screen .stage');
-    if (!stage) return;
-    let y0 = 0, x0 = 0, t0 = 0, dy = 0, active = false, dragging = false;
-    stage.addEventListener('touchstart', (e) => {
-      const t = e.touches[0], v = stage.querySelector('video');
-      // Leave the video's own controls (bottom of the player) alone.
-      if (e.touches.length > 1 || (v && t.clientY > v.getBoundingClientRect().bottom - 70)) { active = false; return; }
-      active = true; dragging = false; y0 = t.clientY; x0 = t.clientX; t0 = e.timeStamp; dy = 0;
-    }, { passive: true });
-    stage.addEventListener('touchmove', (e) => {
-      if (!active) return;
-      const t = e.touches[0];
-      dy = t.clientY - y0;
-      if (!dragging) {
-        if (dy < 10 || Math.abs(dy) < Math.abs(t.clientX - x0)) return;
-        dragging = true;
-        root.getAnimations().forEach((x) => x.finish());
-        if (homeEl && homeEl !== root && S.prev !== 'board' && S.prev !== 'search') homeEl.style.visibility = '';
-      }
-      const k = Math.max(0, dy);
-      root.style.transform = `translateY(${k}px) scale(${Math.max(0.82, 1 - k / 1800)})`;
-      root.style.borderRadius = Math.min(28, k / 5) + 'px';
-      root.style.overflow = 'hidden';
-    }, { passive: true });
-    const end = (e) => {
-      if (!active || !dragging) { active = false; return; }
-      active = false; dragging = false;
-      const v = dy / Math.max(1, e.timeStamp - t0);
-      if (dy > 110 || v > 0.6) { A.back(); return; }
-      const back = root.animate([{ transform: root.style.transform, borderRadius: root.style.borderRadius }, { transform: 'none', borderRadius: '0px' }], { duration: 300, easing: 'cubic-bezier(.2,.9,.3,1.15)' });
-      root.style.transform = ''; root.style.borderRadius = '';
-      back.onfinish = () => { if (homeEl && homeEl !== root && currentEl === root) homeEl.style.visibility = 'hidden'; };
-    };
-    stage.addEventListener('touchend', end, { passive: true });
-    stage.addEventListener('touchcancel', end, { passive: true });
   }
 
   // Notes and captions save a moment after you stop typing.
@@ -794,6 +550,9 @@
     boardBack: () => go('home', null, 'pop'),
     sync: () => go('sync'),
     search: () => go('search'),
+    selCancel: () => endSelect(),
+    selStack: () => { const ids = [...S.select]; if (call('stack', JSON.stringify(ids))) { endSelect(); toast(`Stacked ${ids.length}. Flick it sideways to go through them.`); } },
+    unstack: () => { const it = byId(S.item); if (it && call('unstack', it.id)) { toast('Taken out of the stack'); A.back(); } },
     openBin: () => go('bin', null, 'push'),
     binBack: () => go('sync', null, 'pop'),
     binItem: (v) => { S.binItem = v; openForm('binItem'); },
@@ -870,6 +629,8 @@
     }
   };
   app.addEventListener('click', (e) => {
+    if (M.takeSwallowed()) return;
+    if (S.select && e.target.closest('.grid .card')) { toggleSelect(e.target.closest('.grid .card')); return; }
     const el = e.target.closest('[data-a]');
     if (el && A[el.dataset.a]) A[el.dataset.a](el.dataset.v, el);
   });
@@ -878,6 +639,7 @@
   // Android back gesture: close a panel or step back before leaving the app.
   window.nbBack = () => {
     if (NBMedia.closePhoto()) return true;
+    if (S.select) { endSelect(); return true; }
     if (S.sheet) { closeForm(); return true; }
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }

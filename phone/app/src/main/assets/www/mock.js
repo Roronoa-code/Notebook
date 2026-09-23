@@ -36,6 +36,8 @@ if (!window.NBNative) {
     update(i, json) { Object.assign(find(i), JSON.parse(json), { updatedAt: now() }); return ok(); },
     bin(i) { find(i).deletedAt = now(); return ok(); },
     restore(i) { find(i).deletedAt = null; return ok(); },
+    stack(json) { const ids = JSON.parse(json); if (ids.length < 2) return JSON.stringify({ error: 'Pick at least two things to stack.' }); const s = id(); const join = new Set(ids.map((i) => find(i).stack).filter(Boolean)); db.items.forEach((x) => { if (ids.includes(x.id) || (x.stack && join.has(x.stack))) x.stack = s; }); return ok({ id: s }); },
+    unstack(i) { const it = find(i), s = it.stack; it.stack = null; const rest = db.items.filter((x) => x.stack === s); if (rest.length === 1) rest[0].stack = null; return ok(); },
     deleteForever(i) { const gone = db.items.filter((x) => x.deletedAt && (!i || x.id === i)); db.items = db.items.filter((x) => !gone.includes(x)); return ok({ id: String(gone.length) }); },
     addBoard(name) { if (!name.trim()) return JSON.stringify({ error: 'Give the board a name.' }); const b = B(name.trim()); db.boards.push(b); return ok({ id: b.id }); },
     renameBoard(i, name) { db.boards.find((b) => b.id === i).name = name.trim(); return ok(); },
