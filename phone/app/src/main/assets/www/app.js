@@ -130,7 +130,7 @@
 
   // ---------- screens ----------
   function homeHTML() {
-    return `<div class="screen enter" style="overflow:hidden">
+    return `<div class="screen" style="overflow:hidden">
       <div class="hero">
         <div id="coverslot">${coverHTML()}</div>
         <div class="stackwrap" id="stack">${pillsHTML()}</div>
@@ -153,11 +153,11 @@
     if (!b) return null;
     const list = onBoard(b.id);
     const cov = list.find((x) => x.thumb || (x.kind === 'photo' && x.file));
-    return `<div class="screen enter">
+    return `<div class="screen">
       <div style="position:relative;height:300px">
         ${cov ? `<img src="${url(cov.thumb || cov.file)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(2px)">` : ''}
         <div class="coverfade"></div>
-        <button type="button" class="iconbtn glass" data-a="home" aria-label="Back" style="position:absolute;top:10px;left:16px">${svg(P.back)}</button>
+        <button type="button" class="iconbtn glass" data-a="boardBack" aria-label="Back" style="position:absolute;top:10px;left:16px">${svg(P.back)}</button>
         <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:10px;right:16px">${svg(P.edit, 18)}</button>
         <div style="position:absolute;left:22px;right:22px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
       </div>
@@ -180,7 +180,7 @@
       stage = `<div class="stage"><img src="${url(it.file)}" alt="${esc(it.title)}"></div>`;
     }
     const kind = it.kind === 'note' ? 'Note' : it.kind === 'video' ? 'Video' : 'Photo';
-    return `<div class="screen enter" style="overflow:hidden">
+    return `<div class="screen" style="overflow:hidden">
       ${stage}
       <button type="button" class="iconbtn glass" data-a="back" aria-label="Back" style="position:absolute;top:10px;left:16px;z-index:3">${svg(P.back)}</button>
       <span class="glass kindpill">${kind}</span>
@@ -195,7 +195,7 @@
   }
 
   function syncHTML() {
-    return `<div class="screen enter" style="padding:20px 20px 120px;display:flex;flex-direction:column;gap:16px">
+    return `<div class="screen" style="padding:20px 20px 120px;display:flex;flex-direction:column;gap:16px">
       <div style="display:flex;flex-direction:column;gap:6px"><div class="poster" style="font-size:64px">Sync</div><div style="font-size:14px;color:#9A9A9A">Phone and PC, over your home Wi-Fi. Nothing goes online.</div></div>
       <div id="syncbody"></div>
     </div>`;
@@ -353,7 +353,7 @@
       if (k !== focusIndex()) { settle(Math.round(S.pos + circ(k, S.pos))); return; }
       const b = wheel()[k];
       if (b.isNew) { openForm('newBoard'); return; }
-      setTimeout(() => go('board', { board: b.id }), 220);
+      setTimeout(() => go('board', { board: b.id }, 'push'), 180);
     });
   }
 
@@ -401,30 +401,65 @@
     }
   }
 
-  function showScreen() {
+  // Moving between screens: items grow out of their card and shrink back into it; other screens slide or fade.
+  const EASE = 'cubic-bezier(.22,1,.36,1)', DUR = 440;
+  function animateSwap(oldEl, el, kind) {
     const stage = $('#stage');
-    const old = stage.firstElementChild;
+    if (!oldEl || oldEl === el) return;
+    const back = kind === 'unzoom' || kind === 'pop';
+    if (back) stage.insertBefore(el, oldEl); // the screen being left stays on top while it goes
+    const W = window.innerWidth, H = window.innerHeight;
+    const rectInset = (r) => `inset(${r.top}px ${Math.max(0, W - r.right)}px ${Math.max(0, H - r.bottom)}px ${r.left}px round 20px)`;
+    const full = 'inset(0px 0px 0px 0px round 0px)';
+    const o = { duration: DUR, easing: EASE };
+    let outAnim;
+    if (kind === 'zoom' && S.fromRect) {
+      el.animate([{ clipPath: rectInset(S.fromRect), opacity: 0.7 }, { clipPath: full, opacity: 1 }], o);
+      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.94)', opacity: 0.35 }], o);
+    } else if (kind === 'unzoom') {
+      const card = el.querySelector(`.card[data-v="${S.fromId}"] .media`);
+      const r = card && card.getBoundingClientRect();
+      el.animate([{ transform: 'scale(.94)', opacity: 0.35 }, { transform: 'none', opacity: 1 }], o);
+      outAnim = r && r.bottom > 0 && r.top < H
+        ? oldEl.animate([{ clipPath: full, opacity: 1 }, { clipPath: rectInset(r), opacity: 0.5 }], o)
+        : oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], o);
+    } else if (kind === 'push') {
+      el.animate([{ transform: 'translateX(100%)' }, { transform: 'none' }], o);
+      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(-22%)', opacity: 0.4 }], o);
+    } else if (kind === 'pop') {
+      el.animate([{ transform: 'translateX(-22%)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], o);
+      outAnim = oldEl.animate([{ transform: 'none' }, { transform: 'translateX(100%)' }], o);
+    } else {
+      el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE });
+      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
+    }
+    oldEl.style.pointerEvents = 'none';
+    outAnim.onfinish = () => { oldEl.remove(); oldEl.style.pointerEvents = ''; };
+  }
+
+  function showScreen(kind) {
+    const stage = $('#stage');
+    const old = stage.lastElementChild;
     let el;
     if (S.screen === 'home' && homeEl) {
       refreshHome();
       el = homeEl;
-      el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
     } else {
       el = build(S.screen);
-      if (!el) { S.screen = 'home'; return showScreen(); }
+      if (!el) { S.screen = 'home'; return showScreen('fade'); }
       if (S.screen === 'home') { homeEl = el; homeVer = dataVer; boardSig = sigOf(); }
     }
-    if (old && old !== el) old.remove();
     if (!el.isConnected) stage.appendChild(el);
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
     if (S.screen === 'item') wireItem(el);
     if (S.screen === 'sync') $('#syncbody').innerHTML = syncBodyHTML();
+    animateSwap(old, el, kind);
     updateChrome();
   }
 
-  function go(screen, extra) {
+  function go(screen, extra, kind) {
     Object.assign(S, extra || {}, { screen, add: false, cover: false, sheet: null });
-    showScreen();
+    showScreen(kind || 'fade');
   }
 
   function setLift(v) {
@@ -558,7 +593,8 @@
   // ---------- actions ----------
   const currentBoard = () => (S.screen === 'board' ? S.board : '');
   const A = {
-    home: () => go('home'),
+    home: () => go('home', null, 'fade'),
+    boardBack: () => go('home', null, 'pop'),
     sync: () => go('sync'),
     search: () => toast('Search is coming soon'),
     add: () => { S.add = !S.add; S.cover = false; S.sheet = null; updateChrome(); },
@@ -578,8 +614,8 @@
     addGallery: () => { S.add = false; updateChrome(); N.pick(currentBoard()); },
     addCamera: () => { S.add = false; updateChrome(); N.camera(currentBoard()); },
     addNote: () => { const r = call('addNote', currentBoard()); if (r) go('item', { item: r.id, prev: S.screen }); },
-    open: (v) => go('item', { item: v, prev: S.screen }),
-    back: () => { flushSave(); go(S.prev === 'item' ? 'home' : S.prev); },
+    open: (v, el) => { const m = el.querySelector('.media') || el; S.fromRect = m.getBoundingClientRect(); S.fromId = v; go('item', { item: v, prev: S.screen }, 'zoom'); },
+    back: () => { flushSave(); const to = S.prev === 'item' ? 'home' : S.prev; if (S.screen === 'item') go(to, null, 'unzoom'); else go(to, null, S.screen === 'board' ? 'pop' : 'fade'); },
     bin: () => {
       flushSave();
       const id = S.item;
@@ -636,6 +672,7 @@
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }
     if (S.screen === 'item') { A.back(); return true; }
+    if (S.screen === 'board') { go('home', null, 'pop'); return true; }
     if (S.screen !== 'home') { go('home'); return true; }
     return false;
   };
@@ -643,7 +680,7 @@
   window.addEventListener('resize', setHero);
   setHero();
   app.innerHTML = chromeHTML();
-  showScreen();
+  showScreen('fade');
   // Catch up with the PC quietly when the app opens, and keep "synced x min ago" current.
   if ((DB.sync || {}).paired) setTimeout(() => N.syncQuiet(), 1200);
   setInterval(() => {

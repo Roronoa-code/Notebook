@@ -61,6 +61,8 @@ public class MainActivity extends Activity {
             v.setPadding(0, bars.top, 0, bars.bottom);
             return insets;
         });
+        // Test builds only: lets the PC inspect the screens over USB/wireless debugging.
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor("#0A0A0A"));
         WebSettings s = web.getSettings();
@@ -287,7 +289,15 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface public void pick(String boardId) {
             pendingBoard = boardId == null ? "" : boardId;
-            runOnUiThread(() -> startActivityForResult(new Intent(MediaStore.ACTION_PICK_IMAGES).putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, 50), REQ_PICK));
+            runOnUiThread(() -> {
+                // Samsung Gallery first (pick several photos and videos); Android's own picker if it isn't there.
+                Intent gallery = new Intent(Intent.ACTION_GET_CONTENT).setType("image/*")
+                    .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"})
+                    .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    .setPackage("com.sec.android.gallery3d");
+                try { startActivityForResult(gallery, REQ_PICK); }
+                catch (Exception e) { startActivityForResult(new Intent(MediaStore.ACTION_PICK_IMAGES).putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, 50), REQ_PICK); }
+            });
         }
 
         @JavascriptInterface public void camera(String boardId) {
