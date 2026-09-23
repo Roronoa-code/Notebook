@@ -54,9 +54,9 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .page::-webkit-scrollbar { width: 10px; } .page::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 999px; }
 
 /* board cards */
-.boards { position: relative; display: flex; gap: 12px; overflow-x: auto; padding: 8px 4px 10px; margin: 0 -4px; scrollbar-width: none; }
+.boards { position: relative; display: flex; gap: 12px; overflow-x: auto; padding: 14px; margin: -6px -14px -4px; scrollbar-width: none; }
 .boards::-webkit-scrollbar { display: none; }
-.bhl { position: absolute; top: 8px; left: 0; height: 88px; border-radius: 18px; border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--accent) 60%, transparent); pointer-events: none; opacity: 0; transition: transform .6s var(--spring), width .6s var(--spring), opacity .25s; z-index: 0; }
+.bhl { position: absolute; top: 14px; left: 0; height: 88px; border-radius: 18px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.13), inset 0 -1px 0 rgba(255,255,255,.03), 0 10px 24px -14px rgba(0,0,0,.6); pointer-events: none; opacity: 0; transition: transform .6s var(--spring), width .6s var(--spring), opacity .25s; z-index: 0; }
 .bhl.go { animation: squish .6s var(--spring); }
 .bcard { position: relative; z-index: 1; flex: 0 0 auto; min-width: 230px; height: 88px; border-radius: 18px; border: 1px solid var(--line); background: rgba(255,255,255,.035); display: flex; align-items: center; gap: 16px; padding: 0 22px 0 14px; text-align: left; transition: background .25s, transform .45s var(--spring), border-color .25s; }
 .bcard:hover { background: rgba(255,255,255,.06); transform: translateY(-2px); }
@@ -75,8 +75,8 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .bcard:hover .stack > :nth-child(3) { transform: rotate(14deg) translateX(6px); }
 .stack .ph { display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .stack > :only-child { left: 20px; transform: rotate(-4deg); }
-.stack .ph.empty { background: transparent; border: 1.5px dashed rgba(255,255,255,.18); box-shadow: none; }
-.bcard.dropping { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); transform: scale(1.04); }
+.stack .ph.blank { background: transparent; border: 1.5px dashed rgba(255,255,255,.18); box-shadow: none; }
+.bcard.dropping { border-color: rgba(255,255,255,.4); background: rgba(255,255,255,.12); transform: scale(1.04); }
 .stack .ph.note { background: #2A2517; color: #E9D9A6; }
 
 .context { display: flex; align-items: center; gap: 10px; margin: 18px 4px 22px; min-height: 40px; }

@@ -55,7 +55,7 @@
     const pics = items.filter((i) => i.thumbSrc).slice(0, 3);
     if (pics.length) return pics.map((i) => h('img', { src: i.thumbSrc, alt: '', loading: 'lazy', decoding: 'async' }));
     if (items.some((i) => i.kind === 'note')) return [h('div', { class: 'ph note' }, icon('note'))];
-    return [h('div', { class: 'ph empty' })];
+    return [h('div', { class: 'ph blank' })];
   }
 
   function renderBoards() {

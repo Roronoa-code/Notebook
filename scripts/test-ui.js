@@ -118,6 +118,20 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.keyboard.press('Escape');
   assert.deepEqual(web, [], 'no web requests');
   ok('no internet requests were made');
+
+  // Board strip: a board with thumbnails selected, empty boards beside it, then hovered (fan-out).
+  await page.locator('.bcard', { hasText: 'Outfits' }).click();
+  await page.waitForTimeout(900);
+  const strip = await page.locator('#boards').boundingBox();
+  const clip = { x: Math.max(0, strip.x - 10), y: Math.max(0, strip.y - 10), width: strip.width + 20, height: strip.height + 20 };
+  await page.screenshot({ path: path.join(OUT, '7-board-strip.png'), clip });
+  await page.locator('.bcard', { hasText: 'Outfits' }).hover();
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: path.join(OUT, '8-board-strip-hover.png'), clip });
+  const hl = await page.evaluate(() => { const a = document.querySelector('.bhl').getBoundingClientRect(), b = document.querySelector('.bcard.on').getBoundingClientRect(); return { dx: a.left - b.left, dw: a.width - b.width, dy: a.top - b.top }; });
+  assert.ok(Math.abs(hl.dx) < 1 && Math.abs(hl.dw) < 1, 'highlight sits on the selected card: ' + JSON.stringify(hl));
+  assert.equal(await page.locator('.bcard .stack .ph.blank').count() > 0, true);
+  ok('board strip screenshots saved; highlight lines up with the selected card');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone
