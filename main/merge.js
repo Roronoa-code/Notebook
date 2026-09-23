@@ -12,6 +12,17 @@ class SyncError extends Error {
 const time = (iso) => { const t = Date.parse(iso); return Number.isFinite(t) ? t : 0; };
 const isIso = (v) => typeof v === 'string' && Number.isFinite(Date.parse(v));
 
+// A crop is { x, y, w, h }: fractions of the picture (the file itself is never changed).
+// Returns a clean copy, or null if it isn't a sensible crop.
+function cleanCrop(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+  const v = ['x', 'y', 'w', 'h'].map((k) => c[k]);
+  if (!v.every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
+  const [x, y, w, h] = v;
+  if (x < 0 || y < 0 || w < 0.02 || h < 0.02 || x + w > 1.001 || y + h > 1.001) return null;
+  return { x, y, w, h };
+}
+
 // Checks what the phone sent before anything is merged. Anything odd rejects the whole sync
 // rather than quietly dropping it, because the phone replaces its own list with our answer.
 function cleanRemote(body) {
@@ -45,6 +56,7 @@ function cleanRemote(body) {
     if (it.stack != null && (typeof it.stack !== 'string' || !ID_RE.test(it.stack))) bad('item stack');
     if (it.stackIn != null && (typeof it.stackIn !== 'string' || !ID_RE.test(it.stackIn))) bad('item stack board');
     if (it.labels != null && (typeof it.labels !== 'object' || Array.isArray(it.labels))) bad('item labels');
+    if (it.crop != null && !cleanCrop(it.crop)) bad('item crop');
     delete it.phone; // "show on phone" belongs to the PC; whatever the phone sends is ignored
     if (it.kind === 'note') {
       if (it.file != null) bad('a note with a file');
@@ -159,4 +171,4 @@ function forPhone(items, pcNeeds) {
   return items.filter((it) => it.phone !== false || waiting.has(it.id));
 }
 
-module.exports = { cleanRemote, mergeInto, forPhone, unionTombstones, pruneTombstones, SyncError, TOMBSTONE_DAYS, ID_RE };
+module.exports = { cleanRemote, cleanCrop, mergeInto, forPhone, unionTombstones, pruneTombstones, SyncError, TOMBSTONE_DAYS, ID_RE };

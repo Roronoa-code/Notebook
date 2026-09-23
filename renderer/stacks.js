@@ -11,7 +11,7 @@
     { t: 'translate(-4%, 2%) rotate(-5deg) scale(.9)', o: 1 },
     { t: 'translate(0, 5%) scale(.84)', o: 0 }
   ];
-  const ratioOf = (m) => (m && m.w && m.h ? `${m.w} / ${m.h}` : '4 / 5');
+  const ratioOf = (m) => { const s = m && NB.shape(m); return s ? `${s.w} / ${s.h}` : '4 / 5'; };
   // The stack takes the shape of the picture on top (so it's never cropped), gliding between shapes.
   function place(el, glide) {
     const items = [...el.querySelectorAll('.fanitem')], len = items.length;

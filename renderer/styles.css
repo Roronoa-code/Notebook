@@ -174,6 +174,19 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card.droptarget { transform: scale(1.03); transition: transform .3s var(--spring); }
 .ctx-title.still { animation: none; }
 .card-ghost { display: block; }
+/* cropping: the frame over the whole picture; outside it is dimmed */
+.stage.cropping { padding: 22px; }
+.cropper { position: absolute; inset: 22px; z-index: 5; }
+.cropbox { position: absolute; box-shadow: 0 0 0 9999px rgba(0,0,0,.62); outline: 2px solid rgba(255,255,255,.95); cursor: move; touch-action: none; transition: box-shadow .2s; }
+.cropbox.dragging { box-shadow: 0 0 0 9999px rgba(0,0,0,.72); }
+.cropbox:focus-visible { outline-color: var(--accent); }
+.ch { position: absolute; width: 22px; height: 22px; translate: -50% -50%; }
+.ch::after { content: ''; position: absolute; inset: 5px; border-radius: 4px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.6); }
+.ch.n, .ch.s { left: 50%; width: calc(100% - 36px); cursor: ns-resize; } .ch.n { top: 0; } .ch.s { top: 100%; }
+.ch.e, .ch.w { top: 50%; height: calc(100% - 36px); cursor: ew-resize; } .ch.w { left: 0; } .ch.e { left: 100%; }
+.ch.n::after, .ch.s::after, .ch.e::after, .ch.w::after { display: none; }
+.ch.nw { left: 0; top: 0; cursor: nwse-resize; } .ch.se { left: 100%; top: 100%; cursor: nwse-resize; }
+.ch.ne { left: 100%; top: 0; cursor: nesw-resize; } .ch.sw { left: 0; top: 100%; cursor: nesw-resize; }
 /* picked items and the bar for them */
 .card .pick { position: absolute; left: 10px; top: 10px; z-index: 14; width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.8); background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s, background .2s; cursor: pointer; }
 .card .pick svg { width: 14px; height: 14px; stroke-width: 3; opacity: 0; }
@@ -239,7 +252,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 
 /* viewer */
 .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(5,5,5,.45); animation: fade .3s ease backwards; }
-.viewer { position: fixed; z-index: 21; inset: 5vh 5vw; border-radius: 30px; padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 26px; animation: pop .55s var(--spring) backwards; }
+.viewer { position: fixed; z-index: 21; inset: 5vh 5vw; border-radius: 30px; padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr); gap: 26px; animation: pop .55s var(--spring) backwards; }
 .stage { position: relative; border-radius: 22px; overflow: hidden; background: var(--deep); display: flex; align-items: center; justify-content: center; min-height: 0; }
 .stage img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; transition: transform .4s var(--ease-out); }
 .stage.zoomed { overflow: auto; display: block; }
@@ -255,7 +268,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .editor h2 { font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 30px; line-height: 1.15; margin: 0 0 12px; }
 .editor ul, .editor ol { padding-left: 26px; }
 .editor.tidied > * { animation: rise .5s var(--spring) backwards; }
-.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 6px 2px 2px 0; }
+.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 6px 2px 2px 0; }
 .side .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .side .nav { display: flex; gap: 6px; }
 .viewing .toasts { bottom: auto; top: 24px; }
@@ -274,7 +287,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .side h4 { margin: 4px 0 0; }
 .tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .hint { margin: 0; font-size: 13px; color: var(--muted); }
-.side .actions { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+.side .actions { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; position: sticky; bottom: 0; padding-top: 10px; background: var(--surface); }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; align-self: flex-start; }
 
 /* phone panel */

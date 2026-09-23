@@ -221,6 +221,41 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.evaluate(async (id) => { NB.apply(await nb.unstackItem(id)); NB.refreshGrid(); }, pair.ids[0]);
   await page.waitForFunction(() => !document.querySelector('.grid .stackcard'));
   ok('drop a card onto a card to stack; stacks only group inside a board when they were made there; all stacks group in All items');
+
+  // Crop: drag the frame's corner in, save; the card and the open photo show only that part.
+  const cropId = await page.evaluate(() => [...document.querySelectorAll('.grid > .card:not(.stackcard)')].map((c) => c.dataset.id).find((id) => NB.S.snap.items.find((i) => i.id === id).kind === 'photo'));
+  const photoCard = page.locator(`.grid .card[data-id="${cropId}"]`);
+  const cardShape = async () => page.locator(`.grid .card[data-id="${cropId}"] .media`).evaluate((m) => m.getBoundingClientRect().height / m.getBoundingClientRect().width);
+  const shapeBefore = await cardShape();
+  await photoCard.click();
+  await page.locator('.side .btn', { hasText: 'Crop' }).click();
+  const frame = page.locator('.cropbox');
+  await frame.waitFor();
+  const fb = await frame.boundingBox();
+  await page.mouse.move(fb.x + 4, fb.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(fb.x + fb.width * 0.3, fb.y + fb.height * 0.1, { steps: 8 });
+  await page.mouse.up();
+  await page.screenshot({ path: path.join(OUT, '12-crop.png') });
+  await page.locator('.side .btn', { hasText: 'Save crop' }).click();
+  await page.waitForFunction((id) => NB.S.snap.items.find((i) => i.id === id).crop, cropId);
+  const crop = onDisk().find((i) => i.id === cropId).crop;
+  assert.ok(crop.x > 0.25 && crop.y > 0.05 && crop.w < 0.75 && crop.h < 0.95, 'crop saved: ' + JSON.stringify(crop));
+  assert.match(await page.locator('.stage img').evaluate((i) => getComputedStyle(i).objectViewBox), /inset/, 'the open photo shows the crop');
+  await page.screenshot({ path: path.join(OUT, '13-cropped.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
+  assert.match(await page.locator(`.grid .card[data-id="${cropId}"] img`).evaluate((i) => getComputedStyle(i).objectViewBox), /inset/, 'the card shows the crop');
+  const shapeAfter = await cardShape();
+  const want = shapeBefore * (crop.h / crop.w);
+  assert.ok(Math.abs(shapeAfter - want) < 0.03, `the card takes the cropped shape (${shapeAfter.toFixed(3)} vs ${want.toFixed(3)})`);
+  await page.locator(`.grid .card[data-id="${cropId}"]`).click();
+  await page.locator('.side .btn', { hasText: 'Change crop' }).click();
+  await page.locator('.side .linkbtn', { hasText: 'Show the whole picture' }).click();
+  await page.locator('.side .btn', { hasText: 'Save crop' }).click();
+  await page.waitForFunction((id) => !NB.S.snap.items.find((i) => i.id === id).crop, cropId);
+  await page.keyboard.press('Escape');
+  ok('Crop: drag the frame, save; the card and open photo show only that part (file untouched); Show the whole picture undoes it');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone

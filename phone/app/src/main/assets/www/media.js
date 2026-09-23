@@ -5,7 +5,7 @@ window.NBMedia = (() => {
 
   // Where a photo actually sits inside its box when it's shown with object-fit: contain.
   function shown(img) {
-    const r = img.getBoundingClientRect(), ar = (img.naturalWidth || r.width) / (img.naturalHeight || r.height);
+    const r = img.getBoundingClientRect(), ar = +img.dataset.ar || (img.naturalWidth || r.width) / (img.naturalHeight || r.height); // data-ar: a cropped photo's shape
     const w = Math.min(r.width, r.height * ar), h = w / ar;
     return { x: r.x + (r.width - w) / 2, y: r.y + (r.height - h) / 2, w, h };
   }

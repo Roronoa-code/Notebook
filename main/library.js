@@ -6,7 +6,7 @@ const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
-const { cleanRemote, mergeInto, pruneTombstones, SyncError, ID_RE } = require('./merge');
+const { cleanRemote, cleanCrop, mergeInto, pruneTombstones, SyncError, ID_RE } = require('./merge');
 
 const DB = 'library.json';
 const MAX_UPLOAD = 2 * 1024 ** 3;
@@ -252,6 +252,10 @@ class Library {
     if (typeof changes.html === 'string' && it.kind === 'note') it.html = changes.html.slice(0, 500000);
     if (typeof changes.caption === 'string' && it.kind !== 'note') it.caption = changes.caption.slice(0, 5000);
     if (Array.isArray(changes.boards)) it.boards = this.validBoards(changes.boards);
+    if ('crop' in changes && it.kind !== 'note') {
+      if (changes.crop == null) delete it.crop;
+      else it.crop = cleanCrop(changes.crop) || (() => { throw new FriendlyError("That crop couldn't be used. Try again."); })();
+    }
     it.updatedAt = now();
     await this.save();
   }

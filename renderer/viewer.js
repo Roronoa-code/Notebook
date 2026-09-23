@@ -1,7 +1,7 @@
 // The open-item panel: full-size photo, in-app video, note editor, boards and Bin actions.
 (() => {
   const { h, icon, toast } = NB;
-  const V = { id: null, shell: null, returnFocus: null, saveTimer: null, saving: Promise.resolve(), tidyUndo: null };
+  const V = { id: null, shell: null, returnFocus: null, saveTimer: null, saving: Promise.resolve(), tidyUndo: null, cropping: null };
   const item = () => NB.S.snap && NB.S.snap.items.find((i) => i.id === V.id);
 
   // ---------- note saving ----------
@@ -36,7 +36,7 @@
   function stageFor(it) {
     if (it.kind === 'photo') {
       const stage = h('div', { class: 'stage' });
-      const img = h('img', { src: it.src, alt: it.title });
+      const img = h('img', { src: it.src, alt: it.title, style: { objectViewBox: V.cropping ? '' : NB.viewBox(it) } });
       img.addEventListener('click', () => stage.classList.toggle('zoomed'));
       img.addEventListener('error', () => stage.replaceChildren(h('p', { class: 'ph' }, "This photo can't be shown. The file is still stored in your library.")));
       stage.append(img);
@@ -44,7 +44,7 @@
     }
     if (it.kind === 'video') {
       const stage = h('div', { class: 'stage' });
-      const video = h('video', { src: it.src, controls: true, preload: 'metadata', playsinline: true });
+      const video = h('video', { src: it.src, controls: !V.cropping, preload: 'metadata', playsinline: true, style: { objectViewBox: V.cropping ? '' : NB.viewBox(it) } });
       video.addEventListener('error', () => stage.replaceChildren(h('p', { class: 'ph' },
         "This video's format can't play inside Notebook. It's still safely stored: use “Show file in folder” to open it in another player.")));
       stage.append(video);
@@ -177,7 +177,32 @@
     return bits.join(' · ');
   }
 
+  // Cropping: the whole picture with a frame to drag; the side panel holds Save / Cancel.
+  function startCrop() {
+    V.cropping = true;
+    fill(false);
+    const it = item();
+    V.crop = NB.crop.edit(V.shell.querySelector('.stage'), it, async (crop) => {
+      V.cropping = null; V.crop = null;
+      if (crop !== undefined) {
+        const res = NB.apply(await nb.updateItem(it.id, { crop }));
+        if (res) toast(crop ? 'Cropped. Your original file is unchanged.' : 'Showing the whole picture again');
+      }
+      if (V.shell && item()) fill(false);
+    });
+  }
+  function cropSide() {
+    return h('div', { class: 'side' },
+      h('div', { class: 'top' }, h('span'), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Cancel crop', onclick: () => V.crop.cancel() }, icon('x'))),
+      h('h2', { class: 'title-input', style: { margin: '0' } }, 'Crop'),
+      h('p', { class: 'hint' }, 'Drag the frame to choose what shows. Drag a corner or edge to resize it. This only changes how it looks in Notebook and on your phone: the original file stays whole.'),
+      h('button', { type: 'button', class: 'linkbtn', onclick: () => V.crop.reset() }, 'Show the whole picture'),
+      h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: () => V.crop.cancel() }, 'Cancel'), h('span', { style: { flex: '1' } }),
+        h('button', { type: 'button', class: 'btn primary', onclick: () => V.crop.save() }, icon('check'), 'Save crop')));
+  }
+
   function side(it) {
+    if (V.cropping) return cropSide();
     const list = NB.visibleItems();
     const idx = list.findIndex((i) => i.id === it.id);
     const navBtn = (dir) => h('button', { type: 'button', class: 'iconbtn', 'aria-label': dir < 0 ? 'Previous item' : 'Next item', disabled: idx < 0 || !list[idx + dir], onclick: () => step(dir) }, icon(dir < 0 ? 'left' : 'right'));
@@ -212,6 +237,7 @@
         const res = NB.apply(await nb.unstackItem(it.id));
         if (res) { toast('Taken out of the stack'); refreshSide(); }
       } }, icon('stack'), 'Take out of stack') : null,
+      !it.deletedAt && it.kind !== 'note' && it.w && it.h ? h('button', { type: 'button', class: 'btn small', onclick: startCrop }, icon('crop'), it.crop ? 'Change crop' : 'Crop') : null,
       it.kind !== 'note' ? h('button', { type: 'button', class: 'linkbtn', onclick: () => nb.revealItem(it.id) }, 'Show file in folder') : null,
       h('div', { class: 'actions' }, actions, h('span', { style: { flex: '1' } }), h('button', { type: 'button', class: 'btn primary', onclick: close }, 'Done')));
   }
@@ -246,14 +272,16 @@
     const it = item();
     const panel = V.shell && V.shell.querySelector('.viewer.fit');
     if (!panel || !it) return;
-    const SIDE = 380, GAP = 26, PAD = 40;
-    const height = window.innerHeight * 0.9 - PAD;
-    const maxWidth = window.innerWidth * 0.9 - PAD - GAP - SIDE;
-    const width = Math.max(320, Math.min(maxWidth, height * (it.w / it.h)));
+    const SIDE = 380, GAP = 26, PAD = 40, M = V.cropping ? 44 : 0; // while cropping, a margin so the frame's corners can be grabbed
+    const height = window.innerHeight * 0.9 - PAD - M;
+    const maxWidth = window.innerWidth * 0.9 - PAD - GAP - SIDE - M;
+    const s = V.cropping ? { w: it.w, h: it.h } : NB.shape(it); // while cropping, the whole picture
+    const width = Math.max(320, Math.min(maxWidth, height * (s.w / s.h)));
     const stage = panel.querySelector('.stage');
-    stage.style.width = width + 'px';
-    stage.style.height = Math.min(height, width * (it.h / it.w)) + 'px';
-    panel.style.width = width + PAD + GAP + SIDE + 'px';
+    stage.style.width = width + M + 'px';
+    stage.style.height = Math.min(height, width * (s.h / s.w)) + M + 'px';
+    stage.classList.toggle('cropping', !!V.cropping);
+    panel.style.width = width + M + PAD + GAP + SIDE + 'px';
   }
   window.addEventListener('resize', fitStage);
 
@@ -275,6 +303,7 @@
   }
 
   async function step(dir) {
+    if (V.cropping) return;
     const list = NB.visibleItems();
     const next = list[list.findIndex((i) => i.id === V.id) + dir];
     if (!next) return;
@@ -284,6 +313,8 @@
   }
 
   function onKey(e) {
+    if (V.cropping) return; // the crop frame has its own keys
+    if (e.key === 'Escape' && document.querySelector('.ddlist:not(.out)')) return; // Esc closes the open dropdown first
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], video');
     if (!typing && e.key === 'ArrowLeft') step(-1);
@@ -292,6 +323,7 @@
 
   async function close() {
     if (!V.shell) return;
+    V.cropping = null; V.crop = null;
     if (V.shell.contains(document.activeElement)) document.activeElement.blur(); // saves a title being edited
     await flush();
     V.shell.remove();

@@ -18,6 +18,19 @@ const { chromium } = require('playwright-core');
     assert.equal(await page.locator('#homegrid .cap, #homegrid .capnote').count(), 0, 'no titles or notes under photos');
     assert.equal(await page.locator('#homegrid .badge').first().innerText(), '', 'video mark has no duration text');
 
+    // A crop made on the PC arrives with a sync: the card and the open photo show only that part, in its shape.
+    const cropped = await page.evaluate(() => {
+      const st = JSON.parse(NBNative.state()), it = st.items.find((i) => i.kind === 'photo' && !i.deletedAt && i.w && i.h);
+      it.crop = { x: 0.1, y: 0.1, w: 0.5, h: 0.4 };
+      window.nbOnState(JSON.stringify(st));
+      return { id: it.id, want: (it.w * 0.5) / (it.h * 0.4) };
+    });
+    await page.waitForTimeout(700);
+    const cardImg = page.locator(`#homegrid .card[data-v="${cropped.id}"] img`);
+    assert.match(await cardImg.evaluate((i) => getComputedStyle(i).objectViewBox), /inset/, 'the card shows the crop');
+    const got = await cardImg.evaluate((i) => i.getBoundingClientRect().width / i.getBoundingClientRect().height);
+    assert.ok(Math.abs(got - cropped.want) < 0.03, `the card takes the cropped shape (${got.toFixed(3)} vs ${cropped.want.toFixed(3)})`);
+
     // Search: titles, photo notes, note text and board names.
     await page.locator('#nav-search').click();
     await page.locator('#q').waitFor();
@@ -70,6 +83,6 @@ const { chromium } = require('playwright-core');
     await page.locator('[data-a="binBack"]').click();
     await page.locator('#syncbody').waitFor();
     assert.deepEqual(errors, []);
-    console.log('Phone library passed: mood-board cards, search (title, note, note text, board), Bin put back, delete forever and empty Bin.');
+    console.log('Phone library passed: mood-board cards, crops from the PC, search (title, note, note text, board), Bin put back, delete forever and empty Bin.');
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exitCode = 1; });

@@ -42,6 +42,11 @@ NB.sanitize = function sanitize(html) {
   return doc.body.innerHTML;
 };
 
+// A crop ({ x, y, w, h } as fractions) is only a way of showing the picture: object-view-box, the file never changes.
+NB.viewBox = (it) => { const c = it.crop; return c ? `inset(${c.y * 100}% ${(1 - c.x - c.w) * 100}% ${(1 - c.y - c.h) * 100}% ${c.x * 100}%)` : ''; };
+// The shape a picture is shown in (after its crop), or null if its size isn't known.
+NB.shape = (it) => (it.w && it.h ? { w: it.w * (it.crop ? it.crop.w : 1), h: it.h * (it.crop ? it.crop.h : 1) } : null);
+
 NB.escape = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Tidy up (no AI): the first phrase becomes a heading, the rest become bullet points.

@@ -289,5 +289,22 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(qnId))), stackIn: '../x', updatedAt: iso(360000) }] }), /couldn't read/);
   ok('stacks remember where they were made (All or a board), keep it when joined, sync it, refuse bad values');
 
+  // Crop: only how it's shown; the file is untouched.
+  const fileBefore = fs.readFileSync(path.join(syncDir, sl.item(pId).file));
+  const cropBefore = sl.item(pId).updatedAt;
+  await sl.updateItem(pId, { crop: { x: 0.1, y: 0.2, w: 0.5, h: 0.6 } });
+  assert.deepEqual(sl.item(pId).crop, { x: 0.1, y: 0.2, w: 0.5, h: 0.6 });
+  assert.notEqual(sl.item(pId).updatedAt, cropBefore, 'a crop is a synced edit');
+  assert.ok(fileBefore.equals(fs.readFileSync(path.join(syncDir, sl.item(pId).file))), 'the file is unchanged');
+  await assert.rejects(sl.updateItem(pId, { crop: { x: 0.8, y: 0, w: 0.5, h: 1 } }), /crop couldn't be used/);
+  await assert.rejects(sl.updateItem(pId, { crop: { x: 'a', y: 0, w: 1, h: 1 } }), /crop couldn't be used/);
+  assert.equal(sl.item(pId).crop.x, 0.1, 'a bad crop changes nothing');
+  await sl.updateItem(pId, { crop: null });
+  assert.ok(!('crop' in sl.item(pId)), 'back to the whole picture');
+  await sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(pId))), crop: { x: 0, y: 0, w: 0.5, h: 0.5 }, updatedAt: iso(420000) }] });
+  assert.equal(sl.item(pId).crop.w, 0.5, 'a crop syncs');
+  await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(pId))), crop: { x: 0, y: 0, w: 5, h: 1 }, updatedAt: iso(480000) }] }), /couldn't read/);
+  ok('crop: saved as fractions, a synced edit, the file never changes, bad crops refused (here and from the phone), can be removed');
+
   console.log(`\nAll ${passed} checks passed.`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

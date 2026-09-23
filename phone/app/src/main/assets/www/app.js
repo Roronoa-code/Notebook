@@ -76,7 +76,10 @@
   const tick = () => { try { N.tick(); } catch (e) { /* no haptics */ } };
 
   // ---------- pieces ----------
-  const aspect = (it) => (it.w && it.h ? `${it.w} / ${it.h}` : '4 / 5');
+  // A crop ({ x, y, w, h } as fractions, set on the PC) only changes how the picture is shown: object-view-box.
+  const shapeOf = (it) => (it.w && it.h ? [it.w * (it.crop ? it.crop.w : 1), it.h * (it.crop ? it.crop.h : 1)] : null);
+  const vb = (it) => { const c = it.crop; return c ? `object-view-box:inset(${c.y * 100}% ${(1 - c.x - c.w) * 100}% ${(1 - c.y - c.h) * 100}% ${c.x * 100}%);` : ''; };
+  const aspect = (it) => { const s = shapeOf(it); return s ? `${s[0]} / ${s[1]}` : '4 / 5'; };
   // The picture (or note text) inside a card. `fill` makes it fill a fixed box (cards in a stack).
   function inner(it, fill) {
     if (it.kind === 'note') {
@@ -85,7 +88,7 @@
     }
     const size = fill ? '' : ` style="aspect-ratio:${aspect(it)}"`;
     const src = url(it.thumb || (it.kind === 'photo' ? it.file : ''));
-    const media = src ? `<img src="${src}" alt="" loading="lazy" decoding="async"${size}>` : `<div class="ph"${size}>${svg(it.kind === 'video' ? P.camera : P.photo, 22, 1.6)}</div>`;
+    const media = src ? `<img src="${src}" alt="" loading="lazy" decoding="async" style="${fill ? '' : `aspect-ratio:${aspect(it)};`}${vb(it)}">` : `<div class="ph"${size}>${svg(it.kind === 'video' ? P.camera : P.photo, 22, 1.6)}</div>`;
     return `<div class="media${fill ? ' fill' : ''}">${media}${it.kind === 'video' ? `<span class="badge" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></span>` : ''}</div>`;
   }
   function card(it, n) {
@@ -144,7 +147,7 @@
 
   function coverHTML() {
     const cov = S.coverId && byId(S.coverId);
-    if (cov && cov.file && cov.kind === 'photo') return `<img class="cover ${S.coverDots ? 'dots' : 'plain'}" src="${url(cov.file)}" alt=""><div class="coverfade"></div>`;
+    if (cov && cov.file && cov.kind === 'photo') return `<img class="cover ${S.coverDots ? 'dots' : 'plain'}" src="${url(cov.file)}" alt="" style="${vb(cov)}"><div class="coverfade"></div>`;
     return '<img class="dither" src="img/mani-disperse.png" alt="">';
   }
 
@@ -180,7 +183,7 @@
     const cov = list.find((x) => x.thumb || (x.kind === 'photo' && x.file));
     return `<div class="screen">
       <div style="position:relative;height:calc(var(--st) + 300px)">
-        ${cov ? `<img src="${url(cov.thumb || cov.file)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(2px)">` : ''}
+        ${cov ? `<img src="${url(cov.thumb || cov.file)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(2px);${vb(cov)}">` : ''}
         <div class="coverfade"></div>
         <button type="button" class="iconbtn glass" data-a="boardBack" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px">${svg(P.back)}</button>
         <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:calc(var(--st) + 10px);right:16px">${svg(P.edit, 18)}</button>
@@ -201,14 +204,14 @@
     } else if (it.kind === 'video') {
       // Our own quiet player: plays on a loop with the sound off; tap to pause, drag the line to seek.
       stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><div class="vbox">
-        <img class="vposter" src="${url(it.thumb)}" alt="">
-        <video id="vid" src="${url(it.file)}" muted loop playsinline preload="auto" aria-label="${esc(it.title)}"></video>
+        <img class="vposter" src="${url(it.thumb)}" alt="" style="${vb(it)}">
+        <video id="vid" src="${url(it.file)}" style="${vb(it)}" muted loop playsinline preload="auto" aria-label="${esc(it.title)}"></video>
         <span class="vpaused" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></span>
         <div class="vbar" role="slider" aria-label="Position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><div class="vfill"></div></div>
         <button type="button" class="vsound" aria-label="Sound on" aria-pressed="false">${svg('M11 5L6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6', 18)}</button>
       </div><p class="media-message" role="status"></p></div>`;
     } else {
-      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
+      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(it.file)}" alt="${esc(it.title)}" decoding="async" style="${vb(it)}"${it.crop && shapeOf(it) ? ` data-ar="${(shapeOf(it)[0] / shapeOf(it)[1]).toFixed(4)}"` : ''}></button></div>`;
     }
     // Wide pictures leave room below, so their note and boards start open there.
     return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
@@ -440,7 +443,7 @@
   }
 
   // The photo's shape (width / height) for the rounded media frame; the stage falls back to a plain fit without it.
-  const arStyle = (it) => (it.w > 0 && it.h > 0 ? `--ar:${(it.w / it.h).toFixed(4)}` : '');
+  const arStyle = (it) => { const s = shapeOf(it); return s && s[0] > 0 && s[1] > 0 ? `--ar:${(s[0] / s[1]).toFixed(4)}` : ''; };
 
   function showScreen(kind) {
     const stage = $('#stage');

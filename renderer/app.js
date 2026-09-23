@@ -64,7 +64,7 @@
   function stackFor(id) {
     const items = itemsFor(id);
     const pics = items.filter((i) => i.thumbSrc).slice(0, 3);
-    if (pics.length) return pics.map((i) => h('img', { src: i.thumbSrc, alt: '', loading: 'lazy', decoding: 'async' }));
+    if (pics.length) return pics.map((i) => h('img', { src: i.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', style: { objectViewBox: NB.viewBox(i) } }));
     if (items.some((i) => i.kind === 'note')) return [h('div', { class: 'ph note' }, icon('note'))];
     return [h('div', { class: 'ph blank' })];
   }
@@ -155,10 +155,11 @@
       return h('div', { class: 'media note-card', style: { background: tint } }, h('h3', { class: 'display' }, it.title), body);
     }
     const box = h('div', { class: 'media' });
+    const shape = NB.shape(it);
     if (it.thumbSrc) {
-      box.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: it.w || undefined, height: it.h || undefined }));
+      box.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: shape ? Math.round(shape.w) : undefined, height: shape ? Math.round(shape.h) : undefined, style: { objectViewBox: NB.viewBox(it) } }));
     } else {
-      box.append(h('div', { class: 'ph', style: it.w && it.h ? { aspectRatio: `${it.w} / ${it.h}` } : null },
+      box.append(h('div', { class: 'ph', style: shape ? { aspectRatio: `${shape.w} / ${shape.h}` } : null },
         icon(it.kind === 'video' ? 'video' : 'photo'), it.waiting ? 'Waiting for your phone to send this' : S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
     }
     if (it.kind === 'video') box.append(h('span', { class: 'badge' }, icon('play'), NB.duration(it.duration) || 'Video'));
@@ -178,7 +179,7 @@
   // Cards that haven't changed are kept (no reload, no flash). When the list changes in place (a filter,
   // a stack, a sync) every card glides from where it was to where it goes; new ones grow in, gone ones fade.
   const kept = new Map(); // key -> { sig, el }
-  const sigOf = (it) => [it.id, it.updatedAt, it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id)].join('|');
+  const sigOf = (it) => [it.id, it.updatedAt, it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id), NB.viewBox(it)].join('|');
   const idsIn = (el) => (el.classList.contains('stackcard') ? [...el.querySelectorAll('.fanitem')].map((b) => b.dataset.id) : [el.dataset.id]);
   function renderGrid() {
     const grid = $('grid'), empty = $('empty');
