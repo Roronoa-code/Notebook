@@ -5,8 +5,11 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
+const { pipeline } = require('stream/promises');
+const { cleanRemote, mergeInto, pruneTombstones, SyncError, ID_RE } = require('./merge');
 
 const DB = 'library.json';
+const MAX_UPLOAD = 2 * 1024 ** 3;
 const PHOTO_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif'];
 const VIDEO_EXT = ['.mp4', '.m4v', '.webm', '.mov'];
 const DEFAULT_BOARDS = ['Outfits', 'Wallpapers', 'Icons', 'Profile pictures'];
@@ -17,7 +20,20 @@ const exists = (p) => fsp.access(p).then(() => true, () => false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class FriendlyError extends Error {
-  constructor(message) { super(message); this.friendly = message; }
+  constructor(message, status) { super(message); this.friendly = message; if (status) this.status = status; }
+}
+
+// Version 2 (docs/SYNC.md) adds board dates and tombstones. Returns true if anything changed.
+function migrate(data) {
+  let changed = false;
+  if (data.version !== 2) { data.version = 2; changed = true; }
+  for (const b of data.boards) if (!b.updatedAt) { b.updatedAt = b.createdAt || now(); changed = true; }
+  for (const it of data.items) if (!it.updatedAt) { it.updatedAt = it.importedAt || now(); changed = true; }
+  if (!data.tombstones || typeof data.tombstones !== 'object') { data.tombstones = { items: [], boards: [] }; changed = true; }
+  for (const k of ['items', 'boards']) if (!Array.isArray(data.tombstones[k])) { data.tombstones[k] = []; changed = true; }
+  const pruned = pruneTombstones(data.tombstones);
+  if (pruned.items.length !== data.tombstones.items.length || pruned.boards.length !== data.tombstones.boards.length) { data.tombstones = pruned; changed = true; }
+  return changed;
 }
 
 function kindOf(file) {
@@ -96,6 +112,7 @@ class Library {
     this.data = null;
     this.recovered = false;
     this.queue = Promise.resolve();
+    this.waiting = new Set(); // items the phone still has to send (from the last sync)
   }
 
   p(...parts) { return path.join(this.root, ...parts); }
@@ -108,9 +125,12 @@ class Library {
     if (await exists(lib.p(DB)) || await exists(lib.p(DB + '.bak'))) {
       await lib.load();
     } else {
-      lib.data = { app: 'Notebook', version: 1, createdAt: now(), boards: DEFAULT_BOARDS.map((name) => ({ id: newId(), name })), items: [] };
+      const at = now();
+      lib.data = { app: 'Notebook', version: 2, createdAt: at, boards: DEFAULT_BOARDS.map((name) => ({ id: newId(), name, updatedAt: at })), items: [], tombstones: { items: [], boards: [] } };
       await lib.save();
     }
+    // Leftovers from a phone upload that was cut off (e.g. the PC was switched off mid-way).
+    for (const f of await fsp.readdir(lib.p('media'))) if (f.endsWith('.part')) await fsp.rm(lib.p('media', f), { force: true });
     return lib;
   }
 
@@ -122,15 +142,23 @@ class Library {
       if (!(await exists(this.p(DB + '.bak')))) throw err.friendly ? err : new FriendlyError("The library file couldn't be read and there's no earlier copy to fall back on.");
       this.data = await readLibraryFile(this.p(DB + '.bak'));
       this.recovered = true;
+      migrate(this.data);
       await this.save();
+      return;
     }
+    if (migrate(this.data)) await this.save();
+  }
+
+  // Runs `fn` in the same queue as saves, so nothing else writes while it runs.
+  exclusive(fn) {
+    const run = this.queue.catch(() => {}).then(fn);
+    this.queue = run;
+    return run;
   }
 
   // Saves are queued so two changes never write at the same time.
   save() {
-    const run = this.queue.catch(() => {}).then(() => this.write());
-    this.queue = run;
-    return run;
+    return this.exclusive(() => this.write());
   }
 
   async write() {
@@ -232,6 +260,8 @@ class Library {
     const it = this.item(id);
     const rel = `thumbs/${id}.jpg`;
     await fsp.writeFile(this.p(rel), Buffer.from(bytes));
+    // A phone sync may have removed the item while the preview was being written.
+    if (!this.data.items.includes(it)) { await fsp.rm(this.p(rel), { force: true }); throw new FriendlyError('That item no longer exists.'); }
     it.thumb = rel;
     const num = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
     if (meta) { it.w = num(meta.w); it.h = num(meta.h); if (it.kind === 'video') it.duration = num(meta.duration); }
@@ -239,7 +269,9 @@ class Library {
   }
 
   async moveToBin(id) {
-    this.item(id).deletedAt = now();
+    const it = this.item(id);
+    it.deletedAt = now();
+    it.updatedAt = it.deletedAt;
     await this.save();
   }
 
@@ -247,13 +279,23 @@ class Library {
     const it = this.item(id);
     it.deletedAt = null;
     it.boards = this.validBoards(it.boards);
+    it.updatedAt = now();
     await this.save();
+  }
+
+  // A tombstone tells the phone something was removed for good, so it removes it too.
+  addTombstone(kind, id) {
+    const at = now();
+    const t = this.data.tombstones;
+    t[kind] = t[kind].filter((x) => x.id !== id).concat({ id, at });
+    this.data.tombstones = pruneTombstones(t);
   }
 
   // Permanently removes everything in the Bin, including the copied files.
   async emptyBin() {
     const gone = this.data.items.filter((i) => i.deletedAt);
     this.data.items = this.data.items.filter((i) => !i.deletedAt);
+    for (const it of gone) this.addTombstone('items', it.id);
     await this.save();
     for (const it of gone) {
       if (it.file) await fsp.rm(this.p(it.file), { force: true });
@@ -276,14 +318,16 @@ class Library {
   async addBoard(name) {
     let base = String(name || 'New board').trim() || 'New board', n = 1, clean = base;
     while (this.data.boards.some((b) => b.name.toLowerCase() === clean.toLowerCase())) clean = `${base} ${++n}`;
-    const board = { id: newId(), name: this.cleanBoardName(clean) };
+    const board = { id: newId(), name: this.cleanBoardName(clean), updatedAt: now() };
     this.data.boards.push(board);
     await this.save();
     return board.id;
   }
 
   async renameBoard(id, name) {
-    this.board(id).name = this.cleanBoardName(name, id);
+    const board = this.board(id);
+    board.name = this.cleanBoardName(name, id);
+    board.updatedAt = now();
     await this.save();
   }
 
@@ -292,7 +336,87 @@ class Library {
     this.board(id);
     this.data.boards = this.data.boards.filter((b) => b.id !== id);
     for (const it of this.data.items) it.boards = it.boards.filter((b) => b !== id);
+    this.addTombstone('boards', id);
     await this.save();
+  }
+
+  // ---------- phone sync (docs/SYNC.md) ----------
+
+  // Merges the phone's library into this one, saves, and deletes files of items removed by tombstones.
+  async mergeRemote(remote) {
+    const clean = cleanRemote(remote);
+    return this.exclusive(async () => {
+      const before = JSON.stringify(this.data);
+      const { removed } = mergeInto(this.data, clean);
+      const changed = JSON.stringify(this.data) !== before;
+      if (changed) {
+        try { await this.write(); } catch (err) { this.data = JSON.parse(before); throw err; }
+      }
+      for (const it of removed) {
+        this.waiting.delete(it.id);
+        for (const rel of [it.file, it.thumb]) if (rel && isInside(this.p(rel), this.root)) await fsp.rm(this.p(rel), { force: true });
+      }
+      const onDisk = new Set((await fsp.readdir(this.p('media'))).map((f) => 'media/' + f.toLowerCase()));
+      const pcNeeds = this.data.items.filter((i) => i.file && !onDisk.has(i.file.toLowerCase())).map((i) => i.id);
+      this.waiting = new Set(pcNeeds);
+      return { pcNeeds, changed };
+    });
+  }
+
+  mediaPath(it) {
+    if (!it.file || !/^media\/[^/\\]+$/.test(it.file) || !isInside(this.p(it.file), this.p('media'))) throw new SyncError("That item doesn't have a file.", 400);
+    return this.p(it.file);
+  }
+
+  // For the phone to download: the file's stream and size, or null if this PC doesn't have it.
+  async openMedia(id) {
+    const it = this.data.items.find((i) => i.id === id);
+    if (!it || !it.file) return null;
+    const file = this.mediaPath(it);
+    const st = await fsp.stat(file).catch(() => null);
+    if (!st || !st.isFile()) return null;
+    return { file: it.file, size: st.size, stream: fs.createReadStream(file) };
+  }
+
+  async readMedia(id) {
+    const it = this.data.items.find((i) => i.id === id);
+    return it && it.file ? fsp.readFile(this.mediaPath(it)).catch(() => null) : null;
+  }
+
+  // Checks an upload is wanted before any bytes are read.
+  async checkUpload(id, size) {
+    const it = ID_RE.test(String(id)) && this.data.items.find((i) => i.id === id);
+    if (!it) throw new SyncError("This PC doesn't know that item. Sync first, then send the file.", 400);
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_UPLOAD) throw new SyncError('The file size is missing or too big (the limit is 2 GB).', 400);
+    const file = this.mediaPath(it);
+    if (await exists(file)) throw new SyncError('This PC already has that file.', 409);
+    return file;
+  }
+
+  // Saves a file sent by the phone: temporary file, size check, then an atomic rename.
+  async receiveMedia(id, stream, size) {
+    const file = await this.checkUpload(id, size);
+    const tmp = `${file}.${crypto.randomBytes(4).toString('hex')}.part`;
+    let got = 0;
+    try {
+      await pipeline(stream, async function* (source) {
+        for await (const chunk of source) {
+          got += chunk.length;
+          if (got > size) throw new SyncError("The file was bigger than the phone said. It wasn't saved.", 400);
+          yield chunk;
+        }
+      }, fs.createWriteStream(tmp, { flags: 'wx' }));
+      if (got !== size || (await fsp.stat(tmp)).size !== size) throw new SyncError("The file didn't arrive complete. It wasn't saved, so try syncing again.", 400);
+      await this.exclusive(async () => {
+        if (!this.data.items.some((i) => i.id === id)) throw new SyncError('That item was removed while it was being sent.', 409);
+        if (await exists(file)) throw new SyncError('This PC already has that file.', 409);
+        await fsp.rename(tmp, file);
+      });
+    } finally {
+      await fsp.rm(tmp, { force: true });
+    }
+    this.waiting.delete(id);
+    return { ok: true };
   }
 
   // ---------- backup, restore, export ----------

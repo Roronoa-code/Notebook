@@ -33,7 +33,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
   box-shadow: inset 0 1px 0 rgba(255,255,255,.13), inset 0 -1px 0 rgba(255,255,255,.03), 0 18px 40px -12px rgba(0,0,0,.65);
 }
 /* pop-ups: heavy frosted glass, so what is behind shows as a soft blur */
-.popover.glass, .viewer.glass, .tray.glass, .toast { background: rgba(12,12,12,.5); backdrop-filter: blur(30px) saturate(140%); border: 1px solid rgba(255,255,255,.14); }
+.popover.glass, .viewer.glass, .tray.glass, .phone.glass, .toast { background: rgba(12,12,12,.5); backdrop-filter: blur(30px) saturate(140%); border: 1px solid rgba(255,255,255,.14); }
 
 /* ---------- top bar ---------- */
 .bar { position: fixed; top: 16px; left: 24px; right: 24px; height: 64px; border-radius: 24px; z-index: 10; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 22px; }
@@ -190,6 +190,32 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .hint { margin: 0; font-size: 13px; color: var(--muted); }
 .side .actions { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--ink2); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; align-self: flex-start; }
+
+/* phone panel */
+.phone { position: fixed; z-index: 21; left: 50%; top: 50%; translate: -50% -50%; width: min(820px, 92vw); max-height: 90vh; overflow-y: auto; border-radius: 30px; padding: 22px 24px 24px; animation: pop .55s var(--spring) backwards; }
+.phone-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.phone-body { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 28px; align-items: start; }
+.pair { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.qr { width: 280px; aspect-ratio: 1; border-radius: 22px; background: #fff; padding: 16px; display: grid; place-items: center; }
+.qr img { width: 100%; height: 100%; image-rendering: pixelated; }
+.qr.gone { background: rgba(255,255,255,.04); border: 1.5px dashed rgba(255,255,255,.18); padding: 28px; text-align: center; color: var(--ink2); }
+.qr.gone p { margin: 0; }
+.pair .micro { margin-top: 10px; }
+.code { font: 500 30px/1 var(--mono); letter-spacing: .2em; padding-left: .2em; color: var(--ink); user-select: all; }
+.phone-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.phone-side .lead { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; }
+.phone-side .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.phone-side h4 { margin: 6px 0 0; }
+.devices { list-style: none; margin: 0; padding: 0; }
+.devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.devices li:last-child { border-bottom: 1px solid var(--line); }
+.dname { font-weight: 700; color: var(--ink); display: block; }
+.keep { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.035); cursor: pointer; }
+.keep input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+.keep .hint { display: block; margin-top: 2px; }
+.phone-foot { display: flex; flex-direction: column; gap: 4px; }
+.status { margin: 0; font-size: 13px; color: var(--ink2); }
+.status.bad { color: var(--danger); }
 
 /* welcome + drop */
 .welcome { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 30; background: var(--bg); }

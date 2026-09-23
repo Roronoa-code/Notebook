@@ -1,7 +1,7 @@
 {
   "name": "notebook",
   "productName": "Notebook",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "An offline Pinterest-style notebook for photos, videos and notes.",
   "main": "main/main.js",
   "private": true,
@@ -17,6 +17,7 @@
     "files": [
       "main/**",
       "renderer/**",
+      "build/icon.png",
       "package.json"
     ],
     "win": {
@@ -39,5 +40,8 @@
     "electron": "^44.4.4",
     "electron-builder": "^26.15.3",
     "playwright-core": "^1.63.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }

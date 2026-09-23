@@ -24,6 +24,7 @@
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></symbol>
 </svg>
 
 <section class="welcome" id="welcome" hidden>
@@ -76,6 +77,8 @@
   <button type="button" class="dockbtn" id="backup"><svg class="i"><use href="#i-backup"/></svg><span>Back up</span></button>
   <button type="button" class="dockbtn" id="restore"><svg class="i"><use href="#i-restore"/></svg><span>Restore</span></button>
   <button type="button" class="dockbtn" id="export"><svg class="i"><use href="#i-export"/></svg><span>Export</span></button>
+  <span class="sep"></span>
+  <button type="button" class="dockbtn" id="phone"><svg class="i"><use href="#i-phone"/></svg><span>Phone</span></button>
 </div>
 
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
@@ -85,6 +88,7 @@
 
 <script src="util.js"></script>
 <script src="viewer.js"></script>
+<script src="phone.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

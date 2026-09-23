@@ -142,7 +142,7 @@
       media.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: it.w || undefined, height: it.h || undefined }));
     } else {
       media.append(h('div', { class: 'ph', style: it.w && it.h ? { aspectRatio: `${it.w} / ${it.h}` } : null },
-        icon(it.kind === 'video' ? 'video' : 'photo'), S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
+        icon(it.kind === 'video' ? 'video' : 'photo'), it.waiting ? 'Waiting for your phone to send this' : S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
     }
     if (it.kind === 'video') media.append(h('span', { class: 'badge' }, icon('play'), NB.duration(it.duration) || 'Video'));
     btn.append(media, h('div', { class: 'cap' }, it.title), ...(it.caption ? [h('div', { class: 'cap-note' }, it.caption)] : []));
@@ -243,7 +243,7 @@
   // ---------- previews (thumbnails) ----------
   function queueThumbs() {
     for (const it of S.snap.items) {
-      if (it.kind !== 'note' && !it.thumbSrc && !S.bad.has(it.id) && !S.queued.has(it.id)) { S.queued.add(it.id); thumbQueue.push(it.id); }
+      if (it.kind !== 'note' && !it.thumbSrc && !it.waiting && !S.bad.has(it.id) && !S.queued.has(it.id)) { S.queued.add(it.id); thumbQueue.push(it.id); }
     }
     pumpThumbs();
   }
@@ -331,6 +331,7 @@
       if (res && !res.cancelled) toast(`Backed up ${res.items} items (${NB.bytes(res.bytes)}) to ${res.dir}`);
     };
     $('restore').onclick = restore;
+    $('phone').onclick = () => NB.phone.open();
     $('export').onclick = async () => {
       const res = await NB.run('exportAll');
       if (res && !res.cancelled) toast(`Exported ${res.items} items to ${res.dir}`);
@@ -382,7 +383,7 @@
   // ---------- keyboard ----------
   function wireKeys() {
     window.addEventListener('keydown', (e) => {
-      if (NB.viewer.isOpen() || !S.snap) return;
+      if (NB.viewer.isOpen() || NB.phone.isOpen() || !S.snap) return;
       if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
       else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
       else if (e.key === 'Escape') {
@@ -417,8 +418,18 @@
 
   const warnRecovered = () => toast('Your library file was damaged, so Notebook went back to the last good save.', { error: true });
 
+  // A phone sync changed the library: redraw with the new list. An open item stays open
+  // (it only closes if the phone removed it), and new photos and videos get previews.
+  function wireSync() {
+    nb.onLibraryChanged(({ snap, arrived }) => {
+      if (!snap || !S.snap) return;
+      for (const id of arrived || []) { S.bad.delete(id); S.queued.delete(id); }
+      NB.apply({ snap });
+    });
+  }
+
   async function start() {
-    wireDock(); wireDrop(); wireKeys();
+    wireDock(); wireDrop(); wireKeys(); wireSync();
     if (document.fonts) document.fonts.ready.then(() => placeHighlight());
     const res = NB.apply(await nb.state());
     if (!res) return;

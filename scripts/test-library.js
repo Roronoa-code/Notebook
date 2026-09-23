@@ -120,5 +120,122 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   assert.equal(recovered.data.items.length, 5);
   ok('Empty Bin removes the item and its copied file');
 
+  // ---------- phone sync: library v2 and the merge rules in docs/SYNC.md ----------
+  assert.deepEqual(recovered.data.tombstones.items.map((t) => t.id), [photo.id]);
+  ok('Empty Bin leaves a tombstone so the phone removes the item too');
+
+  const v1Dir = path.join(ROOT, 'v1 library');
+  fs.mkdirSync(path.join(v1Dir, 'media'), { recursive: true });
+  fs.writeFileSync(path.join(v1Dir, 'library.json'), JSON.stringify({
+    app: 'Notebook', version: 1, createdAt: '2026-01-01T00:00:00.000Z', boards: [{ id: 'b1', name: 'Outfits' }],
+    items: [{ id: 'n1', kind: 'note', title: 'Old', html: 'x', importedAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', boards: ['b1'], deletedAt: null }]
+  }));
+  await Library.openOrCreate(v1Dir);
+  const v2 = JSON.parse(fs.readFileSync(path.join(v1Dir, 'library.json'), 'utf8'));
+  assert.equal(v2.version, 2);
+  assert.ok(Date.parse(v2.boards[0].updatedAt));
+  assert.deepEqual(v2.tombstones, { items: [], boards: [] });
+  assert.equal(v2.items[0].updatedAt, '2026-01-02T00:00:00.000Z');
+  assert.ok(fs.existsSync(path.join(v1Dir, 'library.json.bak')), 'the v1 file was kept as the previous save');
+  ok('a version 1 library is upgraded to version 2 (board dates, tombstones) and saved');
+
+  const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
+  const syncDir = path.join(ROOT, 'sync library');
+  fs.mkdirSync(path.join(ROOT, 'fake'), { recursive: true });
+  for (const n of ['pc photo.jpg', 'doomed.jpg']) fs.writeFileSync(path.join(ROOT, 'fake', n), crypto.randomBytes(5000));
+  const sl = await Library.openOrCreate(syncDir);
+  assert.equal(sl.data.version, 2);
+  assert.ok(sl.data.boards.every((b) => Date.parse(b.updatedAt)));
+  const [pId, tId] = (await sl.importFiles(['pc photo.jpg', 'doomed.jpg'].map((n) => path.join(ROOT, 'fake', n)))).added;
+  await sl.saveThumb(pId, Buffer.from('thumb-p'), { w: 800, h: 1000 });
+  await sl.saveThumb(tId, Buffer.from('thumb-t'), { w: 10, h: 10 });
+  const nPc = await sl.addNote(), nPhone = await sl.addNote(), nKeep = await sl.addNote();
+
+  sl.item(nPc).updatedAt = iso(-100000);
+  await sl.moveToBin(nPc);
+  assert.ok(Date.parse(sl.item(nPc).updatedAt) > Date.now() - 5000, 'Move to Bin bumps updatedAt');
+  sl.item(nPc).updatedAt = iso(-100000);
+  await sl.restore(nPc);
+  assert.ok(Date.parse(sl.item(nPc).updatedAt) > Date.now() - 5000, 'Restore bumps updatedAt');
+  const bT = await sl.addBoard('Doomed board');
+  assert.ok(Date.parse(sl.board(bT).updatedAt) > Date.now() - 5000);
+  const bOut = sl.data.boards[0].id;
+  sl.board(bOut).updatedAt = iso(-100000);
+  await sl.renameBoard(bOut, 'My outfits');
+  assert.ok(Date.parse(sl.board(bOut).updatedAt) > Date.now() - 5000);
+  ok('Move to Bin and Restore bump updatedAt; new and renamed boards get updatedAt');
+
+  const bGone = await sl.addBoard('Gone');
+  sl.data.tombstones.items.push({ id: 'ancient', at: iso(-100 * 864e5) });
+  await sl.deleteBoard(bGone);
+  assert.deepEqual(sl.data.tombstones.boards.map((t) => t.id), [bGone]);
+  assert.ok(!sl.data.tombstones.items.some((t) => t.id === 'ancient'));
+  ok('deleting a board leaves a tombstone; tombstones older than 90 days are dropped');
+
+  await sl.updateItem(nPc, { html: 'PC edit', title: 'PC edit' });
+  await sl.updateItem(pId, { boards: [bOut, bT] });
+  await sl.updateItem(nKeep, { title: 'Edited after the phone deleted it' });
+  const pcCopy = (id) => JSON.parse(JSON.stringify(sl.item(id)));
+  const qId = crypto.randomUUID(), qnId = crypto.randomUUID(), rb = crypto.randomUUID();
+  const remote = {
+    deviceId: 'phone-1',
+    boards: [...sl.data.boards.map((b) => ({ ...b })), { id: rb, name: 'From phone', updatedAt: iso() }],
+    items: [
+      { ...pcCopy(nPc), html: 'old phone copy', title: 'old phone copy', updatedAt: iso(-60000) },
+      { ...pcCopy(nPhone), html: 'phone edit', title: 'phone edit', updatedAt: iso(60000) },
+      { ...pcCopy(pId), title: 'renamed on phone', thumb: 'thumbs/phone-own.jpg', w: null, h: null, updatedAt: iso(60000) },
+      { id: qId, kind: 'photo', title: 'phone photo', file: `media/${qId}.jpg`, thumb: 'thumbs/x.jpg', w: 1080, h: 1350, originalName: 'IMG_1.jpg', size: 4321,
+        importedAt: iso(1000), updatedAt: iso(1000), boards: [rb, 'ghost-board', bT], deletedAt: null },
+      { id: qnId, kind: 'note', title: 'phone note', html: 'hi', importedAt: iso(1000), updatedAt: iso(1000), boards: [], deletedAt: null }
+    ],
+    tombstones: { items: [{ id: tId, at: iso() }, { id: nKeep, at: iso(-60000) }], boards: [{ id: bT, at: iso(1000) }] }
+  };
+  const tFile = path.join(syncDir, sl.item(tId).file), tThumb = path.join(syncDir, sl.item(tId).thumb);
+  const merged = await sl.mergeRemote(remote);
+  assert.equal(sl.item(nPc).html, 'PC edit', 'PC newer: PC copy kept');
+  assert.equal(sl.item(nPhone).html, 'phone edit', 'phone newer: phone copy taken');
+  assert.equal(sl.item(pId).title, 'renamed on phone');
+  assert.equal(sl.item(pId).thumb, `thumbs/${pId}.jpg`, 'thumb stays the PC\'s own');
+  assert.deepEqual([sl.item(pId).w, sl.item(pId).h], [800, 1000], 'w/h filled in from the side that has them');
+  assert.equal(sl.item(qId).thumb, null, 'a new phone item has no PC thumb yet');
+  assert.deepEqual([sl.item(qId).w, sl.item(qId).h], [1080, 1350]);
+  ok('merge: newer wins in both directions; thumb stays local; sizes fill in');
+  assert.throws(() => sl.item(tId), /no longer exists/);
+  assert.ok(!fs.existsSync(tFile) && !fs.existsSync(tThumb), 'tombstoned item\'s media and thumb deleted');
+  assert.equal(sl.item(nKeep).title, 'Edited after the phone deleted it', 'an older tombstone does not remove a newer item');
+  assert.ok(!sl.data.boards.some((b) => b.id === bT), 'tombstoned board removed');
+  assert.ok(sl.data.boards.some((b) => b.id === rb && b.name === 'From phone'));
+  assert.deepEqual(sl.item(pId).boards, [bOut], 'removed board dropped from items');
+  assert.deepEqual(sl.item(qId).boards, [rb], 'unknown and removed boards stripped');
+  ok('merge: tombstones remove items (and their files) and boards; unknown boards are stripped');
+  assert.deepEqual(merged.pcNeeds, [qId]);
+  assert.deepEqual([...sl.waiting], [qId]);
+  const onDisk2 = JSON.parse(fs.readFileSync(path.join(syncDir, 'library.json'), 'utf8'));
+  assert.equal(onDisk2.items.find((i) => i.id === nPhone).html, 'phone edit', 'merge was saved');
+  assert.ok(onDisk2.tombstones.items.some((t) => t.id === tId));
+  ok('merge: pcNeeds lists only the phone photo the PC lacks, and the result is saved');
+
+  const again = await sl.mergeRemote({ ...remote, items: [], boards: [], tombstones: { items: [], boards: [] } });
+  assert.equal(again.changed, false);
+  assert.ok(sl.data.items.some((i) => i.id === nPc), 'items the phone did not send are kept');
+  const savedBefore = fs.readFileSync(path.join(syncDir, 'library.json'), 'utf8');
+  await assert.rejects(sl.mergeRemote({ ...remote, items: [{ ...remote.items[3], file: 'media/../../evil.jpg' }] }), /couldn't read/);
+  await assert.rejects(sl.mergeRemote({ boards: 'nope', items: [] }), /couldn't read/);
+  assert.equal(fs.readFileSync(path.join(syncDir, 'library.json'), 'utf8'), savedBefore, 'a bad sync changes nothing');
+  ok('merge: an empty phone keeps the PC\'s items; a bad file name is refused and nothing changes');
+
+  const { Readable } = require('stream');
+  const bytes = crypto.randomBytes(4321);
+  await assert.rejects(sl.receiveMedia(qId, Readable.from([bytes]), 4000), /bigger than the phone said/);
+  await assert.rejects(sl.receiveMedia(qId, Readable.from([bytes.subarray(0, 100)]), 4321), /didn't arrive complete/);
+  assert.deepEqual(fs.readdirSync(path.join(syncDir, 'media')).filter((f) => f.startsWith(qId)), [], 'no half-written file left');
+  await sl.receiveMedia(qId, Readable.from([bytes]), 4321);
+  assert.ok(bytes.equals(fs.readFileSync(path.join(syncDir, 'media', qId + '.jpg'))));
+  assert.ok(!sl.waiting.has(qId));
+  await assert.rejects(sl.receiveMedia(qId, Readable.from([bytes]), 4321), (e) => e.status === 409);
+  await assert.rejects(sl.receiveMedia('not-known', Readable.from([bytes]), 4321), (e) => e.status === 400);
+  assert.ok(bytes.equals(await sl.readMedia(qId)));
+  ok('receiving media: size checked, nothing half-written kept, only for a known item whose file is missing');
+
   console.log(`\nAll ${passed} checks passed.`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

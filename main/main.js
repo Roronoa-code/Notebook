@@ -1,9 +1,11 @@
-// The app shell: opens the window, keeps the app offline, and answers requests from the page.
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, session, Menu, protocol } = require('electron');
+// The app shell: opens the window, keeps the app offline (apart from phone sync on the home
+// network), and answers requests from the page.
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, session, Menu, protocol, Tray, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
 const { Library, PHOTO_EXT, VIDEO_EXT } = require('./library');
+const { SyncServer } = require('./sync-server');
 
 // The page and the library files are both served from nb://notebook/ so the page can
 // make thumbnails from them. /app/ is the interface, /lib/ is the current library folder.
@@ -44,9 +46,65 @@ function resolveUrl(url) {
 
 let win = null;
 let lib = null;
+let tray = null;
+let quitting = false;
+let reportedRecovery = false;
 // Lets the automated check (scripts/test-ui.js) use its own settings instead of yours.
-if (process.env.NOTEBOOK_USER_DATA) app.setPath('userData', process.env.NOTEBOOK_USER_DATA);
+const TEST_MODE = !!process.env.NOTEBOOK_USER_DATA;
+if (TEST_MODE) app.setPath('userData', process.env.NOTEBOOK_USER_DATA);
+// Started with Windows ("Keep Notebook ready for your phone"): no window, just sync and the tray icon.
+const BACKGROUND = process.argv.includes('--background');
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
+
+// Launching Notebook again just brings back the window that's already running.
+const FIRST_INSTANCE = app.requestSingleInstanceLock();
+if (!FIRST_INSTANCE) app.quit();
+app.on('second-instance', (_e, argv) => { if (!argv.includes('--background')) showWindow(); });
+
+const sync = new SyncServer({
+  settingsFile: path.join(app.getPath('userData'), 'sync.json'),
+  host: process.env.NOTEBOOK_SYNC_HOST || undefined, // the checks use 127.0.0.1 so Windows Firewall doesn't ask
+  port: Number(process.env.NOTEBOOK_SYNC_PORT) || undefined,
+  onLibraryChanged: ({ arrived }) => send('lib:changed', { snap: lib && lib.data ? snapshot() : null, arrived }),
+  onStatusChanged: () => send('sync:changed'),
+  onKeepReady: (on) => applyKeepReady(on)
+});
+const keepReady = () => !!sync.settings.keepReady;
+
+function send(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+// "Keep Notebook ready for your phone": start with Windows (in the background) and close to the tray.
+function applyKeepReady(on) {
+  // Only the installed app registers itself; the checks and `electron .` never touch Windows startup.
+  if (app.isPackaged && !TEST_MODE) {
+    try { app.setLoginItemSettings({ openAtLogin: on, args: ['--background'] }); } catch (err) { console.error('login item', err); }
+  }
+  if (on) ensureTray();
+  else if (tray && win) { tray.destroy(); tray = null; }
+}
+
+function ensureTray() {
+  if (tray) return;
+  const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png')).resize({ width: 16, height: 16, quality: 'best' });
+  tray = new Tray(icon);
+  tray.setToolTip('Notebook: ready for your phone');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open Notebook', click: showWindow },
+    { type: 'separator' },
+    { label: 'Quit Notebook', click: () => { quitting = true; app.quit(); } }
+  ]));
+  tray.on('click', showWindow);
+}
+
+function showWindow() {
+  if (!app.isReady()) return;
+  if (!win || win.isDestroyed()) { createWindow(); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
 
 function readConfig() {
   try { return JSON.parse(fs.readFileSync(configFile(), 'utf8')); } catch { return {}; }
@@ -68,7 +126,7 @@ function snapshot() {
   return {
     root: lib.root,
     boards: lib.data.boards,
-    items: lib.data.items.map((it) => ({ ...it, src: url(it.file), thumbSrc: url(it.thumb) }))
+    items: lib.data.items.map((it) => ({ ...it, src: url(it.file), thumbSrc: url(it.thumb), waiting: lib.waiting.has(it.id) }))
   };
 }
 
@@ -100,7 +158,18 @@ function handle(channel, fn) {
 async function useLibrary(root) {
   lib = await Library.openOrCreate(root);
   writeConfig({ libraryPath: root });
+  await sync.start(lib); // never throws: problems show in the Phone panel
   return { recovered: lib.recovered };
+}
+
+// Requests from the Phone panel. They return the panel's status, or { error } in plain English.
+function handleSync(channel, fn) {
+  ipcMain.handle(channel, async (_event, ...args) => {
+    try { await fn(...args); return { ok: true, status: await sync.status() }; } catch (err) {
+      console.error(channel, err);
+      return { error: friendly(err) };
+    }
+  });
 }
 
 async function pickFolder(title, defaultPath, buttonLabel) {
@@ -116,12 +185,20 @@ async function confirm(message, detail, okLabel) {
 function registerHandlers() {
   handle('lib:state', async () => {
     const saved = readConfig().libraryPath;
-    if (!lib && saved && fs.existsSync(saved)) {
-      const res = await useLibrary(saved);
-      return { status: 'ready', ...res };
+    if (!lib && saved && fs.existsSync(saved)) await useLibrary(saved);
+    if (lib) {
+      const recovered = lib.recovered && !reportedRecovery;
+      reportedRecovery = true;
+      return { status: 'ready', recovered };
     }
-    return { status: lib ? 'ready' : 'none', defaultPath: defaultLibraryPath(), missing: saved && !fs.existsSync(saved) ? saved : null };
+    return { status: 'none', defaultPath: defaultLibraryPath(), missing: saved && !fs.existsSync(saved) ? saved : null };
   });
+
+  handleSync('sync:open', () => { if (sync.codeState() !== 'ready') sync.newCode(); });
+  handleSync('sync:status', () => {});
+  handleSync('sync:newCode', () => sync.newCode());
+  handleSync('sync:unpair', (deviceId) => sync.unpair(String(deviceId)));
+  handleSync('sync:keepReady', (on) => { sync.setKeepReady(!!on); applyKeepReady(!!on); });
 
   handle('lib:use', async (mode) => {
     let root;
@@ -213,10 +290,35 @@ function createWindow() {
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // With "Keep Notebook ready for your phone" on, closing hides the window so sync keeps working.
+  let told = false;
+  win.on('close', (e) => {
+    if (quitting || !keepReady()) return;
+    e.preventDefault();
+    win.hide();
+    ensureTray();
+    if (!told && tray) {
+      told = true;
+      tray.displayBalloon({ title: 'Notebook is still running', content: 'Your phone can keep syncing. To quit, right-click the Notebook icon here and choose Quit Notebook.' });
+    }
+  });
+  win.on('closed', () => { win = null; });
   win.loadURL('nb://notebook/app/index.html');
 }
 
-app.whenReady().then(() => {
+app.on('before-quit', () => { quitting = true; });
+
+// Let the last save and any phone transfer finish before the app closes.
+let closedCleanly = false;
+app.on('will-quit', (e) => {
+  if (closedCleanly) return;
+  e.preventDefault();
+  // Windows are already closed here; app.quit() again would be ignored, so exit once saving is done.
+  Promise.all([lib ? lib.queue.catch(() => {}) : null, sync.stop().catch(() => {})]).finally(() => { closedCleanly = true; app.exit(0); });
+});
+
+app.whenReady().then(async () => {
+  if (!FIRST_INSTANCE) return;
   nativeTheme.themeSource = 'dark';
   Menu.setApplicationMenu(null);
   protocol.handle('nb', (request) => {
@@ -226,10 +328,16 @@ app.whenReady().then(() => {
   // Nothing ever leaves this PC: all web requests are blocked.
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (_d, cb) => cb({ cancel: true }));
   registerHandlers();
-  createWindow();
+  // Open the library straight away so phone sync works even before (or without) the window.
+  const saved = readConfig().libraryPath;
+  if (saved && fs.existsSync(saved)) {
+    try { await useLibrary(saved); } catch (err) { console.error('open library', err); } // the window shows the problem
+  }
+  if (keepReady()) applyKeepReady(true); // also refreshes the startup entry if Notebook was moved
+  if (BACKGROUND && keepReady()) ensureTray();
+  else createWindow();
 });
 
-app.on('window-all-closed', async () => {
-  if (lib) await lib.queue.catch(() => {});
-  app.quit();
+app.on('window-all-closed', () => {
+  if (quitting || !keepReady()) app.quit();
 });

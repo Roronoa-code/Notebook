@@ -50,6 +50,28 @@ The folder button (top right) shows the library's location and can open a differ
   video, named by title), `Notes` (each note as a .txt file) and `boards.csv` (which
   boards each item is on; opens in Excel).
 
+## Phone
+
+Notebook on your phone can sync with this PC over your home Wi-Fi. Nothing goes to the
+internet: the phone talks straight to the PC.
+
+1. On the PC, click **Phone** in the dock. A QR code and an 8-letter code appear.
+2. Open Notebook on your phone, tap **Sync**, then **Scan code**, and point it at the QR code.
+   (You can type the code instead.) Each code works once and lasts 10 minutes. **New code** makes another.
+3. That's it. The phone stays paired, so you only do this once.
+
+- The first time, **Windows may ask whether to allow Notebook** on the network. Choose
+  **Allow** on private networks. If your phone still can't connect, open Windows Settings,
+  Network & internet, Wi-Fi, and set your home network to **Private network**.
+- **Keep Notebook ready for your phone** (on after you pair your first phone): Notebook
+  starts quietly when Windows starts, and closing the window keeps it running as a small
+  icon by the clock, so your phone can sync whenever the PC is on. Click the icon to open
+  Notebook; right-click it and choose **Quit Notebook** to close it fully. Untick the option
+  to go back to closing normally.
+- **Unpair** in the Phone panel stops that phone syncing straight away. Pair it again with a new code.
+- Syncing never uploads to the internet. It only works when the phone and PC are on the same Wi-Fi.
+- Things you delete for good (Empty Bin) are deleted on the other device too after the next sync.
+
 ## Video formats
 
 Samsung MP4s (camera, downloads and screen recordings) play inside the app. If a

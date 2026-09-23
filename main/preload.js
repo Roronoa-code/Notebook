@@ -22,5 +22,13 @@ contextBridge.exposeInMainWorld('nb', {
   backup: call('backup:run'),
   restoreBackup: call('backup:restore'),
   exportAll: call('export:run'),
-  pathForFile: (file) => webUtils.getPathForFile(file)
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  // Phone sync
+  syncOpen: call('sync:open'),
+  syncStatus: call('sync:status'),
+  syncNewCode: call('sync:newCode'),
+  syncUnpair: call('sync:unpair'),
+  syncKeepReady: call('sync:keepReady'),
+  onLibraryChanged: (fn) => ipcRenderer.on('lib:changed', (_e, payload) => fn(payload)),
+  onSyncChanged: (fn) => ipcRenderer.on('sync:changed', () => fn())
 });

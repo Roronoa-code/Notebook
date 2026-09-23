@@ -1,8 +1,9 @@
 // Drives the real app window: first run, imports, previews, notes + Tidy up, in-app video,
-// boards, Bin + Undo, and reopening the app. Saves screenshots to test-output/ui.
-// Usage: npm run test:ui   (needs ffmpeg for the sample media)
+// boards, Bin + Undo, reopening, the Phone panel with a pretend phone, hide-to-tray and --background.
+// Saves screenshots to test-output/ui. Usage: node scripts/test-ui.js   (needs ffmpeg for the sample media)
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const assert = require('assert/strict');
 const { _electron: electron } = require('playwright-core');
 const { makeSamples } = require('./make-samples');
@@ -13,10 +14,23 @@ const LIB = path.join(OUT, 'Notebook Library');
 let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
 
-async function launch() {
+// Phone sync listens on 127.0.0.1 during the check, so Windows Firewall doesn't ask.
+const SYNC_PORT = 47851;
+const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: String(SYNC_PORT) };
+const startApp = (extra = []) => {
   // Set NOTEBOOK_EXE to test the packaged app (dist/win-unpacked/Notebook.exe) instead of the source.
   const exe = process.env.NOTEBOOK_EXE;
-  const app = await electron.launch({ ...(exe ? { executablePath: exe, args: [] } : { args: [APP] }), env: { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata') } });
+  return electron.launch({ ...(exe ? { executablePath: exe, args: extra } : { args: [APP, ...extra] }), env: ENV });
+};
+
+async function api(port, method, route, body, token) {
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) };
+  const res = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  return { status: res.status, body: await res.json() };
+}
+
+async function launch() {
+  const app = await startApp();
   const page = await app.firstWindow();
   const web = [];
   page.on('request', (r) => { if (/^(https?|wss?):/.test(r.url())) web.push(r.url()); });
@@ -149,7 +163,54 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   ok('after closing the app and deleting the originals, all 5 items, the note and video reopen');
   await page.keyboard.press('Escape');
   await page.screenshot({ path: path.join(OUT, '1-home.png') });
+
+  // ---------- Phone panel, and a sync from a pretend phone ----------
+  await page.click('#phone');
+  await page.locator('.phone .qr img').waitFor();
+  const code = (await page.locator('.phone .code').innerText()).trim();
+  assert.match(code, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/);
+  const port = Number(/port (\d+)/.exec(await page.locator('.phone .status').first().innerText())[1]);
+  assert.equal(await page.locator('#keep-ready').isChecked(), false);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: path.join(OUT, '9-phone-panel.png') });
+  const paired = await api(port, 'POST', '/api/pair', { code, deviceId: 'ui-phone', deviceName: 'Test phone' });
+  assert.equal(paired.status, 200);
+  await page.locator('.phone .devices li', { hasText: 'Test phone' }).waitFor();
+  await page.locator('#keep-ready:checked').waitFor();
+  const at = new Date().toISOString();
+  const synced = await api(port, 'POST', '/api/sync', {
+    deviceId: 'ui-phone', boards: [], tombstones: { items: [], boards: [] },
+    items: [{ id: crypto.randomUUID(), kind: 'note', title: 'Written on the phone', html: '<p>Written on the phone</p>', importedAt: at, updatedAt: at, boards: [], deletedAt: null }]
+  }, paired.body.token);
+  assert.equal(synced.status, 200);
+  assert.ok(synced.body.items.length >= 6);
+  await page.locator('.phone .devices li', { hasText: 'Last synced' }).waitFor();
+  await page.screenshot({ path: path.join(OUT, '10-phone-paired.png') });
+  await page.keyboard.press('Escape');
+  await page.locator('.grid .card', { hasText: 'Written on the phone' }).waitFor();
+  ok(`Phone panel shows the QR and code (port ${port}); a phone pairs, syncs a note, and it appears straight away`);
+
+  // Keep ready is on now, so closing the window hides it and sync keeps answering.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  await page.waitForTimeout(500);
+  assert.deepEqual(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.isVisible())), [false]);
+  assert.equal((await api(port, 'GET', '/api/ping', null, paired.body.token)).status, 200);
+  ok('with "Keep Notebook ready" on, closing the window hides it to the tray and sync still answers');
   await app.close();
+
+  // Started with Windows: --background opens no window, but sync is running.
+  const bg = await startApp(['--background']);
+  let ping = null;
+  for (let i = 0; i < 40 && !ping; i++) {
+    ping = await api(SYNC_PORT, 'GET', '/api/ping').catch(() => null);
+    if (!ping) await new Promise((r) => setTimeout(r, 250));
+  }
+  assert.equal(ping && ping.status, 401);
+  assert.deepEqual(ping.body, { error: 'not paired' });
+  assert.equal(await bg.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 0);
+  assert.equal(bg.windows().length, 0);
+  ok('--background starts with no window, and sync answers /api/ping without a token with 401');
+  await bg.close();
 
   console.log(`\nAll ${passed} checks passed. Screenshots: ${OUT}`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });
