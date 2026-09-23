@@ -1,5 +1,6 @@
-// The "full version" features (build plan Track A): on-PC recognition in the background, corrections,
-// the style list, and suggested groups / matching sets. Registered by main.js; plain IPC handlers.
+// The "full version" features. Track A: on-PC recognition in the background, corrections, the style
+// list, and suggested groups / matching sets. Track B: saving from TikTok and Pinterest links (with a
+// retry list, "Check my links" and a manual downloader update) and the Pinterest panel. Plain IPC handlers.
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
@@ -7,6 +8,9 @@ const { utilityProcess } = require('electron');
 const { Scanner } = require('./scanner');
 const { TYPES, DEFAULT_STYLES } = require('./recognise');
 const { suggestions } = require('./suggest');
+const { Downloader } = require('./downloader');
+const links = require('./links');
+const { setupPinterest } = require('./pinterest');
 
 // Where downloaded tools live: D:\Notebook Tools when there's a D: drive (as agreed), else next to the settings.
 function toolsDir(app) {
@@ -14,7 +18,7 @@ function toolsDir(app) {
   return fs.existsSync('D:\\') ? 'D:\\Notebook Tools' : path.join(app.getPath('userData'), 'tools');
 }
 
-function setupFeatures({ app, handle, getLib, send, snapshot }) {
+function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
   const tools = toolsDir(app);
   let kickTimer = null;
   const scanner = new Scanner({
@@ -51,6 +55,29 @@ function setupFeatures({ app, handle, getLib, send, snapshot }) {
     const m = await readMemory(); m.dismissed = [...new Set([...(m.dismissed || []), g.sig])]; await writeMemory(m);
     return { id: boardId, suggestions: await current() };
   });
+
+  // ---------- saving from links (Track B) ----------
+  const dl = new Downloader({ binDir: path.join(tools, 'bin'), tmpDir: path.join(tools, 'tmp') });
+  let queue = Promise.resolve();
+  // One save at a time; the page hears "saving" straight away and the result when it's done.
+  const save = (url, boardId) => (queue = queue.then(async () => {
+    send('links:saving', { url });
+    const res = await links.saveLink({ lib: getLib(), dl, url, boardId });
+    send('links:saved', { url, ...res, snap: snapshot(), retry: links.list(getLib()).retry });
+    kick();
+    return res;
+  }));
+  handle('links:save', (url, boardId) => save(String(url), boardId ? String(boardId) : null));
+  handle('links:list', async () => ({ ...links.list(getLib()), ready: dl.ready(), versions: dl.ready() ? await dl.versions() : null }));
+  handle('links:forget', async (url) => { await links.forget(getLib(), String(url)); return { retry: links.list(getLib()).retry }; });
+  // "Check my links": re-tests your last few saved links (nothing is downloaded).
+  handle('links:check', async () => {
+    const saved = links.list(getLib()).saved.slice(0, 6);
+    if (!saved.length) { const e = new Error(); e.friendly = 'Save a link or two first, then there’s something to check.'; throw e; }
+    return { results: await dl.check(saved) };
+  });
+  handle('links:update', async () => ({ update: await dl.update() }));
+  setupPinterest({ getWin, handle, send, save: (url) => save(url, null) });
 
   return { kick, scanner, tools, styles: () => getLib().styles(DEFAULT_STYLES), types: Object.keys(TYPES) };
 }

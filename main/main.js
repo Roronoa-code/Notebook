@@ -188,7 +188,7 @@ async function confirm(message, detail, okLabel) {
 }
 
 function registerHandlers() {
-  features = setupFeatures({ app, handle, getLib: () => lib, send, snapshot });
+  features = setupFeatures({ app, handle, getLib: () => lib, send, snapshot, getWin: () => win });
   handle('lib:state', async () => {
     const saved = readConfig().libraryPath;
     if (!lib && saved && fs.existsSync(saved)) await useLibrary(saved);

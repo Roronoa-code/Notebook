@@ -1,11 +1,13 @@
 # Notebook: plain-English guide
 
-An offline, Pinterest-style notebook for Windows. Photos, videos and notes live on
-boards, everything stays on your PC, and nothing is uploaded.
+A Pinterest-style notebook for Windows. Photos, videos and notes live on boards and
+everything stays on your PC. Nothing you save is ever uploaded. The only things that use
+the internet are the ones you ask for: saving from a TikTok or Pinterest link, and the
+Pinterest panel. Recognising your pictures happens on your own PC, even with the internet off.
 
 ## Installing
 
-1. Double-click `dist\Notebook Setup 1.0.0.exe`.
+1. Double-click the newest `dist\Notebook Setup <version>.exe`.
 2. Windows may show **"Windows protected your PC"**. This appears because the app isn't
    signed with a paid certificate, not because anything is wrong. Click **More info → Run anyway**.
 3. Pick where to install (the default is fine). You'll get Start menu and desktop shortcuts.
@@ -21,14 +23,17 @@ boards, everything stays on your PC, and nothing is uploaded.
 | `media\` | Full copies of your photos and videos. Your originals are never touched. |
 | `thumbs\` | Small previews. Safe to delete: Notebook remakes them. |
 
-The folder button (top right) shows the library's location and can open a different library.
+**Library** (bottom left) shows the library's location, can open a different library, and has Back up, Restore and Export.
 
 ## Everyday use
 
-- **Add**: use the dock at the bottom, or drag files onto the window. If a board is
-  open, new things land on that board.
-- **Boards**: click a board card to switch. Use **New board**, then **Rename board** or
+- **Add**: **Photos**, **Videos** or **Note** at the top left, drag files onto the window,
+  or paste a TikTok or Pinterest link (see below). If a board is open, new things land on it.
+- **Boards**: they're listed on the left. Use **New board**, then **Rename board** or
   **Delete board**. Deleting a board never deletes its items.
+- **Stacks**: Ctrl-click (or tick) two or more things, then **Stack**. A stack shows as one
+  card; use its arrows, or scroll sideways over it, to go through it. Open one and choose
+  **Take out of stack** to split it up. The same bar can **Hide from phone** or **Move to Bin**.
 - **Open anything**: click it. Photos open full size (click to zoom), videos play inside
   the app, and notes open in the editor. Use ← → to move between items and Esc to close.
 - **Several boards**: tick boards on the right when an item is open.
@@ -37,6 +42,51 @@ The folder button (top right) shows the library's location and can open a differ
 - **Bin**: **Move to Bin** keeps the item with its boards. Restore it from the Bin.
   **Empty Bin** deletes permanently and asks first.
 - **Search**: Ctrl+F. **New note**: Ctrl+N.
+
+## Recognition (on your PC)
+
+Notebook looks at every photo and video (by its preview) in the background and works out:
+
+- **What it is**: outfit, wallpaper, icon, profile picture or other. Each gets a main label
+  and can have extra ones (a street photo can be an outfit and a profile picture).
+- **For outfits**: the colours of the clothes (only the clothes, never the background) and
+  the top two styles from **your style list**.
+
+It runs on your graphics card and stays smooth while you use the app. A small line at the
+bottom left says "Recognising 3 of 40…" while it works.
+
+- **Filters**: the chips under the board name filter by type, clothing colour and style.
+- **Correcting it**: open anything and use **What it is** and **Style** to fix a label. Your
+  corrections are kept forever: a re-scan never changes them. **Use what the PC saw** undoes a correction.
+- **Your styles**: the **Styles** chip lets you add your own styles or remove ones you never
+  use. Outfits are looked at again for the new list.
+- **Suggested** (left, under the boards): groups of outfits that go together, and matching
+  sets of a wallpaper, an icon and a profile picture. Click one to look; **Keep as board**
+  makes it a board, **Dismiss** hides it for good. Suggestions never move, change or delete anything.
+- **Where the tools live**: `D:\Notebook Tools\models` (about 3 GB, downloaded once). With
+  them there, recognition needs no internet at all.
+
+## Saving from TikTok and Pinterest links
+
+- **Paste a link** anywhere in the window (or into **Paste a TikTok or Pinterest link** at
+  the top left) and it's saved to your notebook by itself: TikTok videos, TikTok photo
+  slideshows (saved as one stack) and Pinterest image and video pins.
+- If a save fails, you get a plain message and the link waits under **Links** to retry.
+- **Check my links** (under Links) re-tests your last few saved links. Run it now and then,
+  or whenever a save fails.
+- **Update downloader** (under Links) updates the download tools. Nothing updates by itself.
+- TikTok or Pinterest can change their sites and break saving at any time. That only stops
+  new saves; everything already saved stays safe. The download part is kept separate, so a
+  fix is usually a short job for Claude Code or Codex.
+- The tools live in `D:\Notebook Tools\bin`. Downloading for personal use can go against
+  those sites' rules; if that matters to you, get qualified advice.
+
+## Pinterest panel
+
+**Pinterest** (bottom left) shows the real Pinterest website inside Notebook. Sign in once
+there yourself (it remembers you, separately from your normal browser). Open any pin and
+press **Save to library**, or right-click a pin and choose **Save to Notebook**. Nothing is
+saved unless you choose it. Pinterest sees what you browse there, just as it does in a browser.
 
 ## Keeping it safe
 
@@ -55,7 +105,7 @@ The folder button (top right) shows the library's location and can open a differ
 Notebook on your phone can sync with this PC over your home Wi-Fi. Nothing goes to the
 internet: the phone talks straight to the PC.
 
-1. On the PC, click **Phone** in the dock. A QR code and an 8-letter code appear.
+1. On the PC, click **Phone** (bottom left). A QR code and an 8-letter code appear.
 2. Open Notebook on your phone, tap **Sync**, then **Scan code**, and point it at the QR code.
    (You can type the code instead.) Each code works once and lasts 10 minutes. **New code** makes another.
 3. That's it. The phone stays paired, so you only do this once.
@@ -70,6 +120,9 @@ internet: the phone talks straight to the PC.
   to go back to closing normally.
 - **Unpair** in the Phone panel stops that phone syncing straight away. Pair it again with a new code.
 - Syncing never uploads to the internet. It only works when the phone and PC are on the same Wi-Fi.
+- **Show on phone**: everything shows on your phone unless you switch it off. Open an item and
+  untick **Show on phone** (or pick several and choose **Hide from phone**). Your phone removes
+  its copy at the next sync; the PC keeps it. Only the PC decides this.
 - Things you delete for good (Empty Bin) are deleted on the other device too after the next sync.
 
 ## Video formats

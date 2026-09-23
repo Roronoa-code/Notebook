@@ -30,7 +30,14 @@
       "createStartMenuShortcut": true,
       "createDesktopShortcut": true,
       "shortcutName": "Notebook"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**",
+      "node_modules/onnxruntime-common/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**",
+      "node_modules/@huggingface/transformers/**"
+    ]
   },
   "devDependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

@@ -256,6 +256,7 @@
     S.board = id; S.anim = true; S.renaming = false;
     NB.stacks.clear();
     NB.smart.hideSuggestion();
+    if (NB.links && NB.links.isOpen()) NB.links.closePanel(); // choosing a board leaves Pinterest
     render();
     $('page').scrollTo({ top: 0, behavior: 'smooth' });
     const el = document.querySelector(`.bcard[data-id="${id}"]`);

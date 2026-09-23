@@ -11,7 +11,7 @@ const port = process.parentPort || { on: (e, fn) => process.on('message', (data)
 function fake(hint, styles) {
   const n = String(hint || '').toLowerCase();
   const main = /outfit|shirt|coat/.test(n) ? 'outfit' : /wall|sky|lake/.test(n) ? 'wallpaper' : /icon|logo/.test(n) ? 'icon' : /face|pfp|portrait/.test(n) ? 'profile picture' : 'other';
-  return { type: { main, extra: [], scores: {} }, colours: main === 'outfit' ? [{ name: 'black', hex: '#141414', share: 0.6 }] : [{ name: 'blue', hex: '#2c5abe', share: 0.5 }], styles: main === 'outfit' ? styles.slice(0, 2) : undefined, embedding: [1, 0, 0] };
+  return { type: { main, extra: [], scores: { [main]: 0.9 } }, colours: main === 'outfit' ? [{ name: 'black', hex: '#141414', share: 0.6 }] : [{ name: 'blue', hex: '#2c5abe', share: 0.5 }], styles: main === 'outfit' ? styles.slice(0, 2) : undefined, embedding: [1, 0, 0].map((x, i) => x + (n.length % (i + 3)) * 0.05) };
 }
 
 port.on('message', async ({ data }) => {

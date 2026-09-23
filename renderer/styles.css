@@ -112,6 +112,20 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .rename.small { height: 40px; width: 260px; font: 700 16px Figtree, sans-serif; text-transform: none; }
 .stylepop { left: auto; right: 44px; bottom: auto; top: 150px; width: 420px; }
 
+/* saving from links + the Pinterest panel */
+.linkwrap .search { font-size: 13px; }
+.linkspop { left: 312px; bottom: 60px; width: 440px; max-height: 70vh; overflow-y: auto; }
+.retry { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.retry li { padding: 10px 12px; border-radius: 14px; background: var(--surface2); display: flex; flex-direction: column; gap: 4px; }
+.rurl { font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.rbtns { display: flex; gap: 6px; margin-top: 4px; }
+.hint.bad { color: var(--danger); }
+.pinpanel { position: fixed; top: 16px; right: 16px; bottom: 16px; left: 316px; z-index: 9; display: flex; flex-direction: column; border-radius: 26px; overflow: hidden; background: var(--surface); border: 1px solid rgba(255,255,255,.08); animation: pop .45s var(--spring) backwards; }
+.pinbar { height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.pinstatus { flex: 1; min-width: 0; font-size: 13px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pinhost { flex: 1; min-height: 0; background: #0A0A0A; }
+.pinning .toasts { left: calc(50% + 158px); bottom: auto; top: 88px; }
+
 /* chips (boards on an open item) */
 .chip { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid transparent; background: transparent; font-weight: 600; font-size: 14px; color: var(--ink2); white-space: nowrap; transition: background .2s, color .3s, transform .45s var(--spring); }
 .chip:hover { background: var(--hover); color: var(--ink); transform: translateY(-2px); }
