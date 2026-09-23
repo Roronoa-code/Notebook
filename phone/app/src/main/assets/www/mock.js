@@ -36,6 +36,7 @@ if (!window.NBNative) {
     update(i, json) { Object.assign(find(i), JSON.parse(json), { updatedAt: now() }); return ok(); },
     bin(i) { find(i).deletedAt = now(); return ok(); },
     restore(i) { find(i).deletedAt = null; return ok(); },
+    deleteForever(i) { const gone = db.items.filter((x) => x.deletedAt && (!i || x.id === i)); db.items = db.items.filter((x) => !gone.includes(x)); return ok({ id: String(gone.length) }); },
     addBoard(name) { if (!name.trim()) return JSON.stringify({ error: 'Give the board a name.' }); const b = B(name.trim()); db.boards.push(b); return ok({ id: b.id }); },
     renameBoard(i, name) { db.boards.find((b) => b.id === i).name = name.trim(); return ok(); },
     deleteBoard(i) { db.boards = db.boards.filter((b) => b.id !== i); db.items.forEach((x) => { x.boards = x.boards.filter((b) => b !== i); }); return ok(); },

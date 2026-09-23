@@ -71,17 +71,16 @@
   // ---------- pieces ----------
   function card(it, n) {
     const d = `--d:${Math.min(n * 40, 400)}ms`;
+    const binned = !!it.deletedAt; // in the Bin, tapping a card offers Put back / Delete forever instead of opening it
     if (it.kind === 'note') {
       const body = textOf(it.html).slice(0, 180);
-      return `<button type="button" class="card" data-a="open" data-v="${it.id}" style="${d}" aria-label="Open ${esc(it.title)}"><div class="notecard"><div class="t">${esc(it.title)}</div><div class="p">${esc(body.startsWith(it.title) ? body.slice(it.title.length).trim() : body)}</div></div></button>`;
+      return `<button type="button" class="card" data-a="${binned ? 'binItem' : 'open'}" data-v="${it.id}" style="${d}" aria-label="Open ${esc(it.title)}"><div class="notecard"><div class="t">${esc(it.title)}</div><div class="p">${esc(body.startsWith(it.title) ? body.slice(it.title.length).trim() : body)}</div></div></button>`;
     }
     const ar = it.w && it.h ? `${it.w} / ${it.h}` : '4 / 5';
     const src = url(it.thumb || (it.kind === 'photo' ? it.file : ''));
     const media = src ? `<img src="${src}" alt="" loading="lazy" decoding="async" style="aspect-ratio:${ar}">` : `<div class="ph" style="aspect-ratio:${ar}">${svg(it.kind === 'video' ? P.camera : P.photo, 22, 1.6)}</div>`;
-    const dur = it.duration ? `${Math.floor(it.duration / 60)}:${String(Math.round(it.duration % 60)).padStart(2, '0')}` : 'Video';
-    return `<button type="button" class="card" data-a="open" data-v="${it.id}" style="${d}" aria-label="Open ${esc(it.title)}">
-      <div class="media">${media}${it.kind === 'video' ? `<span class="badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg>${dur}</span>` : ''}</div>
-      <div class="cap">${esc(it.title)}</div>${it.caption ? `<div class="capnote">${esc(it.caption)}</div>` : ''}</button>`;
+    return `<button type="button" class="card" data-a="${binned ? 'binItem' : 'open'}" data-v="${it.id}" style="${d}" aria-label="Open ${esc(it.title)}">
+      <div class="media">${media}${it.kind === 'video' ? `<span class="badge" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg></span>` : ''}</div></button>`;
   }
   const gridHTML = (list, empty) => list.map(card).join('') || `<p class="empty">${empty}</p>`;
   const homeList = () => (S.tab === 'notes' ? live().filter((x) => x.kind === 'note') : live());
@@ -170,10 +169,45 @@
     </div>`;
   }
 
+  // Search: titles, notes (on photos and in notes) and board names. Only the results update as you type.
+  function matches(q) {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    return live().filter((it) => {
+      const hay = [it.title, it.caption, it.kind === 'note' ? textOf(it.html) : '', ...(it.boards || []).map((id) => (boards().find((b) => b.id === id) || {}).name)].join(' ').toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }
+  const searchResults = () => (S.query || '').trim()
+    ? gridHTML(matches(S.query), `Nothing matches “${esc(S.query.trim())}”.`)
+    : '<p class="empty">Search your titles, notes and board names.</p>';
+  function searchHTML() {
+    return `<div class="screen" style="padding-top:calc(var(--st) + 20px)">
+      <div style="padding:0 20px 14px"><div class="poster" style="font-size:64px;margin-bottom:14px">Search</div>
+        <input class="field searchbox" id="q" type="search" enterkeyhint="search" placeholder="Try “black” or “outfits”" autocomplete="off" aria-label="Search" value="${esc(S.query || '')}"></div>
+      <div class="grid" id="searchgrid">${searchResults()}</div>
+    </div>`;
+  }
+
+  const binned = () => DB.items.filter((it) => it.deletedAt);
+  function binHTML() {
+    const list = binned();
+    return `<div class="screen" style="padding-top:calc(var(--st) + 70px)">
+      <button type="button" class="iconbtn glass" data-a="binBack" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px">${svg(P.back)}</button>
+      <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:baseline;gap:12px"><span class="poster" style="font-size:64px">Bin</span><span class="micro" id="bincount">${plural(list.length, 'item')}</span></div>
+        <div style="font-size:14px;color:#9A9A9A">Things stay here until you delete them. Tap one to put it back.</div>
+        <button type="button" class="btn danger" data-a="emptyBin" id="emptybin" style="align-self:flex-start"${list.length ? '' : ' hidden'}>${svg(P.bin, 16)}<span>Empty Bin</span></button>
+      </div>
+      <div class="grid" id="bingrid">${gridHTML(list, 'The Bin is empty.')}</div>
+    </div>`;
+  }
+
   function syncHTML() {
     return `<div class="screen" style="padding:calc(var(--st) + 20px) 20px calc(var(--sb) + 120px);display:flex;flex-direction:column;gap:16px">
       <div style="display:flex;flex-direction:column;gap:6px"><div class="poster" style="font-size:64px">Sync</div><div style="font-size:14px;color:#9A9A9A">Phone and PC, over your home Wi-Fi. Nothing goes online.</div></div>
       <div id="syncbody"></div>
+      <button type="button" class="glass panel binrow" data-a="openBin"><span style="display:flex;align-items:center;gap:12px">${svg(P.bin, 20, 1.8)}<span style="font-size:16px;font-weight:600">Bin</span></span><span class="micro" id="binrowcount">${plural(binned().length, 'item')}</span></button>
     </div>`;
   }
 
@@ -206,7 +240,7 @@
     return `<div id="stage"></div>
     <nav class="nav glass" id="nav" aria-label="Main">
       <button type="button" class="navbtn" data-a="home" id="nav-home" aria-label="Home">${svg(P.home)}<span class="navlbl">Home</span></button>
-      <button type="button" class="navbtn" data-a="search" aria-label="Search">${svg(P.search)}</button>
+      <button type="button" class="navbtn" data-a="search" id="nav-search" aria-label="Search">${svg(P.search)}<span class="navlbl">Search</span></button>
       <button type="button" class="addbtn" data-a="add" id="addbtn" aria-label="Add" aria-expanded="false">${svg(P.plus, 22, 2.4)}</button>
       <button type="button" class="navbtn" data-a="sync" id="nav-sync" aria-label="Sync">${svg(P.sync)}<span class="navlbl">Sync</span></button>
     </nav>
@@ -232,7 +266,8 @@
   function updateChrome() {
     $('#nav').hidden = S.screen === 'item';
     $('#nav-home').classList.toggle('on', S.screen === 'home');
-    $('#nav-sync').classList.toggle('on', S.screen === 'sync');
+    $('#nav-sync').classList.toggle('on', S.screen === 'sync' || S.screen === 'bin');
+    $('#nav-search').classList.toggle('on', S.screen === 'search');
     for (const el of app.querySelectorAll('.navbtn[id]')) {
       if (el.classList.contains('on')) el.setAttribute('aria-current', 'page');
       else el.removeAttribute('aria-current');
@@ -351,7 +386,7 @@
 
   // ---------- screens: build only the one you move to; Home is kept as you left it ----------
   let homeEl = null, currentEl = null, homeVer = 0, boardSig = '';
-  const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML };
+  const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML, search: searchHTML, bin: binHTML };
   const sigOf = () => boards().map((b) => b.id + ':' + b.name).join('|');
 
   function build(name) {
@@ -390,6 +425,14 @@
       app.querySelectorAll('[data-a="boardToggle"]').forEach((el) => { const on = (it.boards || []).includes(el.dataset.v); el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); });
     } else if (S.screen === 'sync') {
       $('#syncbody').innerHTML = syncBodyHTML();
+      $('#binrowcount').textContent = plural(binned().length, 'item');
+    } else if (S.screen === 'search') {
+      $('#searchgrid').innerHTML = searchResults();
+    } else if (S.screen === 'bin') {
+      const list = binned();
+      $('#bincount').textContent = plural(list.length, 'item');
+      $('#emptybin').hidden = !list.length;
+      $('#bingrid').innerHTML = gridHTML(list, 'The Bin is empty.');
     }
   }
 
@@ -513,6 +556,12 @@
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
     if (S.screen === 'item') wireItem(el);
     if (S.screen === 'sync') $('#syncbody').innerHTML = syncBodyHTML();
+    if (S.screen === 'search') {
+      const q = el.querySelector('#q');
+      q.addEventListener('input', () => { S.query = q.value; el.querySelector('#searchgrid').innerHTML = searchResults(); });
+      q.addEventListener('keydown', (e) => { if (e.key === 'Enter') q.blur(); });
+      if (!S.query) setTimeout(() => q.focus(), 350);
+    }
     animateSwap(old, el, kind);
     updateChrome();
   }
@@ -576,6 +625,9 @@
       f.innerHTML = `<span class="lbl">New board</span><input class="field" id="f1" maxlength="40" placeholder="Board name" autocomplete="off"><div class="formrow"><button type="button" class="btn" data-a="closeForm">Cancel</button><button type="button" class="btn white" data-a="saveForm">Create</button></div>`;
     } else if (kind === 'editBoard' && b) {
       f.innerHTML = `<span class="lbl">Board</span><input class="field" id="f1" maxlength="40" value="${esc(b.name)}" autocomplete="off"><div class="formrow"><button type="button" class="btn danger" data-a="deleteBoard">Delete board</button><span style="flex:1"></span><button type="button" class="btn white" data-a="saveForm">Save</button></div><div class="hint">Deleting a board keeps everything on it.</div>`;
+    } else if (kind === 'binItem' && byId(S.binItem)) {
+      const it = byId(S.binItem);
+      f.innerHTML = `<span class="lbl">In the Bin</span><div style="font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title)}</div><div class="formrow"><button type="button" class="btn danger" data-a="deleteForever">Delete forever</button><span style="flex:1"></span><button type="button" class="btn white" data-a="restoreItem">Put back</button></div>`;
     } else if (kind === 'manual') {
       f.innerHTML = `<span class="lbl">Pair by typing</span><input class="field" id="f1" inputmode="decimal" placeholder="PC address, e.g. 192.168.0.12" autocomplete="off"><input class="field" id="f2" placeholder="Pairing code" autocapitalize="characters" autocomplete="off"><div class="hint">Both are shown in Notebook on your PC under Phone.</div><div class="formrow"><button type="button" class="btn" data-a="closeForm">Cancel</button><button type="button" class="btn white" data-a="saveForm">Pair</button></div>`;
     }
@@ -649,7 +701,20 @@
     home: () => go('home', null, 'fade'),
     boardBack: () => go('home', null, 'pop'),
     sync: () => go('sync'),
-    search: () => toast('Search is coming soon'),
+    search: () => go('search'),
+    openBin: () => go('bin', null, 'push'),
+    binBack: () => go('sync', null, 'pop'),
+    binItem: (v) => { S.binItem = v; openForm('binItem'); },
+    restoreItem: () => { const it = byId(S.binItem); if (it && call('restore', it.id)) { closeForm(); toast('Put back'); } },
+    deleteForever: (x, el) => {
+      if (!el.dataset.sure) { el.dataset.sure = '1'; el.textContent = 'Tap again to delete for good'; return; }
+      if (call('deleteForever', S.binItem)) { closeForm(); toast('Deleted for good'); }
+    },
+    emptyBin: (x, el) => {
+      if (!el.dataset.sure) { el.dataset.sure = '1'; el.querySelector('span').textContent = `Tap again to delete ${plural(binned().length, 'item')} for good`; return; }
+      const r = call('deleteForever', '');
+      if (r) toast(`Deleted ${plural(Number(r.id) || 0, 'item')} for good`);
+    },
     add: () => { S.add = !S.add; S.cover = false; S.sheet = null; updateChrome(); },
     cover: () => { S.cover = !S.cover; S.add = false; updateChrome(); },
     coverPick: (v) => { S.coverId = v || ''; N.setPref('coverId', S.coverId); homeEl.querySelector('#coverslot').innerHTML = coverHTML(); $('#tiles').innerHTML = tilesHTML(); },

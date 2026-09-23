@@ -21,4 +21,5 @@ The folder path contains `&`, which breaks `npm run`, so call node directly:
 - `node scripts/test-library.js`: saving, boards, Bin, backup/restore, export, recovery, v1 to v2 migration and the sync merge rules.
 - `node scripts/test-sync.js`: starts the real sync server on 127.0.0.1 against a temporary library and acts as the phone (pairing, sync, media up/down, discovery, address check).
 - `node scripts/test-ui.js`: drives the real window (needs ffmpeg for sample media), including the Phone panel, hide-to-tray and `--background`. It sets `NOTEBOOK_USER_DATA`, `NOTEBOOK_SYNC_HOST=127.0.0.1` and `NOTEBOOK_SYNC_PORT` so it never uses your settings, never triggers Windows Firewall, and never registers Notebook to start with Windows.
+- Phone screens (need Microsoft Edge; use the mock bridge in `phone/.../www/mock.js`, never the phone): `node scripts/test-phone-nav.js`, `node scripts/test-phone-media.js`, `node scripts/test-phone-library.js` (search, Bin, mood-board cards).
 - Build the installer: `node node_modules/electron-builder/cli.js --win nsis`. Then run the UI check against it with `NOTEBOOK_EXE="…\dist\win-unpacked\Notebook.exe"`.

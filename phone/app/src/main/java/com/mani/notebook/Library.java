@@ -256,6 +256,28 @@ public class Library {
 
     // ---------- boards ----------
 
+    // Deletes things in the Bin for good (one item, or all of it when id is empty), files included.
+    // A tombstone tells the PC to delete them too. Only items already in the Bin can go.
+    synchronized int deleteForever(String id) throws IOException, JSONException {
+        JSONArray a = items(), keep = new JSONArray();
+        List<JSONObject> gone = new ArrayList<>();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject it = a.getJSONObject(i);
+            boolean binned = it.has("deletedAt") && !it.isNull("deletedAt");
+            if (binned && (id == null || id.isEmpty() || id.equals(it.getString("id")))) gone.add(it); else keep.put(it);
+        }
+        if (gone.isEmpty()) return 0;
+        data.put("items", keep);
+        JSONArray tomb = data.getJSONObject("tombstones").getJSONArray("items");
+        for (JSONObject it : gone) tomb.put(new JSONObject().put("id", it.getString("id")).put("at", now()));
+        save(); // saved first: if deleting a file fails, the library is still right and the file is just left over
+        for (JSONObject it : gone) {
+            if (!it.isNull("file") && it.has("file")) new File(root, it.getString("file")).delete();
+            new File(thumbs, it.getString("id") + ".jpg").delete();
+        }
+        return gone.size();
+    }
+
     synchronized String addBoard(String name) throws IOException, JSONException {
         String clean = name == null ? "" : name.trim();
         if (clean.isEmpty()) throw new JSONException("Give the board a name.");
