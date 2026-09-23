@@ -10,12 +10,17 @@ android {
         applicationId = "com.mani.notebook"
         minSdk = 28
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.3-preview"
+        versionCode = 4
+        versionName = "0.4"
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // Google's QR scanner (runs inside Google Play services; no camera permission needed).
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

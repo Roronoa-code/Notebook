@@ -116,3 +116,43 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid #F2F2F2; outli
 @keyframes load { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
 @keyframes jelly { 0% { scale: 1; } 25% { scale: 1.05 .95; } 50% { scale: .97 1.03; } 75% { scale: 1.015 .985; } 100% { scale: 1; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* wheel: while your finger is on it, pills follow instantly; on release they glide to the nearest board */
+.stackwrap.drag .pill { transition: none !important; }
+.ph { display: flex; align-items: center; justify-content: center; background: #151515; color: #6E6E6E; }
+.empty { column-span: all; margin: 30px 6px; color: #9A9A9A; font-size: 14px; line-height: 1.5; }
+
+/* open item */
+.stage { position: absolute; left: 0; right: 0; top: 0; height: 62%; background: #000; display: flex; align-items: center; justify-content: center; }
+.stage img, .stage video { width: 100%; height: 100%; object-fit: contain; }
+.playbtn { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding: 0; }
+.kindpill { position: absolute; top: 14px; right: 16px; z-index: 3; height: 36px; padding: 0 14px; border-radius: 999px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 700; }
+.notestage { position: absolute; inset: 0 0 auto 0; bottom: 210px; background: #0F0F0F; padding: 64px 22px 0; display: flex; flex-direction: column; gap: 12px; }
+.notebar { display: flex; justify-content: flex-end; }
+.editor { flex: 1; overflow-y: auto; font-size: 18px; line-height: 1.6; outline: none; user-select: text; -webkit-user-select: text; padding-bottom: 20px; }
+.editor:empty::before { content: attr(data-placeholder); color: #6E6E6E; }
+.editor h2 { font-size: 28px; font-weight: 300; letter-spacing: -.02em; margin: 0 0 10px; }
+.editor ul { padding-left: 22px; margin: 0; }
+.editor.tidied > * { animation: rise .5s cubic-bezier(.34,1.56,.64,1) backwards; }
+.sheet.compact { gap: 12px; padding-top: 18px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* sync */
+.panel { border-radius: 30px; padding: 22px; display: flex; flex-direction: column; gap: 14px; background: rgba(255,255,255,.05); }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.45; color: #D6D6D6; }
+.pcicon { width: 52px; height: 52px; border-radius: 50%; border: 1px solid rgba(255,255,255,.2); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.twocol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stat { border-radius: 18px; background: rgba(255,255,255,.05); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; font-size: 16px; font-weight: 600; }
+.syncmsg { font-size: 14px; line-height: 1.45; color: #D6D6D6; }
+.syncmsg.err { color: #F87171; }
+.linkbtn { border: 0; background: none; color: #ADADAD; font-size: 14px; padding: 6px; text-decoration: underline; text-underline-offset: 3px; align-self: center; }
+
+/* small forms */
+.formsheet { padding: 16px; flex-direction: column; gap: 12px; bottom: 94px; }
+.formsheet:not([hidden]) { display: flex; }
+.field { width: 100%; height: 48px; border-radius: 14px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.06); padding: 0 14px; font: 500 16px Figtree, sans-serif; color: #F2F2F2; outline: none; user-select: text; }
+.field:focus { border-color: rgba(255,255,255,.45); }
+.formrow { display: flex; gap: 10px; justify-content: flex-end; }
+.hint { font-size: 13px; color: #9A9A9A; }
+.toast { gap: 12px; padding: 0 6px 0 16px; }
+.toast button { height: 30px; padding: 0 12px; border-radius: 999px; border: 0; background: #0A0A0A; color: #F2F2F2; font-weight: 700; }
