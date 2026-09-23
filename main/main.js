@@ -231,6 +231,9 @@ function registerHandlers() {
   handle('item:update', (id, changes) => lib.updateItem(id, changes || {}));
   handle('item:thumb', (id, bytes, meta) => lib.saveThumb(id, bytes, meta));
   handle('item:bin', (id) => lib.moveToBin(id));
+  handle('items:onPhone', (ids, on) => lib.setOnPhone(Array.isArray(ids) ? ids.map(String) : [], !!on));
+  handle('items:stack', async (ids) => ({ id: await lib.stackItems(Array.isArray(ids) ? ids.map(String) : []) }));
+  handle('item:unstack', (id) => lib.unstackItem(String(id)));
   handle('item:restore', (id) => lib.restore(id));
   handle('note:add', async (boardId) => ({ id: await lib.addNote(boardId) }));
 

@@ -151,6 +151,19 @@
     return box;
   }
 
+  // "Show on phone": on unless switched off here. The PC is the hub, so only the PC decides.
+  function phoneSwitch(it) {
+    const box = h('input', { type: 'checkbox', id: 'on-phone', checked: it.phone !== false });
+    box.addEventListener('change', async () => {
+      const res = await nb.setOnPhone([it.id], box.checked);
+      if (res.error) { toast(res.error, { error: true }); box.checked = !box.checked; return; }
+      NB.S.snap = res.snap;
+      toast(box.checked ? 'It will show on your phone after the next sync' : 'It will leave your phone at the next sync. It stays here.');
+    });
+    return h('label', { class: 'keep', for: 'on-phone' }, box, h('span', null, h('span', { class: 'dname' }, 'Show on phone'),
+      h('span', { class: 'hint' }, 'Switch off to keep this on your PC only. Your phone removes its copy when it next syncs.')));
+  }
+
   function metaText(it) {
     const bits = [];
     if (it.deletedAt) bits.push('In the Bin');
@@ -193,6 +206,11 @@
       h('h4', { class: 'micro' }, 'Boards'),
       h('div', { class: 'tags' }, boardChips(it)),
       h('p', { class: 'hint' }, 'One item can be on several boards. Taking it off a board never deletes it.'),
+      it.deletedAt ? null : phoneSwitch(it),
+      it.stack && !it.deletedAt ? h('button', { type: 'button', class: 'btn small', onclick: async () => {
+        const res = NB.apply(await nb.unstackItem(it.id));
+        if (res) { toast('Taken out of the stack'); refreshSide(); }
+      } }, icon('stack'), 'Take out of stack') : null,
       it.kind !== 'note' ? h('button', { type: 'button', class: 'linkbtn', onclick: () => nb.revealItem(it.id) }, 'Show file in folder') : null,
       h('div', { class: 'actions' }, actions, h('span', { style: { flex: '1' } }), h('button', { type: 'button', class: 'btn primary', onclick: close }, 'Done')));
   }

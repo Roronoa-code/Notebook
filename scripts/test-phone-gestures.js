@@ -55,7 +55,9 @@ const { chromium } = require('playwright-core');
     await page.locator('.media-screen').waitFor();
     await page.waitForTimeout(700);
     await drag(190, 300, 340, 4, 40);
-    assert.ok(await page.locator('.media-screen').evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m42 > 20), 'photo follows the swipe');
+    assert.ok(await page.locator('.media-screen .stage img').evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m42 > 20), 'the photo follows the swipe');
+    assert.ok(await page.locator('.media-screen .scrim').evaluate((el) => +getComputedStyle(el).opacity < 1), 'the backdrop fades with it');
+    assert.equal(await page.locator('.media-screen').evaluate((el) => getComputedStyle(el).transform), 'none', 'the rest of the screen stays put');
     await release();
     await page.waitForTimeout(500);
     assert.equal(await page.locator('.media-screen').count(), 1, 'a small swipe stays');
@@ -63,7 +65,6 @@ const { chromium } = require('playwright-core');
     await release();
     await page.waitForTimeout(900);
     assert.equal(await page.locator('.media-screen').count(), 0, 'a long swipe goes back');
-    assert.equal(await page.locator('.ghost').count(), 0, 'the flying photo is cleaned up');
     assert.equal(await page.locator('#nav').isVisible(), true);
 
     // Stacks: press and hold a card to start picking, tap another, Stack.
@@ -106,7 +107,44 @@ const { chromium } = require('playwright-core');
     await page.waitForTimeout(900);
     assert.equal(await page.locator('#homegrid .stackcard').count(), 0, 'a stack of one goes back to loose cards');
 
+    // Drag to stack: hold a card, drag it onto another, let go. Then drag a third onto the stack.
+    const centre = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    async function dragOnto(from, to) {
+      const a = await centre(from), b = await centre(to);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [a] });
+      await page.waitForTimeout(550);
+      assert.equal(await from.evaluate((el) => el.classList.contains('lifted')), true, 'holding lifts the card');
+      for (let i = 1; i <= 8; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: a.x + ((b.x - a.x) * i) / 8, y: a.y + ((b.y - a.y) * i) / 8 }] });
+        await page.waitForTimeout(25);
+      }
+      assert.equal(await to.evaluate((el) => el.classList.contains('droptarget')), true, 'the card under the finger lights up');
+      await release();
+      await page.waitForTimeout(500);
+    }
+    if (!(await page.locator('#lift.up').count())) { await page.locator('.grip').click(); await page.waitForTimeout(900); }
+    const loose = page.locator('#homegrid .card:not(.stackcard)');
+    const n0 = await loose.count();
+    // two cards fully on screen (the first card in each column)
+    const [i0, i1] = await page.evaluate(() => { const cs = [...document.querySelectorAll('#homegrid .card:not(.stackcard)')]; const on = cs.map((c, i) => [i, c.getBoundingClientRect()]).filter(([, r]) => r.bottom < innerHeight - 90 && r.top > 0); return [on[0][0], on.find(([, r]) => r.left !== on[0][1].left)[0]]; });
+    await dragOnto(loose.nth(i0), loose.nth(i1));
+    assert.equal(await page.locator('#homegrid .stackcard').count(), 1, 'dropping one card on another stacks them');
+    assert.equal(await page.locator('#homegrid .stackcard .fanitem').count(), 2);
+    assert.equal(await page.locator('#selbar').isVisible(), false, 'dragging does not start picking');
+    await dragOnto(page.locator('#homegrid .card:not(.stackcard)').first(), page.locator('#homegrid .stackcard'));
+    assert.equal(await page.locator('#homegrid .stackcard .fanitem').count(), 3, 'dropping onto a stack adds to it');
+    assert.equal(await page.locator('#homegrid .card:not(.stackcard)').count(), n0 - 3);
+    // Holding a stack still (no drag) picks it as one thing.
+    const st = await centre(page.locator('#homegrid .stackcard'));
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [st] });
+    await page.waitForTimeout(550);
+    await release();
+    await page.waitForTimeout(350);
+    assert.equal(await page.locator('#selcount').textContent(), '1 picked', 'a stack counts as one');
+    assert.equal(await page.locator('#selstack').isDisabled(), true);
+    await page.locator('[data-a="selCancel"]').click();
+
     assert.deepEqual(errors, []);
-    console.log('Phone gestures passed: panel follows the finger, slow drags settle back, flicks lift, pull-down lowers, swipe-down closes a photo (small swipes snap back), hold-to-pick and Stack, flick through a stack, take out of a stack.');
+    console.log('Phone gestures passed: panel follows the finger, slow drags settle back, flicks lift, pull-down lowers, swipe-down closes a photo (small swipes snap back), hold-to-pick and Stack, flick through a stack, take out of a stack, drag onto a card or a stack to stack, a held stack counts as one.');
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exitCode = 1; });

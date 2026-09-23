@@ -1,4 +1,4 @@
-// The main screen: board cards, the grid, the dock, search, drag-and-drop and previews.
+// The main screen: the sidebar (add, search, boards, Bin, Phone, Library), the mood board grid, drag-and-drop and previews.
 (() => {
   const { h, icon, toast } = NB;
   const $ = (id) => document.getElementById(id);
@@ -48,6 +48,7 @@
     $('bin-btn').setAttribute('aria-pressed', S.board === 'bin');
     $('lib-path').textContent = S.snap.root;
     NB.viewer.refresh();
+    NB.stacks.mark();
   }
 
   function stackFor(id) {
@@ -82,8 +83,8 @@
     if (!hl) return;
     if (!on) { hl.style.opacity = '0'; return; }
     const moved = hl.dataset.at && hl.dataset.at !== on.dataset.id;
-    hl.style.transform = `translateX(${on.offsetLeft}px)`;
-    hl.style.width = on.offsetWidth + 'px';
+    hl.style.transform = `translateY(${on.offsetTop}px)`;
+    hl.style.height = on.offsetHeight + 'px';
     hl.style.opacity = '1';
     if (moved) { hl.classList.remove('go'); void hl.offsetWidth; hl.classList.add('go'); }
     hl.dataset.at = on.dataset.id;
@@ -124,28 +125,34 @@
     }
   }
 
-  function card(it, index) {
-    const tilt = index % 2 ? '1.3deg' : '-1.3deg';
-    const btn = h('button', { type: 'button', class: 'card', 'data-id': it.id, 'aria-label': `Open ${it.title}`, style: { '--tilt': tilt, animationDelay: Math.min(index * 30, 420) + 'ms' }, onclick: () => NB.viewer.open(it.id) });
-    if (!it.deletedAt) dragSource(btn, it);
+  // The picture part of a card (also used for the pictures inside a stack).
+  function media(it) {
     if (it.kind === 'note') {
       const tint = NOTE_TINTS[[...it.id].reduce((a, c) => a + c.charCodeAt(0), 0) % NOTE_TINTS.length];
       const body = h('div', { class: 'note-body' });
       body.innerHTML = NB.sanitize(it.html);
       const first = [...body.childNodes].find((n) => (n.textContent || '').trim());
       if (first && first.textContent.trim() === it.title) first.remove();
-      btn.append(h('div', { class: 'media note-card', style: { background: tint } }, h('h3', { class: 'display' }, it.title), body));
-      return btn;
+      return h('div', { class: 'media note-card', style: { background: tint } }, h('h3', { class: 'display' }, it.title), body);
     }
-    const media = h('div', { class: 'media' });
+    const box = h('div', { class: 'media' });
     if (it.thumbSrc) {
-      media.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: it.w || undefined, height: it.h || undefined }));
+      box.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: it.w || undefined, height: it.h || undefined }));
     } else {
-      media.append(h('div', { class: 'ph', style: it.w && it.h ? { aspectRatio: `${it.w} / ${it.h}` } : null },
+      box.append(h('div', { class: 'ph', style: it.w && it.h ? { aspectRatio: `${it.w} / ${it.h}` } : null },
         icon(it.kind === 'video' ? 'video' : 'photo'), it.waiting ? 'Waiting for your phone to send this' : S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
     }
-    if (it.kind === 'video') media.append(h('span', { class: 'badge' }, icon('play'), NB.duration(it.duration) || 'Video'));
-    btn.append(media, h('div', { class: 'cap' }, it.title), ...(it.caption ? [h('div', { class: 'cap-note' }, it.caption)] : []));
+    if (it.kind === 'video') box.append(h('span', { class: 'badge' }, icon('play'), NB.duration(it.duration) || 'Video'));
+    if (it.phone === false) box.append(h('span', { class: 'offphone', title: 'Not on your phone' }, icon('phone-off')));
+    return box;
+  }
+
+  function card(it, index) {
+    const tilt = index % 2 ? '1.3deg' : '-1.3deg';
+    const btn = h('button', { type: 'button', class: 'card', 'data-id': it.id, 'aria-label': `Open ${it.title}`, style: { '--tilt': tilt, animationDelay: Math.min(index * 30, 420) + 'ms' },
+      onclick: (e) => (it.deletedAt ? NB.viewer.open(it.id) : NB.stacks.click(e, [it.id], () => NB.viewer.open(it.id))) });
+    if (!it.deletedAt) dragSource(btn, it);
+    btn.append(media(it), h('span', { class: 'sr' }, it.title), it.deletedAt ? null : NB.stacks.pickBox([it.id]));
     return btn;
   }
 
@@ -153,7 +160,7 @@
     const grid = $('grid'), empty = $('empty');
     const list = NB.visibleItems();
     grid.className = 'grid' + (S.anim ? ' anim ' + S.dir : '');
-    grid.replaceChildren(...list.map(card));
+    grid.replaceChildren(...NB.stacks.group(list).map((x, i) => (Array.isArray(x) ? NB.stacks.stackCard(x, i, media) : card(x, i))));
     S.anim = false;
     empty.hidden = list.length > 0;
     if (list.length) return;
@@ -161,14 +168,16 @@
     const [title, text] = S.q.trim() ? [`Nothing matches “${S.q.trim()}”`, 'Try a different word, or clear the search.']
       : S.board === 'bin' ? ['The Bin is empty', 'Things you delete wait here until you empty the Bin.']
       : board ? ['Nothing on this board yet', `Open any item and tick “${board.name}”, or add new things while you're here and they'll land on this board.`]
-      : ['Your notebook is empty', 'Add photos, videos or a note from the dock below, or drag files onto this window.'];
+      : ['Your notebook is empty', 'Add photos, videos or a note from the top left, or drag files onto this window.'];
     empty.replaceChildren(h('h2', { class: 'display' }, title), h('p', null, text));
   }
 
   function refreshCard(id) {
     const it = S.snap.items.find((i) => i.id === id);
     const old = document.querySelector(`.card[data-id="${id}"]`);
-    if (it && old) { const fresh = card(it, 0); fresh.style.animation = 'none'; old.replaceWith(fresh); }
+    if (it && old) { const fresh = card(it, 0); fresh.style.animation = 'none'; old.replaceWith(fresh); NB.stacks.mark(); }
+    const inStack = document.querySelector(`.fanitem[data-id="${id}"]`);
+    if (it && inStack) { inStack.querySelector('.media').replaceWith(media(it)); }
   }
 
   // ---------- dragging items onto boards ----------
@@ -229,6 +238,7 @@
     const order = ['all', ...S.snap.boards.map((b) => b.id), 'bin'];
     S.dir = order.indexOf(id) >= order.indexOf(S.board) ? 'r' : 'l';
     S.board = id; S.anim = true; S.renaming = false;
+    NB.stacks.clear();
     render();
     $('page').scrollTo({ top: 0, behavior: 'smooth' });
     const el = document.querySelector(`.bcard[data-id="${id}"]`);
@@ -329,12 +339,14 @@
     $('backup').onclick = async () => {
       const res = await NB.run('backup');
       if (res && !res.cancelled) toast(`Backed up ${res.items} items (${NB.bytes(res.bytes)}) to ${res.dir}`);
+      closeLib();
     };
     $('restore').onclick = restore;
     $('phone').onclick = () => NB.phone.open();
     $('export').onclick = async () => {
       const res = await NB.run('exportAll');
       if (res && !res.cancelled) toast(`Exported ${res.items} items to ${res.dir}`);
+      closeLib();
     };
     $('bin-btn').onclick = () => go(S.board === 'bin' ? 'all' : 'bin');
     $('search').addEventListener('input', (e) => { S.q = e.target.value; renderContext(); renderGrid(); });
@@ -350,7 +362,10 @@
     };
   }
 
+  const closeLib = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); };
+
   async function restore() {
+    closeLib();
     const res = await NB.run('restoreBackup');
     if (!res || res.cancelled) return;
     $('welcome').hidden = true;
@@ -387,7 +402,8 @@
       if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
       else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
       else if (e.key === 'Escape') {
-        if (!$('lib-pop').hidden) { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); }
+        if (NB.stacks.isPicking()) NB.stacks.clear();
+        else if (!$('lib-pop').hidden) { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); }
         else if (S.q) { S.q = ''; $('search').value = ''; renderContext(); renderGrid(); }
       }
     });

@@ -188,16 +188,15 @@
       stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn" style="height:40px">Tidy up</button></div>
         <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Start typing, then tap Tidy up to turn it into a heading and bullet points.">${sanitize(it.html)}</div></div>`;
     } else if (it.kind === 'video') {
-      stage = `<div class="stage" style="${arStyle(it)}"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" controls playsinline preload="metadata"></video>
+      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" controls playsinline preload="metadata"></video>
         <p class="media-message" role="status"></p></div>`;
     } else {
-      stage = `<div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
+      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
     }
-    const kind = it.kind === 'note' ? 'Note' : it.kind === 'video' ? 'Video' : 'Photo';
     return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
       ${stage}
-      <button type="button" class="iconbtn glass" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:3">${svg(P.back)}</button>
-      <span class="glass kindpill">${kind}</span>
+      <button type="button" class="iconbtn glass lbback" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:4">${svg(P.back)}</button>
+      ${it.kind === 'note' ? '<span class="glass kindpill">Note</span>' : ''}
       <div class="sheet frost${it.kind === 'note' ? ' compact' : ''}">
         ${it.kind !== 'note' ? `<details class="media-details"><summary><span>${esc(it.title)}</span><small>Details & boards</small></summary><div class="media-fields">` : '<div class="handle"></div>'}
         ${it.kind !== 'note' ? `<div style="display:flex;flex-direction:column;gap:8px"><label class="lbl" for="note">Note</label><textarea id="note" class="notebox" placeholder="Why did you save this?">${esc(it.caption || '')}</textarea></div>` : ''}
@@ -326,11 +325,12 @@
     $('#formsheet').hidden = !S.sheet;
     const n = S.select ? S.select.size : 0;
     $('#selbar').hidden = !S.select;
-    if (S.select) { $('#selcount').textContent = n ? `${n} picked` : 'Tap things to stack'; $('#selstack').disabled = n < 2; }
+    const cards = S.select ? M.pickedCards() : 0;
+    if (S.select) { $('#selcount').textContent = cards ? `${cards} picked` : 'Tap things to stack'; $('#selstack').disabled = cards < 2; }
   }
 
   // ---------- screens: build only the one you move to; Home is kept as you left it ----------
-  let homeEl = null, currentEl = null, homeVer = 0, boardSig = '';
+  let homeEl = null, currentEl = null, underEl = null, homeVer = 0, boardSig = '';
   const Wh = NBWheel({ S, N, tick, home: () => homeEl, wheel, pillsHTML, openForm: (k) => openForm(k), go: (...x) => go(...x) });
   const { layoutPills, settle, rebuildWheel, wireWheel, circ } = Wh;
   const M = NBMotion({
@@ -404,9 +404,12 @@
       refreshHome();
       homeEl.querySelector('#homegrid').classList.remove('anim');
       el = homeEl;
+    } else if (underEl && underEl.dataset.screen === S.screen && old && old.classList.contains('media-screen')) {
+      el = underEl; // back from an open photo to the board / search it was opened from
     } else {
       el = build(S.screen);
       if (!el) { S.screen = 'home'; return showScreen('fade'); }
+      el.dataset.screen = S.screen;
       if (S.screen === 'home') { homeEl = el; homeVer = dataVer; boardSig = sigOf(); }
     }
     // A quick return can reuse Home before its previous exit animation finishes.
@@ -415,8 +418,9 @@
     el.inert = false;
     el.style.visibility = '';
     el.style.pointerEvents = '';
+    underEl = el.classList.contains('media-screen') && old && old !== homeEl ? old : null;
     for (const stale of [...stage.children]) {
-      if (stale === old || stale === el) continue;
+      if (stale === old || stale === el || stale === underEl) continue;
       stale.getAnimations().forEach((animation) => animation.cancel());
       if (stale === homeEl) stale.style.visibility = 'hidden'; else stale.remove();
     }
@@ -433,6 +437,7 @@
       if (!S.query) setTimeout(() => q.focus(), 350);
     }
     animateSwap(old, el, kind);
+    if (el.dataset.screen && el === old?.previousElementSibling) refreshScreen(); // a kept screen catches up
     updateChrome();
   }
 
@@ -460,6 +465,12 @@
       ed.addEventListener('input', () => { if (S.tidyUndo !== null) { S.tidyUndo = null; $('#tidybtn').textContent = 'Tidy up'; } saveSoon(flushSave.fn); });
       ed.addEventListener('paste', (e) => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); });
       if (!it.html) setTimeout(() => ed.focus(), 350);
+    }
+    const img = root.querySelector('img[data-full]');
+    if (img && img.dataset.full !== img.getAttribute('src')) {
+      const full = new Image();
+      full.src = img.dataset.full;
+      full.decode().then(() => { img.src = full.src; }, () => { img.src = full.src; });
     }
     NBMedia.wire(root);
   }
@@ -551,6 +562,7 @@
     sync: () => go('sync'),
     search: () => go('search'),
     selCancel: () => endSelect(),
+    stackIds: (ids) => { if (call('stack', JSON.stringify(ids))) toast('Stacked. Flick it sideways to go through them.'); },
     selStack: () => { const ids = [...S.select]; if (call('stack', JSON.stringify(ids))) { endSelect(); toast(`Stacked ${ids.length}. Flick it sideways to go through them.`); } },
     unstack: () => { const it = byId(S.item); if (it && call('unstack', it.id)) { toast('Taken out of the stack'); A.back(); } },
     openBin: () => go('bin', null, 'push'),

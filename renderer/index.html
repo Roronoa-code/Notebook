@@ -25,6 +25,8 @@
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-phone-off" viewBox="0 0 24 24"><path d="M8 3.5A3 3 0 0 1 9 2h6a3 3 0 0 1 3 3v9M18 18.5V19a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V6M3 3l18 18"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24"><rect x="7" y="7" width="13" height="13" rx="3"/><path d="M4 16V7a3 3 0 0 1 3-3h9"/></symbol>
 </svg>
 
 <section class="welcome" id="welcome" hidden>
@@ -41,45 +43,46 @@
   </div>
 </section>
 
-<header class="bar glass">
+<aside class="side-nav" aria-label="Notebook">
   <div class="wordmark display">notebook<span>.</span></div>
+  <div class="adds" role="toolbar" aria-label="Add">
+    <button type="button" class="addtile" id="add-photos"><svg class="i"><use href="#i-photo"/></svg><span>Photos</span></button>
+    <button type="button" class="addtile" id="add-videos"><svg class="i"><use href="#i-video"/></svg><span>Videos</span></button>
+    <button type="button" class="addtile primary" id="new-note"><svg class="i"><use href="#i-note"/></svg><span>Note</span></button>
+  </div>
   <div class="search-wrap">
     <label for="search" class="sr">Search your notebook</label>
     <svg class="i"><use href="#i-search"/></svg>
     <input id="search" class="search" type="search" placeholder="Search  (Ctrl+F)" autocomplete="off">
   </div>
-  <button type="button" class="chip" id="bin-btn" aria-pressed="false"><svg class="i"><use href="#i-bin"/></svg><span>Bin</span><span class="n" id="bin-count">0</span></button>
-  <button type="button" class="iconbtn" id="lib-btn" aria-label="Library location" aria-expanded="false"><svg class="i"><use href="#i-folder"/></svg></button>
-</header>
+  <div class="micro navlabel">Boards</div>
+  <nav class="boards" id="boards" aria-label="Boards"></nav>
+  <div class="navfoot">
+    <button type="button" class="navrow" id="bin-btn" aria-pressed="false"><svg class="i"><use href="#i-bin"/></svg><span>Bin</span><span class="n" id="bin-count">0</span></button>
+    <button type="button" class="navrow" id="phone"><svg class="i"><use href="#i-phone"/></svg><span>Phone</span></button>
+    <button type="button" class="navrow" id="lib-btn" aria-expanded="false" aria-controls="lib-pop"><svg class="i"><use href="#i-folder"/></svg><span>Library</span></button>
+  </div>
+</aside>
 
-<div class="popover glass" id="lib-pop" hidden>
+<div class="popover" id="lib-pop" hidden>
   <strong>Your library</strong>
   <div class="path" id="lib-path"></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <button class="btn small" type="button" id="lib-reveal">Show in File Explorer</button>
-    <button class="btn small" type="button" id="lib-open">Open another library</button>
+  <div class="popgrid">
+    <button class="btn small" type="button" id="backup"><svg class="i"><use href="#i-backup"/></svg>Back up</button>
+    <button class="btn small" type="button" id="restore"><svg class="i"><use href="#i-restore"/></svg>Restore</button>
+    <button class="btn small" type="button" id="export"><svg class="i"><use href="#i-export"/></svg>Export</button>
+    <button class="btn small" type="button" id="lib-reveal"><svg class="i"><use href="#i-folder"/></svg>Show in File Explorer</button>
   </div>
+  <button class="linkbtn" type="button" id="lib-open">Open another library</button>
 </div>
 
 <main class="page" id="page">
-  <img class="mani" src="assets/mani.png" alt="" aria-hidden="true" width="390" height="160" draggable="false">
-  <nav class="boards" id="boards" aria-label="Boards"></nav>
   <div class="context" id="context"></div>
   <div class="empty" id="empty" hidden></div>
   <div class="grid" id="grid"></div>
 </main>
 
-<div class="dock glass" role="toolbar" aria-label="Add and manage">
-  <button type="button" class="dockbtn" id="add-photos"><svg class="i"><use href="#i-photo"/></svg><span>Add photos</span></button>
-  <button type="button" class="dockbtn" id="add-videos"><svg class="i"><use href="#i-video"/></svg><span>Add videos</span></button>
-  <button type="button" class="dockbtn primary" id="new-note"><svg class="i"><use href="#i-plus"/></svg><span>New note</span></button>
-  <span class="sep"></span>
-  <button type="button" class="dockbtn" id="backup"><svg class="i"><use href="#i-backup"/></svg><span>Back up</span></button>
-  <button type="button" class="dockbtn" id="restore"><svg class="i"><use href="#i-restore"/></svg><span>Restore</span></button>
-  <button type="button" class="dockbtn" id="export"><svg class="i"><use href="#i-export"/></svg><span>Export</span></button>
-  <span class="sep"></span>
-  <button type="button" class="dockbtn" id="phone"><svg class="i"><use href="#i-phone"/></svg><span>Phone</span></button>
-</div>
+<div class="selbar glass" id="selbar" hidden role="toolbar" aria-label="Picked items"></div>
 
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <div id="viewer-root"></div>
@@ -88,6 +91,7 @@
 
 <script src="util.js"></script>
 <script src="viewer.js"></script>
+<script src="stacks.js"></script>
 <script src="phone.js"></script>
 <script src="app.js"></script>
 </body>

@@ -122,8 +122,12 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   assert.ok(Math.abs(fit.stageW - fit.imgW) < 4, 'photo fills its frame: ' + JSON.stringify(fit));
   await page.screenshot({ path: path.join(OUT, '6-photo-note.png') });
   await page.keyboard.press('Escape');
-  await page.locator('.card .cap-note', { hasText: 'chest 27in' }).waitFor();
-  ok('photo note saved and shown on the card; new board made from the open item; frame fits the photo');
+  await page.waitForTimeout(400);
+  await page.locator('.grid .card', { hasText: 'wallpaper dusk' }).click();
+  assert.equal(await page.locator('.side .caption').inputValue(), 'chest 27in, want it in black');
+  assert.equal(await page.locator('.grid .card .cap, .grid .card .cap-note').count(), 0, 'mood board: pictures only on the cards');
+  await page.keyboard.press('Escape');
+  ok('photo note saved (shown when opened, not on the card); new board made from the open item; frame fits the photo');
 
   await page.screenshot({ path: path.join(OUT, '2-all-items.png') });
   await page.locator('.grid .card').first().click();
@@ -146,6 +150,50 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   assert.ok(Math.abs(hl.dx) < 1 && Math.abs(hl.dw) < 1, 'highlight sits on the selected card: ' + JSON.stringify(hl));
   assert.equal(await page.locator('.bcard .stack .ph.blank').count() > 0, true);
   ok('board strip screenshots saved; highlight lines up with the selected card');
+
+  // ---------- picking, stacks and "show on phone" ----------
+  await page.click('.bcard[data-id="all"]');
+  await page.waitForTimeout(700);
+  const loose = page.locator('.grid .card:not(.stackcard)', { has: page.locator('img') });
+  const [idA, idB] = [await loose.nth(0).getAttribute('data-id'), await loose.nth(1).getAttribute('data-id')];
+  await loose.nth(0).click({ modifiers: ['Control'] });
+  await loose.nth(1).click({ modifiers: ['Control'] });
+  assert.equal(await page.locator('.viewer').count(), 0, 'Ctrl-click picks instead of opening');
+  assert.match(await page.locator('#selbar .count').innerText(), /2 picked/);
+  await page.locator('#selbar .btn', { hasText: 'Stack' }).click();
+  const stackCard = page.locator('.grid .stackcard');
+  await stackCard.waitFor();
+  assert.equal(await stackCard.locator('.fanitem').count(), 2);
+  assert.equal(await page.locator('#selbar').isHidden(), true);
+  assert.equal(await stackCard.locator('.stackct').innerText(), '1/2');
+  await stackCard.hover();
+  await stackCard.locator('.fanarrow.r').click();
+  assert.equal(await stackCard.locator('.stackct').innerText(), '2/2', 'the arrow goes to the next picture');
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(OUT, '11-stack.png') });
+  const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8')).items;
+  assert.ok(onDisk().filter((i) => i.id === idA || i.id === idB).every((i) => i.stack && i.stack === onDisk().find((x) => x.id === idA).stack), 'saved as one stack');
+  ok('Ctrl-click picks, Stack makes one fanned card, arrows go through it; saved');
+
+  await stackCard.locator('.fanitem[tabindex="0"]').click();
+  await page.locator('#on-phone').waitFor();
+  assert.equal(await page.locator('#on-phone').isChecked(), true, 'on the phone by default');
+  await page.locator('#on-phone').uncheck();
+  await page.waitForTimeout(300);
+  const topId = await page.evaluate(() => document.querySelector('.stackcard .fanitem[tabindex="0"]').dataset.id);
+  assert.equal(onDisk().find((i) => i.id === topId).phone, false, 'switched off for the phone');
+  await page.locator('.side .btn', { hasText: 'Take out of stack' }).click();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.grid .stackcard').count(), 0, 'a stack of one goes back to loose cards');
+  assert.equal(await page.locator(`.grid .card[data-id="${topId}"] .offphone`).count(), 1, 'the card shows it is not on the phone');
+  await page.locator(`.grid .card[data-id="${topId}"]`).click();
+  await page.locator('#on-phone').check();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  assert.ok(!('phone' in onDisk().find((i) => i.id === topId)), 'back on the phone');
+  ok('"Show on phone" switch saves, shows on the card, and switches back; Take out of stack');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone
@@ -153,7 +201,6 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.locator('.grid .card').first().waitFor();
   assert.equal(await page.locator('.grid .card').count(), 5);
   assert.equal(await page.locator('.grid .card img').count(), 4);
-  assert.equal(await page.locator('.card .cap-note').innerText(), 'chest 27in, want it in black');
   await page.locator('.card', { hasText: 'Autumn capsule' }).click();
   assert.match(await page.locator('.editor').innerText(), /Need brown loafers/);
   await page.keyboard.press('Escape');
