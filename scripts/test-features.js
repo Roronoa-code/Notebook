@@ -50,19 +50,23 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   assert.deepEqual(onDisk().items.map((i) => i.ai.type.main).sort(), ['icon', 'outfit', 'outfit', 'profile picture', 'wallpaper']);
   ok('new photos are recognised in the background and saved (type, colours, styles)');
 
-  // Filters
+  // Filters: the cards that stay are the same cards (they glide, nothing reloads), and the title doesn't replay
+  await page.evaluate(() => { for (const c of document.querySelectorAll('.grid > .card')) c.dataset.was = '1'; });
   await page.locator('.filters .fchip', { hasText: 'Outfits' }).click();
   assert.equal(await page.locator('.grid > .card').count(), 2, 'only the two outfits');
+  assert.equal(await page.locator('.grid > .card[data-was]').count(), 2, 'kept cards are reused, not rebuilt');
+  assert.equal(await page.locator('.ctx-title.still').count(), 1, 'the title stays still');
   await page.locator('.filters .fchip', { hasText: 'Black' }).click();
   assert.equal(await page.locator('.grid > .card').count(), 2);
   await page.locator('.filters .linkbtn', { hasText: 'Clear filters' }).click();
   assert.equal(await page.locator('.grid > .card').count(), 5);
-  ok('filters by type and clothing colour show the right items; Clear filters shows everything');
+  ok('filters by type and clothing colour show the right items without rebuilding the page; Clear filters shows everything');
 
   // Correcting a label: it saves, survives a restart and a re-scan
   const coat = onDisk().items.find((i) => i.originalName === 'outfit coat.jpg');
   await page.locator(`.grid .card[data-id="${coat.id}"]`).click();
-  await page.locator('.recog select[aria-label="What this is"]').selectOption('wallpaper');
+  await page.locator('.recog .dd[aria-label="What this is"]').click();
+  await page.locator('.ddlist .ddopt', { hasText: /^Wallpaper$/ }).click();
   await page.waitForFunction((id) => NB.S.snap.items.find((i) => i.id === id).labels, coat.id);
   assert.equal(onDisk().items.find((i) => i.id === coat.id).labels.main, 'wallpaper');
   await page.keyboard.press('Escape');
@@ -76,7 +80,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   assert.equal(after.labels.main, 'wallpaper', 'the correction survives a restart and a re-scan');
   assert.equal(after.ai.type.main, 'outfit', 'the re-scan only refreshed what the PC saw');
   await page.locator(`.grid .card[data-id="${coat.id}"]`).click();
-  assert.equal(await page.locator('.recog select[aria-label="What this is"]').inputValue(), 'wallpaper');
+  assert.equal(await page.locator('.recog .dd[aria-label="What this is"]').innerText(), 'Wallpaper');
   await page.locator('.recog .linkbtn', { hasText: 'Use what the PC saw' }).click();
   await page.waitForFunction((id) => !NB.S.snap.items.find((i) => i.id === id).labels, coat.id);
   await page.keyboard.press('Escape');

@@ -72,18 +72,16 @@
     if (!L.scanned) return h('p', { class: 'hint recog' }, 'Recognising this on your PC…');
     const types = snap().types || [];
     const save = async (changes) => { const res = await nb.setLabels(it.id, changes); if (res.error) toast(res.error, { error: true }); else NB.apply(res); };
-    const main = h('select', { class: 'select', 'aria-label': 'What this is' }, types.map((t) => h('option', { value: t, selected: t === L.main }, cap(t))));
-    main.addEventListener('change', () => save({ main: main.value, extra: L.types.filter((t) => t !== main.value && t !== L.main) }));
+    const main = NB.dropdown({ label: 'What this is', value: L.main, options: types.map((t) => ({ value: t, label: cap(t) })),
+      onChange: (v) => save({ main: v, extra: L.types.filter((t) => t !== v && t !== L.main) }) });
     const extras = types.filter((t) => t !== L.main).map((t) => {
       const on = L.types.includes(t);
       return h('button', { type: 'button', class: 'chip tog small' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick: () => save({ extra: on ? L.types.filter((x) => x !== t && x !== L.main) : [...L.types.filter((x) => x !== L.main), t] }) }, cap(t));
     });
     const isOutfit = L.types.includes('outfit');
-    const styleSel = (n) => {
-      const sel = h('select', { class: 'select', 'aria-label': n ? 'Second style' : 'Style' }, h('option', { value: '' }, n ? 'No second style' : 'No style'), (snap().styles || []).map((s) => h('option', { value: s, selected: L.styles[n] === s }, cap(s))));
-      sel.addEventListener('change', () => { const next = L.styles.slice(0, 2); next[n] = sel.value; save({ styles: next.filter(Boolean) }); });
-      return sel;
-    };
+    const styleSel = (n) => NB.dropdown({ label: n ? 'Second style' : 'Style', value: L.styles[n] || '',
+      options: [{ value: '', label: n ? 'No second style' : 'No style' }, ...(snap().styles || []).map((s) => ({ value: s, label: cap(s) }))],
+      onChange: (v) => { const next = L.styles.slice(0, 2); next[n] = v; save({ styles: next.filter(Boolean) }); } });
     return h('div', { class: 'recog' },
       h('h4', { class: 'micro' }, 'What it is'),
       h('div', { class: 'recrow' }, main, L.corrected ? h('button', { type: 'button', class: 'linkbtn', onclick: () => save({ main: null, extra: null, styles: null }) }, 'Use what the PC saw') : null),

@@ -1,5 +1,5 @@
-// Stacks (pictures fanned in the space of one card, flicked through with the arrows or a sideways
-// scroll) and picking several things at once (Ctrl-click or the tick) to stack, hide from the phone or bin.
+// Stacks (pictures fanned in the space of one card, flicked through by dragging across them, a sideways
+// scroll or the arrow keys) and picking several things at once (Ctrl-click or the tick) to stack, hide from the phone or bin.
 (() => {
   const { h, icon, toast } = NB;
   const top = {}; // the id of the picture on top of each stack, for as long as the app is open
@@ -11,9 +11,18 @@
     { t: 'translate(-4%, 2%) rotate(-5deg) scale(.9)', o: 1 },
     { t: 'translate(0, 5%) scale(.84)', o: 0 }
   ];
-  function place(el) {
+  const ratioOf = (m) => (m && m.w && m.h ? `${m.w} / ${m.h}` : '4 / 5');
+  // The stack takes the shape of the picture on top (so it's never cropped), gliding between shapes.
+  function place(el, glide) {
     const items = [...el.querySelectorAll('.fanitem')], len = items.length;
     const t = Math.max(0, items.findIndex((b) => b.dataset.id === top[el.dataset.stack]));
+    const fan = el.querySelector('.fan'), ratio = ratioOf(el._members[t]);
+    if (fan.style.aspectRatio !== ratio) {
+      const h0 = glide ? fan.offsetHeight : 0;
+      fan.style.aspectRatio = ratio;
+      const h1 = glide ? fan.offsetHeight : 0;
+      if (h0 && h1 && Math.abs(h0 - h1) > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) fan.animate([{ height: h0 + 'px' }, { height: h1 + 'px' }], { duration: 420, easing: 'cubic-bezier(.2,.9,.3,1.04)' });
+    }
     items.forEach((b, i) => {
       const k = (i - t + len) % len, f = FAN[Math.min(k, 3)];
       b.style.setProperty('--t', f.t);
@@ -28,7 +37,39 @@
     const items = [...el.querySelectorAll('.fanitem')], len = items.length, id = el.dataset.stack;
     const now = Math.max(0, items.findIndex((b) => b.dataset.id === top[id]));
     top[id] = items[(((now + dir) % len) + len) % len].dataset.id;
-    place(el);
+    place(el, true);
+  }
+
+  // Drag across a stack with the mouse to flick through it; the top picture follows the mouse.
+  // A drag that starts mostly up or down still picks the stack up (onto a board or another card).
+  // A sideways one rides the browser's drag with an invisible drag picture.
+  const SWIPE = 'application/x-notebook-swipe';
+  const blank = new Image(); blank.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+  function swipe(el) {
+    let down = null, last = null; // the drag's own position is where it started, so the direction comes from the mouse
+    el.addEventListener('pointerdown', (e) => { down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; last = down; });
+    el.addEventListener('pointermove', (e) => { if (down) last = { x: e.clientX, y: e.clientY }; });
+    el.addEventListener('dragstart', (e) => {
+      if (!down || Math.abs(last.x - down.x) <= Math.abs(last.y - down.y)) return;
+      e.stopImmediatePropagation(); // not a drag onto a board or card
+      e.dataTransfer.setData(SWIPE, '1');
+      e.dataTransfer.setDragImage(blank, 0, 0);
+      e.dataTransfer.effectAllowed = 'move';
+      const topEl = el.querySelector('.fanitem[tabindex="0"]'), x0 = down.x;
+      let dx = last.x - x0;
+      topEl.style.transition = 'none';
+      const follow = (d) => { if (!d.clientX && !d.clientY) return; dx = d.clientX - x0; topEl.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`; };
+      const end = () => {
+        el.removeEventListener('drag', follow); el.removeEventListener('dragend', end); document.removeEventListener('dragover', follow);
+        topEl.style.transition = ''; topEl.style.transform = '';
+        if (Math.abs(dx) > 50) turn(el, dx < 0 ? 1 : -1);
+      };
+      el.addEventListener('drag', follow); el.addEventListener('dragend', end); document.addEventListener('dragover', follow);
+    });
+    // Over its own stack a swipe shows a normal cursor, and letting go there does nothing else.
+    const isSwipe = (e) => [...e.dataTransfer.types].includes(SWIPE);
+    el.addEventListener('dragover', (e) => { if (isSwipe(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } });
+    el.addEventListener('drop', (e) => { if (isSwipe(e)) { e.preventDefault(); e.stopPropagation(); } });
   }
 
   // members: the stack's items in list order. media(it): the picture part of a card.
@@ -38,14 +79,13 @@
     const id = members[0].stack, len = members.length;
     const first = members[0];
     const el = h('div', { class: 'card stackcard', 'data-stack': id, style: { animationDelay: Math.min(index * 30, 420) + 'ms' } });
-    const fan = h('div', { class: 'fan', style: { aspectRatio: first.w && first.h ? `${first.w} / ${first.h}` : '4 / 5' } },
-      members.map((m, i) => h('button', { type: 'button', class: 'fanitem', 'data-id': m.id, 'aria-label': `Open ${m.title}, ${i + 1} of ${len} in a stack`,
+    el._members = members;
+    const fan = h('div', { class: 'fan', style: { aspectRatio: ratioOf(first) } },
+      members.map((m, i) => h('button', { type: 'button', class: 'fanitem', 'data-id': m.id, 'aria-label': `Open ${m.title}, ${i + 1} of ${len} in a stack. Drag across or use the arrow keys to go through it.`,
         onclick: (e) => click(e, members.map((x) => x.id), () => NB.viewer.open(m.id)) }, media(m), h('span', { class: 'sr' }, m.title))));
-    el.append(fan,
-      h('span', { class: 'stackct', 'aria-hidden': 'true' }, icon('stack'), h('span')),
-      h('button', { type: 'button', class: 'fanarrow l', 'aria-label': 'Previous in stack', onclick: () => turn(el, -1) }, icon('left')),
-      h('button', { type: 'button', class: 'fanarrow r', 'aria-label': 'Next in stack', onclick: () => turn(el, 1) }, icon('right')),
-      pickBox(members.map((x) => x.id)));
+    el.append(fan, h('span', { class: 'stackct', 'aria-hidden': 'true' }, icon('stack'), h('span')), pickBox(members.map((x) => x.id)));
+    swipe(el);
+    NB.dragSource(el, members.map((x) => x.id));
     // A sideways scroll (trackpad, tilt wheel or Shift + wheel) flicks through too.
     let wait = 0;
     el.addEventListener('wheel', (e) => {

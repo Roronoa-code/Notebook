@@ -167,15 +167,24 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   assert.equal(await stackCard.locator('.fanitem').count(), 2);
   assert.equal(await page.locator('#selbar').isHidden(), true);
   assert.equal(await stackCard.locator('.stackct').innerText(), '1/2');
-  await stackCard.hover();
-  await stackCard.locator('.fanarrow.r').click();
-  assert.equal(await stackCard.locator('.stackct').innerText(), '2/2', 'the arrow goes to the next picture');
+  assert.equal(await stackCard.locator('.fanarrow').count(), 0, 'no arrow buttons on stacks');
+  await page.waitForTimeout(600); // let the new stack settle into place
+  const sb = await stackCard.boundingBox();
+  await page.mouse.move(sb.x + sb.width * 0.75, sb.y + sb.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(sb.x + sb.width * 0.75 - i * 14, sb.y + sb.height / 2 + 1);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  assert.equal(await stackCard.locator('.stackct').innerText(), '2/2', 'dragging across the stack goes to the next picture');
+  assert.equal(await page.locator('.viewer').count(), 0, 'and does not open it');
+  const shape = await stackCard.evaluate((el) => { const id = el.querySelector('.fanitem[tabindex="0"]').dataset.id, m = NB.S.snap.items.find((i) => i.id === id), f = el.querySelector('.fan').getBoundingClientRect(); return { want: m.h / m.w, got: f.height / f.width }; });
+  assert.ok(Math.abs(shape.want - shape.got) < 0.02, 'the stack takes the shape of the picture on top: ' + JSON.stringify(shape));
   await page.mouse.move(10, 10);
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(OUT, '11-stack.png') });
   const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8')).items;
   assert.ok(onDisk().filter((i) => i.id === idA || i.id === idB).every((i) => i.stack && i.stack === onDisk().find((x) => x.id === idA).stack), 'saved as one stack');
-  ok('Ctrl-click picks, Stack makes one fanned card, arrows go through it; saved');
+  ok('Ctrl-click picks, Stack makes one fanned card, dragging across goes through it; saved');
 
   await stackCard.locator('.fanitem[tabindex="0"]').click();
   await page.locator('#on-phone').waitFor();
@@ -203,15 +212,15 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.click(`.bcard[data-id="${pair.board}"]`);
   await page.waitForTimeout(700);
   assert.equal(await page.locator('.grid .stackcard').count(), 0, 'a stack made in All is loose cards in a board');
-  for (const id of pair.ids) await page.locator(`.grid .card[data-id="${id}"]`).click({ modifiers: ['Control'] });
-  await page.locator('#selbar .btn', { hasText: 'Stack' }).click();
+  await page.locator(`.grid .card[data-id="${pair.ids[0]}"]`).dragTo(page.locator(`.grid .card[data-id="${pair.ids[1]}"]`));
   await page.locator('.grid .stackcard').waitFor();
+  assert.deepEqual((await page.locator('.grid .stackcard .fanitem').evaluateAll((b) => b.map((x) => x.dataset.id))).sort(), pair.ids.slice().sort(), 'dropping a card onto another card stacks them');
   assert.ok(onDisk().filter((i) => pair.ids.includes(i.id)).every((i) => i.stackIn === pair.board), 'saved as stacked in this board');
   await page.click('.bcard[data-id="all"]');
   await page.locator('.grid .stackcard').waitFor();
   await page.evaluate(async (id) => { NB.apply(await nb.unstackItem(id)); NB.refreshGrid(); }, pair.ids[0]);
   await page.waitForFunction(() => !document.querySelector('.grid .stackcard'));
-  ok('stacks only group inside a board when they were made there; all stacks group in All items');
+  ok('drop a card onto a card to stack; stacks only group inside a board when they were made there; all stacks group in All items');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone

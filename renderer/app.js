@@ -123,10 +123,13 @@
     }
     const g = NB.smart.suggestion();
     if (g) {
-      box.append(h('h2', { class: 'ctx-title' }, g.name), h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`), NB.smart.suggestionBar(g));
+      box.append(h('h2', { class: 'ctx-title' + (renderContext.last === g.sig ? ' still' : '') }, g.name), h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`), NB.smart.suggestionBar(g));
+      renderContext.last = g.sig;
       return;
     }
-    box.append(h('h2', { class: 'ctx-title' }, board ? board.name : S.board === 'bin' ? 'Bin' : 'All items'));
+    const titleKey = S.board + (S.snap.root || '');
+    box.append(h('h2', { class: 'ctx-title' + (titleKey === renderContext.last ? ' still' : '') }, board ? board.name : S.board === 'bin' ? 'Bin' : 'All items'));
+    renderContext.last = titleKey;
     box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
     if (board) {
       box.append(h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board'));
@@ -167,17 +170,57 @@
     const tilt = index % 2 ? '1.3deg' : '-1.3deg';
     const btn = h('button', { type: 'button', class: 'card', 'data-id': it.id, 'aria-label': `Open ${it.title}`, style: { '--tilt': tilt, animationDelay: Math.min(index * 30, 420) + 'ms' },
       onclick: (e) => (it.deletedAt ? NB.viewer.open(it.id) : NB.stacks.click(e, [it.id], () => NB.viewer.open(it.id))) });
-    if (!it.deletedAt) dragSource(btn, it);
+    if (!it.deletedAt) dragSource(btn, [it.id]);
     btn.append(media(it), h('span', { class: 'sr' }, it.title), it.deletedAt ? null : NB.stacks.pickBox([it.id]));
     return btn;
   }
 
+  // Cards that haven't changed are kept (no reload, no flash). When the list changes in place (a filter,
+  // a stack, a sync) every card glides from where it was to where it goes; new ones grow in, gone ones fade.
+  const kept = new Map(); // key -> { sig, el }
+  const sigOf = (it) => [it.id, it.updatedAt, it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id)].join('|');
+  const idsIn = (el) => (el.classList.contains('stackcard') ? [...el.querySelectorAll('.fanitem')].map((b) => b.dataset.id) : [el.dataset.id]);
   function renderGrid() {
     const grid = $('grid'), empty = $('empty');
     const list = NB.visibleItems();
+    const glide = !S.anim && grid.children.length && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const before = new Map(), beforeId = new Map();
+    if (glide) for (const el of grid.children) { const r = el.getBoundingClientRect(); before.set(el, r); for (const id of idsIn(el)) beforeId.set(id, r); }
+    const els = NB.stacks.group(list, NB.smart.suggestion() ? null : currentBoardId()).map((x, i) => {
+      const key = Array.isArray(x) ? 's:' + x.map((m) => m.id).sort().join(',') : 'c:' + x.id;
+      const sig = Array.isArray(x) ? x.map(sigOf).join(';') : sigOf(x);
+      const hit = kept.get(key);
+      if (hit && hit.sig === sig && !S.anim) return hit.el;
+      const el = Array.isArray(x) ? NB.stacks.stackCard(x, i, media) : card(x, i);
+      if (glide) el.style.animation = 'none';
+      kept.set(key, { sig, el });
+      return el;
+    });
+    for (const [k, v] of kept) if (!els.includes(v.el)) kept.delete(k);
     grid.className = 'grid' + (S.anim ? ' anim ' + S.dir : '');
-    grid.replaceChildren(...NB.stacks.group(list, NB.smart.suggestion() ? null : currentBoardId()).map((x, i) => (Array.isArray(x) ? NB.stacks.stackCard(x, i, media) : card(x, i))));
+    grid.replaceChildren(...els);
     S.anim = false;
+    if (glide) {
+      const ease = 'cubic-bezier(.2,.9,.3,1)';
+      for (const el of els) {
+        const was = before.get(el) || idsIn(el).map((id) => beforeId.get(id)).find(Boolean), now = el.getBoundingClientRect();
+        if (!was) { el.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: ease, delay: 80 }); continue; }
+        const dx = was.left - now.left, dy = was.top - now.top;
+        if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 460, easing: ease });
+      }
+      // Cards that left fade where they were (or shrink into the stack they joined).
+      for (const [el, r] of before) {
+        if (els.includes(el) || r.bottom < 0 || r.top > innerHeight) continue;
+        const into = els.find((x) => idsIn(el).some((id) => idsIn(x).includes(id)));
+        if (into && (el.classList.contains('stackcard') || !into.classList.contains('stackcard'))) continue; // just redrawn: it glides as the new card
+        el.className = 'card-ghost';
+        Object.assign(el.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', margin: 0, zIndex: 3, pointerEvents: 'none', animation: 'none' });
+        document.body.append(el);
+        const to = into ? into.getBoundingClientRect() : null;
+        const end = to ? `translate(${to.left + to.width / 2 - (r.left + r.width / 2)}px, ${to.top + 40 - r.top}px) scale(.5)` : 'scale(.92)';
+        el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => el.remove();
+      }
+    }
     empty.hidden = list.length > 0;
     if (list.length) return;
     const board = boardById(S.board);
@@ -199,22 +242,35 @@
 
   // ---------- dragging items onto boards ----------
   const DRAG_TYPE = 'application/x-notebook-item';
-  let dragging = null;
+  let dragging = null; // the ids being dragged (one card, or every picture in a stack)
+  const ours = (e) => [...e.dataTransfer.types].includes(DRAG_TYPE);
 
-  function dragSource(el, it) {
+  // A card (or stack) can be dragged onto a board, or onto another card to stack them together.
+  function dragSource(el, ids) {
     el.draggable = true;
     el.addEventListener('dragstart', (e) => {
-      dragging = it.id;
-      e.dataTransfer.setData(DRAG_TYPE, it.id);
-      e.dataTransfer.effectAllowed = 'copy';
+      dragging = ids;
+      e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(ids));
+      e.dataTransfer.effectAllowed = 'copyMove';
       el.classList.add('lifted');
       showTray();
     });
     el.addEventListener('dragend', () => { dragging = null; el.classList.remove('lifted'); hideTray(); });
+    const onSelf = () => !dragging || dragging.some((id) => ids.includes(id));
+    el.addEventListener('dragover', (e) => { if (!ours(e) || onSelf()) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; el.classList.add('droptarget'); });
+    el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove('droptarget'); });
+    el.addEventListener('drop', async (e) => {
+      el.classList.remove('droptarget');
+      if (!ours(e) || onSelf()) return;
+      e.preventDefault();
+      const moving = dragging;
+      const res = NB.apply(await nb.stackItems([...new Set([...ids, ...moving])], currentBoardId()));
+      if (res) toast('Stacked. Drag across it to go through them.');
+    });
   }
+  NB.dragSource = dragSource;
 
   function dropTarget(el, boardId) {
-    const ours = (e) => [...e.dataTransfer.types].includes(DRAG_TYPE);
     el.addEventListener('dragover', (e) => { if (ours(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; el.classList.add('dropping'); } });
     el.addEventListener('dragleave', () => el.classList.remove('dropping'));
     el.addEventListener('drop', (e) => {
@@ -222,7 +278,7 @@
       e.preventDefault();
       e.stopPropagation();
       el.classList.remove('dropping');
-      addToBoard(e.dataTransfer.getData(DRAG_TYPE), boardId);
+      addToBoard(JSON.parse(e.dataTransfer.getData(DRAG_TYPE)), boardId);
     });
   }
 
@@ -239,14 +295,14 @@
   }
   const hideTray = () => { $('tray').hidden = true; };
 
-  async function addToBoard(id, boardId) {
-    const it = S.snap.items.find((i) => i.id === id);
+  async function addToBoard(ids, boardId) {
     const name = NB.boardName(boardId);
-    if (!it || !name) return;
-    if (it.boards.includes(boardId)) { toast(`Already on ${name}`); return; }
-    const before = it.boards;
-    const res = NB.apply(await nb.updateItem(id, { boards: [...before, boardId] }));
-    if (res) toast(`Added to ${name}`, { action: { label: 'Undo', run: async () => NB.apply(await nb.updateItem(id, { boards: before })) } });
+    const todo = S.snap.items.filter((i) => ids.includes(i.id) && !i.boards.includes(boardId));
+    if (!name) return;
+    if (!todo.length) { toast(`Already on ${name}`); return; }
+    const before = new Map(todo.map((i) => [i.id, i.boards]));
+    for (const it of todo) if (!NB.apply(await nb.updateItem(it.id, { boards: [...it.boards, boardId] }))) return;
+    toast(`Added to ${name}`, { action: { label: 'Undo', run: async () => { for (const [id, b] of before) NB.apply(await nb.updateItem(id, { boards: b })); } } });
   }
 
   // ---------- switching boards ----------

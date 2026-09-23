@@ -100,7 +100,19 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .fchip.ghost { border-style: dashed; }
 .fchip svg { width: 14px; height: 14px; }
 .swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); flex-shrink: 0; }
-.select { height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface2); color: var(--ink); padding: 0 10px; font-weight: 600; }
+.dd { height: 38px; min-width: 150px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface2); color: var(--ink); padding: 0 10px 0 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; transition: border-color .2s, background .2s; }
+.dd:hover { background: #222; } .dd:focus-visible, .dd[aria-expanded="true"] { outline: none; border-color: var(--accent); }
+.dd svg { width: 14px; height: 14px; rotate: 90deg; color: var(--muted); transition: rotate .3s var(--spring); }
+.dd[aria-expanded="true"] svg { rotate: -90deg; }
+.ddlist { position: fixed; z-index: 40; max-height: 320px; overflow-y: auto; padding: 6px; border-radius: 14px; background: var(--surface); border: 1px solid rgba(255,255,255,.09); box-shadow: 0 24px 50px -14px rgba(0,0,0,.85); scrollbar-width: none; transform-origin: top center; animation: ddIn .26s var(--spring) backwards; }
+.ddlist.up { transform-origin: bottom center; }
+.ddlist.out { animation: ddOut .18s ease-in forwards; pointer-events: none; }
+.ddopt { height: 34px; padding: 0 10px; border-radius: 9px; display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; font-weight: 500; color: var(--ink2); cursor: pointer; white-space: nowrap; }
+.ddopt.at { background: var(--hover); color: var(--ink); }
+.ddopt[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.ddopt svg { width: 14px; height: 14px; color: var(--accent); stroke-width: 3; }
+@keyframes ddIn { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+@keyframes ddOut { to { opacity: 0; transform: translateY(-4px) scale(.97); } }
 .recog { display: flex; flex-direction: column; gap: 10px; }
 .recrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .chip.small { height: 32px; font-size: 13px; }
@@ -147,7 +159,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .context .btn { margin-bottom: 6px; }
 .rename { height: 110px; width: min(900px, 100%); border-radius: 20px; border: 1px solid var(--accent); background: rgba(255,255,255,.04); padding: 0 18px; font: 400 88px/1 var(--poster); text-transform: uppercase; outline: none; }
 
-/* stacks: pictures fanned in the space of one card; arrows (or sideways scroll) go through them */
+/* stacks: pictures fanned in the space of one card; drag across (or scroll sideways) to go through them */
 .stackcard { position: relative; }
 .fan { position: relative; }
 .fanitem { position: absolute; inset: 0; padding: 0; border: 0; background: none; transform: var(--t); transition: transform .42s cubic-bezier(.2,.9,.3,1.12), opacity .3s; }
@@ -157,10 +169,11 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .stackcard:hover .fanitem:first-child .media, .stackcard .fanitem .media { transform: none; }
 .stackct { position: absolute; right: 10px; top: 10px; z-index: 12; height: 26px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font: 500 11px var(--mono); letter-spacing: .08em; color: #fff; background: rgba(0,0,0,.55); pointer-events: none; }
 .stackct svg { width: 12px; height: 12px; }
-.fanarrow { position: absolute; top: 50%; z-index: 13; width: 38px; height: 38px; margin-top: -19px; border-radius: 50%; border: 0; background: rgba(10,10,10,.7); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s, transform .35s var(--spring); }
-.fanarrow.l { left: 8px; } .fanarrow.r { right: 8px; }
-.stackcard:hover .fanarrow, .fanarrow:focus-visible { opacity: 1; }
-.fanarrow:hover { transform: scale(1.1); }
+.stackcard .fanitem { cursor: grab; }
+.card.droptarget .media, .card.droptarget .fan { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 20px; }
+.card.droptarget { transform: scale(1.03); transition: transform .3s var(--spring); }
+.ctx-title.still { animation: none; }
+.card-ghost { display: block; }
 /* picked items and the bar for them */
 .card .pick { position: absolute; left: 10px; top: 10px; z-index: 14; width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.8); background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s, background .2s; cursor: pointer; }
 .card .pick svg { width: 14px; height: 14px; stroke-width: 3; opacity: 0; }
