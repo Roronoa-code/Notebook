@@ -14,7 +14,9 @@ let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
 
 async function launch() {
-  const app = await electron.launch({ args: [APP], env: { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata') } });
+  // Set NOTEBOOK_EXE to test the packaged app (dist/win-unpacked/Notebook.exe) instead of the source.
+  const exe = process.env.NOTEBOOK_EXE;
+  const app = await electron.launch({ ...(exe ? { executablePath: exe, args: [] } : { args: [APP] }), env: { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata') } });
   const page = await app.firstWindow();
   const web = [];
   page.on('request', (r) => { if (/^(https?|wss?):/.test(r.url())) web.push(r.url()); });
