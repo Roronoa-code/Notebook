@@ -293,12 +293,28 @@
       el.style.pointerEvents = a > 2.2 ? 'none' : 'auto';
     });
   }
+  // Spins the wheel to a board. The position itself is animated (not each pill), so on a loop every
+  // board moves round in the same direction and nothing ever slides the wrong way across the middle.
+  let spinFrame = 0;
   function settle(target) {
-    const before = focusIndex();
-    S.pos = looped() ? target : Math.max(0, Math.min(count() - 1, target));
-    layoutPills();
-    if (focusIndex() !== before) tick();
-    N.setPref('wheel', String(wrapIndex(S.pos)));
+    if (!looped()) target = Math.max(0, Math.min(count() - 1, target));
+    cancelAnimationFrame(spinFrame);
+    const start = S.pos, dist = target - start;
+    if (Math.abs(dist) < 0.001) { S.pos = target; layoutPills(); return; }
+    const dur = Math.min(900, 260 + 170 * Math.sqrt(Math.abs(dist)));
+    const t0 = performance.now();
+    let lastFocus = focusIndex();
+    const ease = (t) => 1 - Math.pow(1 - t, 3); // quick start, gentle landing
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / dur);
+      S.pos = start + dist * ease(t);
+      layoutPills();
+      const f = focusIndex();
+      if (f !== lastFocus) { lastFocus = f; tick(); } // a tick for every board that passes the middle
+      if (t < 1) spinFrame = requestAnimationFrame(step);
+      else { S.pos = target; layoutPills(); N.setPref('wheel', String(wrapIndex(S.pos))); }
+    };
+    spinFrame = requestAnimationFrame(step);
   }
   function rebuildWheel() {
     const stack = homeEl && homeEl.querySelector('#stack');
@@ -314,8 +330,8 @@
     const stack = root.querySelector('#stack');
     let y0 = 0, pos0 = 0, lastY = 0, lastT = 0, vel = 0, moved = false, lastFocus = 0;
     stack.addEventListener('touchstart', (e) => {
+      cancelAnimationFrame(spinFrame); // catching the wheel mid-spin stops it where it is
       y0 = lastY = e.touches[0].clientY; lastT = e.timeStamp; pos0 = S.pos; vel = 0; moved = false; lastFocus = focusIndex();
-      stack.classList.add('drag');
     }, { passive: true });
     stack.addEventListener('touchmove', (e) => {
       const y = e.touches[0].clientY;
@@ -329,16 +345,12 @@
       const f = focusIndex();
       if (f !== lastFocus) { lastFocus = f; tick(); }
     }, { passive: true });
-    const end = () => {
-      stack.classList.remove('drag');
+    const end = (e) => {
       if (!moved) return;
-      const fling = Math.max(-3, Math.min(3, vel * 160));
-      const before = lastFocus;
-      S.pos = Math.round(S.pos + fling);
-      if (!looped()) S.pos = Math.max(0, Math.min(count() - 1, S.pos));
-      layoutPills();
-      if (focusIndex() !== before) tick();
-      N.setPref('wheel', String(wrapIndex(S.pos)));
+      // A flick keeps going in the same direction: faster flicks travel further.
+      const recent = e && e.timeStamp - lastT < 80 ? vel : 0;
+      const fling = Math.max(-6, Math.min(6, recent * 220));
+      settle(Math.round(S.pos + fling));
       stack.dataset.swiped = '1';
       setTimeout(() => { stack.dataset.swiped = ''; }, 80);
     };
