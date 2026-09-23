@@ -296,9 +296,9 @@
     lift.addEventListener('touchstart', (e) => { y0 = e.touches[0].clientY; }, { passive: true });
     lift.addEventListener('touchmove', (e) => {
       const dy = y0 - e.touches[0].clientY;
-      if (!S.lift && dy > 20) { e.preventDefault(); setLift(true); }
-      else if (S.lift && lift.scrollTop <= 0 && dy < -24) { e.preventDefault(); setLift(false); }
-    }, { passive: false });
+      if (!S.lift && dy > 20) setLift(true);
+      else if (S.lift && lift.scrollTop <= 0 && dy < -24) setLift(false);
+    }, { passive: true });
     // Board wheel: swipe up/down to move through boards; tap a dim pill to bring it to the middle, tap the middle one to open it.
     const stack = root.querySelector('#stack');
     let sy = 0, swiped = false;
@@ -306,8 +306,7 @@
     stack.addEventListener('touchmove', (e) => {
       const dy = e.touches[0].clientY - sy;
       if (Math.abs(dy) > 36) { setFocus(S.focus + (dy < 0 ? 1 : -1)); sy = e.touches[0].clientY; swiped = true; }
-      e.preventDefault();
-    }, { passive: false });
+    }, { passive: true });
     stack.addEventListener('click', (e) => {
       const el = e.target.closest('.pill');
       if (!el || swiped) { swiped = false; return; }
