@@ -84,7 +84,7 @@ public class SyncClient {
         throw new IOException(CANT_FIND, last);
     }
 
-    void unpair() { p.edit().remove("token").remove("pcId").remove("pcName").remove("host").remove("port").remove("lastSync").apply(); }
+    void unpair() { p.edit().remove("adopted").remove("token").remove("pcId").remove("pcName").remove("host").remove("port").remove("lastSync").apply(); }
 
     private static int parsePort(String s) {
         try { return s == null ? 47821 : Integer.parseInt(s); } catch (NumberFormatException e) { return 47821; }
@@ -144,6 +144,14 @@ public class SyncClient {
             if (cb != null) cb.update("connecting", 0, 0);
             String b = base();
             String token = p.getString("token", null);
+            if (!p.getBoolean("adopted", false)) {
+                // Ask the PC for its boards first (sending nothing changes nothing on the PC), then line ours up with them.
+                JSONObject empty = new JSONObject().put("deviceId", p.getString("deviceId", "")).put("boards", new JSONArray()).put("items", new JSONArray())
+                    .put("tombstones", new JSONObject().put("items", new JSONArray()).put("boards", new JSONArray()));
+                lib.adoptBoards(new JSONObject(request("POST", b + "/api/sync", empty.toString(), token, 30000)).getJSONArray("boards"));
+                p.edit().putBoolean("adopted", true).apply();
+            }
+            lib.dedupeBoards();
             JSONObject body = lib.metadataForSync();
             body.put("deviceId", p.getString("deviceId", ""));
             if (cb != null) cb.update("merging", 0, 0);

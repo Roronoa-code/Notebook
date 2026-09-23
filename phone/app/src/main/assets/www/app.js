@@ -28,14 +28,20 @@
     if (r.state) setDB(r.state);
     return r;
   }
-  function setDB(state) { DB = state; dataVer++; refresh(); }
+  function setDB(state) {
+    const changed = JSON.stringify([DB.boards, DB.items]) !== JSON.stringify([state.boards, state.items]);
+    DB = state;
+    if (changed) { dataVer++; refresh(); }
+    else if (S.screen === 'sync') refresh();
+    if (homeEl) homeEl.querySelector('#synced').textContent = statusText();
+  }
   window.nbOnState = (json) => setDB(JSON.parse(json));
   window.nbOnToast = (msg) => toast(msg);
 
   // ---------- helpers ----------
   const app = document.getElementById('app');
   const $ = (q) => app.querySelector(q);
-  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const { escape: esc, sanitize, autoTidy, noteTitle } = NBText;
   const svg = (d, size = 20, sw = 2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"></path></svg>`;
   const P = {
     back: 'M15 18l-6-6 6-6', home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5',
@@ -51,36 +57,6 @@
     if (s < 3600) return plural(Math.round(s / 60), 'min') + ' ago';
     if (s < 86400) return plural(Math.round(s / 3600), 'hour') + ' ago';
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  }
-  const ALLOWED = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'H2', 'H3', 'P', 'DIV', 'BR']);
-  function sanitize(html) {
-    const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html');
-    const walk = (node) => {
-      for (const c of [...node.childNodes]) {
-        if (c.nodeType === 3) continue;
-        if (c.nodeType !== 1 || ['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'IMG'].includes(c.tagName)) { c.remove(); continue; }
-        walk(c);
-        if (!ALLOWED.has(c.tagName)) { c.replaceWith(...c.childNodes); continue; }
-        for (const a of [...c.attributes]) c.removeAttribute(a.name);
-      }
-    };
-    walk(doc.body);
-    return doc.body.innerHTML;
-  }
-  // Tidy up (no AI): the first phrase becomes a heading, the rest bullet points. Same rules as the PC.
-  function autoTidy(text) {
-    const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
-    const clean = String(text || '').replace(/([?!.])\1+/g, '$1').replace(/^\s*[-*•]\s*/gm, '');
-    const parts = clean.split(/\n|,|;|:\s|\s-\s|\.\s|(?<=\?)\s+|\s+also\s+/i).map((x) => x.trim().replace(/[.,]$/, '')).filter(Boolean);
-    if (!parts.length) return null;
-    const head = parts[0].length <= 40 ? parts.shift() : 'Note';
-    return `<h2>${esc(cap(head))}</h2>` + (parts.length ? `<ul>${parts.map((x) => `<li>${esc(cap(x))}</li>`).join('')}</ul>` : '');
-  }
-  function noteTitle(html) {
-    const d = document.createElement('div');
-    d.innerHTML = sanitize(html).replace(/<br>|<\/(p|div|h2|h3|li)>/gi, '$&\n');
-    const first = d.textContent.split('\n').map((s) => s.trim()).find(Boolean);
-    return first ? first.slice(0, 80) : 'Untitled note';
   }
   let toastTimer = null;
   function toast(msg, undo) {
@@ -174,22 +150,22 @@
       stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn" style="height:40px">Tidy up</button></div>
         <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Start typing, then tap Tidy up to turn it into a heading and bullet points.">${sanitize(it.html)}</div></div>`;
     } else if (it.kind === 'video') {
-      stage = `<div class="stage"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" playsinline preload="metadata"></video>
-        <button type="button" class="glass playbtn" data-a="play" id="playbtn" aria-label="Play"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></button></div>`;
+      stage = `<div class="stage"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" controls playsinline preload="metadata"></video>
+        <p class="media-message" role="status"></p></div>`;
     } else {
-      stage = `<div class="stage"><img src="${url(it.file)}" alt="${esc(it.title)}"></div>`;
+      stage = `<div class="stage"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
     }
     const kind = it.kind === 'note' ? 'Note' : it.kind === 'video' ? 'Video' : 'Photo';
-    return `<div class="screen" style="overflow:hidden">
+    return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
       ${stage}
       <button type="button" class="iconbtn glass" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:3">${svg(P.back)}</button>
       <span class="glass kindpill">${kind}</span>
       <div class="sheet frost${it.kind === 'note' ? ' compact' : ''}">
-        <div class="handle"></div>
-        ${it.kind !== 'note' ? `<div style="font-size:24px;line-height:1.15">${esc(it.title)}</div>
-          <div style="display:flex;flex-direction:column;gap:8px"><label class="lbl" for="note">Note</label><textarea id="note" class="notebox" placeholder="Why did you save this?">${esc(it.caption || '')}</textarea></div>` : ''}
+        ${it.kind !== 'note' ? `<details class="media-details"><summary><span>${esc(it.title)}</span><small>Details & boards</small></summary><div class="media-fields">` : '<div class="handle"></div>'}
+        ${it.kind !== 'note' ? `<div style="display:flex;flex-direction:column;gap:8px"><label class="lbl" for="note">Note</label><textarea id="note" class="notebox" placeholder="Why did you save this?">${esc(it.caption || '')}</textarea></div>` : ''}
         <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Boards</span><div class="chips">${chips}</div></div>
         <div style="display:flex;gap:10px"><button type="button" class="btn danger" data-a="bin">${svg(P.bin, 16)}<span>Move to Bin</span></button><span style="flex:1"></span><button type="button" class="btn white" data-a="back">Done</button></div>
+        ${it.kind !== 'note' ? '</div></details>' : ''}
       </div>
     </div>`;
   }
@@ -257,6 +233,10 @@
     $('#nav').hidden = S.screen === 'item';
     $('#nav-home').classList.toggle('on', S.screen === 'home');
     $('#nav-sync').classList.toggle('on', S.screen === 'sync');
+    for (const el of app.querySelectorAll('.navbtn[id]')) {
+      if (el.classList.contains('on')) el.setAttribute('aria-current', 'page');
+      else el.removeAttribute('aria-current');
+    }
     $('#addbtn').classList.toggle('open', S.add);
     $('#addbtn').setAttribute('aria-expanded', String(S.add));
     $('#addsheet').hidden = !S.add;
@@ -288,7 +268,7 @@
       const d = circ(+el.dataset.pill, S.pos), a = Math.abs(d);
       el.style.transform = `translateY(${(d * STEP).toFixed(1)}px) scale(${(1 - Math.min(a, 3) * 0.04).toFixed(3)})`;
       el.style.opacity = a >= 2.6 ? '0' : Math.max(0, 1 - a * 0.28 - Math.max(0, a - 1.8) * 0.9).toFixed(3);
-      el.style.setProperty('--glow', Math.max(0, 0.22 - a * 0.09).toFixed(3));
+      el.style.setProperty('--glow', Math.max(0, 0.22 - a * 0.09).toFixed(3)); // the middle board is lit
       el.style.zIndex = String(10 - Math.round(a));
       el.style.pointerEvents = a > 2.2 ? 'none' : 'auto';
     });
@@ -301,7 +281,8 @@
     cancelAnimationFrame(spinFrame);
     const start = S.pos, dist = target - start;
     if (Math.abs(dist) < 0.001) { S.pos = target; layoutPills(); return; }
-    const dur = Math.min(900, 260 + 170 * Math.sqrt(Math.abs(dist)));
+    const dur = Math.min(900, 340 + 190 * Math.sqrt(Math.abs(dist)));
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { S.pos = target; layoutPills(); return; }
     const t0 = performance.now();
     let lastFocus = focusIndex();
     const ease = (t) => 1 - Math.pow(1 - t, 3); // quick start, gentle landing
@@ -361,16 +342,15 @@
       const el = e.target.closest('.pill');
       if (!el || stack.dataset.swiped) return;
       const k = +el.dataset.pill;
-      el.classList.remove('jig'); void el.offsetWidth; el.classList.add('jig');
       if (k !== focusIndex()) { settle(Math.round(S.pos + circ(k, S.pos))); return; }
       const b = wheel()[k];
       if (b.isNew) { openForm('newBoard'); return; }
-      setTimeout(() => go('board', { board: b.id }, 'push'), 180);
+      go('board', { board: b.id }, 'push');
     });
   }
 
   // ---------- screens: build only the one you move to; Home is kept as you left it ----------
-  let homeEl = null, homeVer = 0, boardSig = '';
+  let homeEl = null, currentEl = null, homeVer = 0, boardSig = '';
   const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML };
   const sigOf = () => boards().map((b) => b.id + ':' + b.name).join('|');
 
@@ -413,28 +393,79 @@
     }
   }
 
-  // Moving between screens: items grow out of their card and shrink back into it; other screens slide or fade.
-  const EASE = 'cubic-bezier(.22,1,.36,1)', DUR = 440;
+  // Transform and opacity stay on compositor layers; clipping a whole frosted screen repaints it.
+  const EASE = 'cubic-bezier(.2,.75,.25,1)', DUR = 460;
+
+  // Photos and videos fly between their card and the open screen, so it reads as the same thing
+  // moving rather than one screen swapping for another. Returns null when there's nothing to fly.
+  let flight = null;
+  function mediaFlight(itemScreen, homeScreen, opening) {
+    const it = DB.items.find((x) => x.id === S.item);
+    const card = homeScreen.querySelector(`.card[data-v="${CSS.escape(S.item || '')}"] .media`);
+    const target = itemScreen.querySelector('.stage img, .stage video');
+    if (!it || !card || !target) return null;
+    const c = card.getBoundingClientRect(), box = target.getBoundingClientRect();
+    if (!c.width || !box.width || c.bottom < 0 || c.top > innerHeight) return null;
+    const ar = it.w && it.h ? it.w / it.h : c.width / c.height;
+    const w = Math.min(box.width, box.height * ar), h = w / ar;
+    const t = { x: box.x + (box.width - w) / 2, y: box.y + (box.height - h) / 2 };
+    const ghost = document.createElement('div');
+    ghost.className = 'ghost';
+    ghost.style.width = w + 'px'; ghost.style.height = h + 'px';
+    const img = document.createElement('img');
+    img.src = card.querySelector('img')?.src || url(it.thumb);
+    ghost.append(img);
+    app.append(ghost);
+    const small = { transform: `translate(${c.x}px,${c.y}px) scale(${c.width / w},${c.height / h})`, borderRadius: `${20 * w / c.width}px / ${20 * h / c.height}px` };
+    const big = { transform: `translate(${t.x}px,${t.y}px)`, borderRadius: '0px' };
+    card.style.opacity = '0'; target.style.opacity = '0';
+    Object.assign(ghost.style, opening ? big : small); // where it rests if it has to wait for the full photo
+    const anim = ghost.animate(opening ? [small, big] : [big, small], { duration: DUR, easing: EASE });
+    const done = () => { target.style.opacity = ''; card.style.opacity = ''; ghost.remove(); if (flight === anim) flight = null; };
+    // Opening: keep the small copy up until the full photo is ready, so it never flashes.
+    anim.onfinish = () => { if (opening && target.tagName === 'IMG') target.decode().catch(() => {}).then(done); else done(); };
+    anim.oncancel = done;
+    flight = anim;
+    return anim;
+  }
+
   function animateSwap(oldEl, el, kind) {
     const stage = $('#stage');
     if (!oldEl || oldEl === el) return;
+    if (flight) flight.finish(); // a new move starts from where things really are
+    oldEl.inert = true;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { if (oldEl !== homeEl) oldEl.remove(); else oldEl.style.visibility = 'hidden'; return; }
     const back = kind === 'unzoom' || kind === 'pop';
     if (back) stage.insertBefore(el, oldEl); // the screen being left stays on top while it goes
-    const W = window.innerWidth, H = window.innerHeight;
-    const rectInset = (r) => `inset(${r.top}px ${Math.max(0, W - r.right)}px ${Math.max(0, H - r.bottom)}px ${r.left}px round 20px)`;
-    const full = 'inset(0px 0px 0px 0px round 0px)';
     const o = { duration: DUR, easing: EASE };
+    const card = (kind === 'zoom' ? oldEl : el).querySelector(`.card[data-v="${CSS.escape(S.item || '')}"]`);
+    const rect = card?.getBoundingClientRect();
+    const scale = rect ? Math.min(rect.width / innerWidth, rect.height / innerHeight) : .84;
+    const origin = rect ? `translate(${rect.x + rect.width / 2 - innerWidth / 2}px,${rect.y + rect.height / 2 - innerHeight / 2}px) scale(${scale})` : 'translateY(70px) scale(.84)';
     let outAnim;
-    if (kind === 'zoom' && S.fromRect) {
-      el.animate([{ clipPath: rectInset(S.fromRect), opacity: 0.7 }, { clipPath: full, opacity: 1 }], o);
-      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.94)', opacity: 0.35 }], o);
+    const sheet = (kind === 'zoom' ? el : oldEl).querySelector('.sheet');
+    const fly = (kind === 'zoom' || kind === 'unzoom') && (kind === 'zoom' ? mediaFlight(el, oldEl, true) : mediaFlight(oldEl, el, false));
+    if (kind === 'zoom' && fly) {
+      // Home stays where it is and sinks back slightly; the dark screen fades in behind the flying photo.
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.7, easing: 'ease-out' });
+      sheet?.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], o);
+      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.96)', opacity: .6 }], o);
+    } else if (kind === 'unzoom' && fly) {
+      el.animate([{ transform: 'scale(.96)', opacity: .6 }, { transform: 'none', opacity: 1 }], o);
+      sheet?.animate([{ transform: 'none' }, { transform: 'translateY(100%)' }], o);
+      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: DUR * 0.7, easing: 'ease-in', fill: 'forwards' });
+      outAnim.onfinish = null;
+      const wait = oldEl.animate([{ visibility: 'visible' }, { visibility: 'visible' }], o); // remove only once the photo has landed
+      wait.onfinish = () => oldEl.remove();
+      oldEl.style.pointerEvents = 'none';
+      return;
+    } else if (kind === 'zoom') {
+      // Notes (or a card that's off screen): the screen grows out of the card over Home.
+      el.animate([{ transform: origin, opacity: .25 }, { transform: 'none', opacity: 1 }], o);
+      outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.96)', opacity: .6 }], o);
     } else if (kind === 'unzoom') {
-      const card = el.querySelector(`.card[data-v="${S.fromId}"] .media`);
-      const r = card && card.getBoundingClientRect();
-      el.animate([{ transform: 'scale(.94)', opacity: 0.35 }, { transform: 'none', opacity: 1 }], o);
-      outAnim = r && r.bottom > 0 && r.top < H
-        ? oldEl.animate([{ clipPath: full, opacity: 1 }, { clipPath: rectInset(r), opacity: 0.5 }], o)
-        : oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], o);
+      el.animate([{ transform: 'scale(.96)', opacity: .6 }, { transform: 'none', opacity: 1 }], o);
+      outAnim = oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: origin }], o);
     } else if (kind === 'push') {
       el.animate([{ transform: 'translateX(100%)' }, { transform: 'none' }], o);
       outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(-22%)', opacity: 0.4 }], o);
@@ -446,22 +477,36 @@
       outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
     }
     oldEl.style.pointerEvents = 'none';
-    outAnim.onfinish = () => { oldEl.remove(); oldEl.style.pointerEvents = ''; };
+    outAnim.onfinish = () => { if (oldEl !== homeEl) oldEl.remove(); else oldEl.style.visibility = 'hidden'; oldEl.style.pointerEvents = ''; }; // Home is kept, just hidden
   }
 
   function showScreen(kind) {
     const stage = $('#stage');
-    const old = stage.lastElementChild;
+    const old = currentEl;
+    if (old) old.querySelector('video')?.pause();
     let el;
     if (S.screen === 'home' && homeEl) {
       refreshHome();
+      homeEl.querySelector('#homegrid').classList.remove('anim');
       el = homeEl;
     } else {
       el = build(S.screen);
       if (!el) { S.screen = 'home'; return showScreen('fade'); }
       if (S.screen === 'home') { homeEl = el; homeVer = dataVer; boardSig = sigOf(); }
     }
-    if (!el.isConnected) stage.appendChild(el);
+    // A quick return can reuse Home before its previous exit animation finishes.
+    // Cancel that exit so its callback cannot remove the screen we just returned to.
+    el.getAnimations().forEach((animation) => animation.cancel());
+    el.inert = false;
+    el.style.visibility = '';
+    el.style.pointerEvents = '';
+    for (const stale of [...stage.children]) {
+      if (stale === old || stale === el) continue;
+      stale.getAnimations().forEach((animation) => animation.cancel());
+      if (stale === homeEl) stale.style.visibility = 'hidden'; else stale.remove();
+    }
+    if (el !== old) stage.appendChild(el);
+    currentEl = el;
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
     if (S.screen === 'item') wireItem(el);
     if (S.screen === 'sync') $('#syncbody').innerHTML = syncBodyHTML();
@@ -516,14 +561,7 @@
       ed.addEventListener('paste', (e) => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); });
       if (!it.html) setTimeout(() => ed.focus(), 350);
     }
-    const vid = root.querySelector('#vid');
-    if (vid) {
-      const btn = root.querySelector('#playbtn');
-      vid.addEventListener('play', () => { btn.hidden = true; });
-      vid.addEventListener('pause', () => { btn.hidden = false; });
-      vid.addEventListener('click', () => { if (!vid.paused) vid.pause(); });
-      vid.addEventListener('error', () => toast("This video can't play here. It's still saved, and you can open it on your PC."));
-    }
+    NBMedia.wire(root);
   }
 
   // ---------- small forms (new board, rename, type pairing code) ----------
@@ -626,7 +664,7 @@
     addGallery: () => { S.add = false; updateChrome(); N.pick(currentBoard()); },
     addCamera: () => { S.add = false; updateChrome(); N.camera(currentBoard()); },
     addNote: () => { const r = call('addNote', currentBoard()); if (r) go('item', { item: r.id, prev: S.screen }); },
-    open: (v, el) => { const m = el.querySelector('.media') || el; S.fromRect = m.getBoundingClientRect(); S.fromId = v; go('item', { item: v, prev: S.screen }, 'zoom'); },
+    open: (v) => go('item', { item: v, prev: S.screen }, 'zoom'),
     back: () => { flushSave(); const to = S.prev === 'item' ? 'home' : S.prev; if (S.screen === 'item') go(to, null, 'unzoom'); else go(to, null, S.screen === 'board' ? 'pop' : 'fade'); },
     bin: () => {
       flushSave();
@@ -641,7 +679,6 @@
       const has = (it.boards || []).includes(v);
       call('update', it.id, JSON.stringify({ boards: has ? it.boards.filter((x) => x !== v) : (it.boards || []).concat(v) }));
     },
-    play: () => { const v = $('#vid'); if (v) v.play(); },
     tidy: (x, el) => {
       const ed = $('#editor');
       if (S.tidyUndo !== null) { ed.innerHTML = S.tidyUndo; S.tidyUndo = null; el.textContent = 'Tidy up'; }
@@ -680,6 +717,7 @@
 
   // Android back gesture: close a panel or step back before leaving the app.
   window.nbBack = () => {
+    if (NBMedia.closePhoto()) return true;
     if (S.sheet) { closeForm(); return true; }
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }

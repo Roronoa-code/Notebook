@@ -148,6 +148,7 @@ public class Library {
         if (ext == null) { int dot = name.lastIndexOf('.'); ext = dot > 0 ? name.substring(dot + 1) : (kind.equals("video") ? "mp4" : "jpg"); }
         ext = ext.toLowerCase(Locale.ROOT);
         if (ext.equals("jpeg")) ext = "jpg";
+        if (!ext.matches("[a-z0-9]{1,8}")) ext = kind.equals("video") ? "mp4" : "jpg"; // the PC only accepts plain extensions
         String id = UUID.randomUUID().toString();
         String rel = "media/" + id + "." + ext;
         File dest = new File(root, rel), tmp = new File(root, rel + ".part");
@@ -322,6 +323,72 @@ public class Library {
         }
         data.put("items", next).put("boards", merged.getJSONArray("boards")).put("tombstones", merged.getJSONObject("tombstones"));
         save();
+    }
+
+    // First time with a PC: use the PC's boards. Phone boards with the same name (e.g. "Outfits") become the PC's
+    // board, so there are no duplicates; phone-only boards are kept. No tombstones: nothing is deleted anywhere.
+    synchronized void adoptBoards(JSONArray pcBoards) throws IOException, JSONException {
+        java.util.Map<String, String> byName = new java.util.HashMap<>(), remap = new java.util.HashMap<>();
+        for (int i = 0; i < pcBoards.length(); i++) byName.put(pcBoards.getJSONObject(i).getString("name").toLowerCase(Locale.ROOT), pcBoards.getJSONObject(i).getString("id"));
+        JSONArray next = new JSONArray(), mine = boards();
+        for (int i = 0; i < pcBoards.length(); i++) next.put(pcBoards.get(i));
+        for (int i = 0; i < mine.length(); i++) {
+            JSONObject b = mine.getJSONObject(i);
+            String pcId = byName.get(b.getString("name").toLowerCase(Locale.ROOT));
+            if (pcId != null) remap.put(b.getString("id"), pcId); else next.put(b);
+        }
+        data.put("boards", next);
+        JSONArray a = items();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject it = a.getJSONObject(i);
+            JSONArray ib = it.optJSONArray("boards"), nb = new JSONArray();
+            if (ib == null) continue;
+            boolean changed = false;
+            for (int j = 0; j < ib.length(); j++) { String id = ib.getString(j); String to = remap.get(id); if (to != null) { changed = true; id = to; } nb.put(id); }
+            if (changed) it.put("boards", nb).put("updatedAt", now());
+        }
+        save();
+    }
+
+    // Two boards with the same name (left over from syncing before boards were matched up) become one:
+    // items move to the board that has the most, and a tombstone removes the empty twin on the PC too.
+    synchronized boolean dedupeBoards() throws IOException, JSONException {
+        JSONArray b = boards(), a = items();
+        java.util.Map<String, Integer> count = new java.util.HashMap<>();
+        for (int i = 0; i < a.length(); i++) {
+            JSONArray ib = a.getJSONObject(i).optJSONArray("boards");
+            if (ib != null) for (int j = 0; j < ib.length(); j++) count.merge(ib.getString(j), 1, Integer::sum);
+        }
+        java.util.Map<String, String> keepByName = new java.util.HashMap<>(), remap = new java.util.HashMap<>();
+        for (int i = 0; i < b.length(); i++) {
+            String id = b.getJSONObject(i).getString("id"), name = b.getJSONObject(i).getString("name").trim().toLowerCase(Locale.ROOT);
+            String kept = keepByName.get(name);
+            if (kept == null) { keepByName.put(name, id); continue; }
+            if (count.getOrDefault(id, 0) > count.getOrDefault(kept, 0)) { remap.put(kept, id); keepByName.put(name, id); }
+            else remap.put(id, kept);
+        }
+        if (remap.isEmpty()) return false;
+        for (String from : new ArrayList<>(remap.keySet())) { // follow chains (three boards with one name)
+            String to = remap.get(from);
+            while (remap.containsKey(to)) to = remap.get(to);
+            remap.put(from, to);
+        }
+        JSONArray keep = new JSONArray();
+        for (int i = 0; i < b.length(); i++) if (!remap.containsKey(b.getJSONObject(i).getString("id"))) keep.put(b.get(i));
+        data.put("boards", keep);
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject it = a.getJSONObject(i);
+            JSONArray ib = it.optJSONArray("boards");
+            if (ib == null) continue;
+            java.util.LinkedHashSet<String> nb = new java.util.LinkedHashSet<>();
+            boolean changed = false;
+            for (int j = 0; j < ib.length(); j++) { String id = ib.getString(j), to = remap.get(id); if (to != null) changed = true; nb.add(to != null ? to : id); }
+            if (changed) it.put("boards", new JSONArray(nb)).put("updatedAt", now());
+        }
+        JSONArray tomb = data.getJSONObject("tombstones").getJSONArray("boards");
+        for (String id : remap.keySet()) tomb.put(new JSONObject().put("id", id).put("at", now()));
+        save();
+        return true;
     }
 
     synchronized List<String> missingMedia() throws JSONException {

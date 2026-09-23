@@ -29,7 +29,6 @@ import org.json.JSONObject;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -144,19 +143,16 @@ public class MainActivity extends Activity {
             String[] parts = range.substring(6).split("-", 2);
             long start = parts[0].isEmpty() ? Math.max(0, size - Long.parseLong(parts[1])) : Long.parseLong(parts[0]);
             long end = parts.length > 1 && !parts[1].isEmpty() && !parts[0].isEmpty() ? Math.min(Long.parseLong(parts[1]), size - 1) : size - 1;
-            if (start >= size) start = Math.max(0, size - 1);
-            InputStream in = new FileInputStream(f);
-            long skipped = 0;
-            while (skipped < start) { long k = in.skip(start - skipped); if (k <= 0) break; skipped += k; }
+            if (start >= size || start > end) {
+                h.put("Content-Range", "bytes */" + size);
+                return new WebResourceResponse("text/plain", "utf-8", 416, "Range Not Satisfiable", h, new ByteArrayInputStream(new byte[0]));
+            }
             final long len = end - start + 1;
-            InputStream limited = new FilterInputStream(in) {
-                long left = len;
-                @Override public int read() throws IOException { if (left <= 0) return -1; int b = super.read(); if (b >= 0) left--; return b; }
-                @Override public int read(byte[] b, int off, int n) throws IOException { if (left <= 0) return -1; int k = super.read(b, off, (int) Math.min(n, left)); if (k > 0) left -= k; return k; }
-            };
             h.put("Content-Range", "bytes " + start + "-" + end + "/" + size);
             h.put("Content-Length", String.valueOf(len));
-            return new WebResourceResponse(mime(f.getName()), null, 206, "Partial Content", h, limited);
+            // WebView's InputStreamReader applies the request's Range itself. Give it
+            // the whole file at byte zero; pre-skipping here skips twice and breaks MP4s.
+            return new WebResourceResponse(mime(f.getName()), null, 206, "Partial Content", h, new FileInputStream(f));
         }
         h.put("Content-Length", String.valueOf(size));
         return new WebResourceResponse(mime(f.getName()), null, 200, "OK", h, new FileInputStream(f));
