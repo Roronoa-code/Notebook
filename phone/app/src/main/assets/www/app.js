@@ -264,7 +264,9 @@
   }
 
   function updateChrome() {
-    $('#nav').hidden = S.screen === 'item';
+    const nav = $('#nav'), hide = S.screen === 'item';
+    if (nav.hidden && !hide && !matchMedia('(prefers-reduced-motion: reduce)').matches) nav.animate([{ opacity: 0, translate: '-50% 24px' }, { opacity: 1, translate: '-50% 0' }], { duration: 380, easing: 'cubic-bezier(.2,.75,.25,1)' });
+    nav.hidden = hide;
     $('#nav-home').classList.toggle('on', S.screen === 'home');
     $('#nav-sync').classList.toggle('on', S.screen === 'sync' || S.screen === 'bin');
     $('#nav-search').classList.toggle('on', S.screen === 'search');
@@ -554,7 +556,7 @@
     if (el !== old) stage.appendChild(el);
     currentEl = el;
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
-    if (S.screen === 'item') wireItem(el);
+    if (S.screen === 'item') { wireItem(el); wireDismiss(el); }
     if (S.screen === 'sync') $('#syncbody').innerHTML = syncBodyHTML();
     if (S.screen === 'search') {
       const q = el.querySelector('#q');
@@ -571,26 +573,116 @@
     showScreen(kind || 'fade');
   }
 
-  function setLift(v) {
+  // The items panel's two resting places: down under the boards, or up under the top bar.
+  const liftStops = () => ({ up: (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--st')) || 0) + 58, down: parseFloat(app.style.getPropertyValue('--hero')) || 560 });
+  const liftY = (el) => new DOMMatrix(getComputedStyle(el).transform).m42;
+  let liftFrame = 0;
+  function paintLift(el, y) {
+    const { up, down } = liftStops();
+    el.style.transform = `translateY(${y.toFixed(1)}px)`;
+    homeEl.querySelector('#topglass').style.opacity = Math.max(0, Math.min(1, (down - y) / (down - up))).toFixed(3);
+  }
+  // A small spring: a hard flick arrives fast and bounces a little past, a gentle one just settles.
+  function springLift(el, to, v0) {
+    cancelAnimationFrame(liftFrame);
+    let y = liftY(el), v = v0 || 0, last = performance.now();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) y = to;
+    const step = (now) => {
+      const dt = Math.min(32, now - last) / 1000; last = now;
+      const a = -210 * (y - to) - 24 * v; // stiffness, damping (slightly under-damped)
+      v += a * dt; y += v * dt;
+      if (Math.abs(y - to) < 0.4 && Math.abs(v) < 8) { liftFrame = 0; el.style.transform = ''; homeEl.querySelector('#topglass').style.opacity = ''; return; }
+      paintLift(el, y);
+      liftFrame = requestAnimationFrame(step);
+    };
+    liftFrame = requestAnimationFrame(step);
+  }
+  function setLift(v, velocity) {
     S.lift = v;
     const el = homeEl && homeEl.querySelector('#lift');
     if (!el) return;
+    const from = liftY(el);
     el.classList.toggle('up', v);
     homeEl.querySelector('#topglass').classList.toggle('on', v);
     el.querySelector('.grip').setAttribute('aria-label', v ? 'Lower items' : 'Lift items up');
     if (!v) el.scrollTop = 0;
+    paintLift(el, from); // start the spring from wherever the panel is now
+    springLift(el, v ? liftStops().up : liftStops().down, velocity);
   }
 
   function wireHome(root) {
     const lift = root.querySelector('#lift');
-    let y0 = 0;
-    lift.addEventListener('touchstart', (e) => { y0 = e.touches[0].clientY; }, { passive: true });
-    lift.addEventListener('touchmove', (e) => {
-      const dy = y0 - e.touches[0].clientY;
-      if (!S.lift && dy > 20) setLift(true);
-      else if (S.lift && lift.scrollTop <= 0 && dy < -24) setLift(false);
+    let y0 = 0, start = 0, dragging = false, caught = false, samples = [];
+    lift.addEventListener('touchstart', (e) => {
+      caught = !!liftFrame; cancelAnimationFrame(liftFrame); liftFrame = 0; // a finger catches it mid-spring
+      y0 = e.touches[0].clientY; start = liftY(lift); dragging = false; samples = [{ y: y0, t: e.timeStamp }];
     }, { passive: true });
+    lift.addEventListener('touchmove', (e) => {
+      const y = e.touches[0].clientY, dy = y - y0;
+      samples.push({ y, t: e.timeStamp }); if (samples.length > 6) samples.shift();
+      if (!dragging) {
+        // Down: any drag moves it. Up: only a pull-down from the very top of the list (otherwise it scrolls).
+        if (Math.abs(dy) < 6 || (S.lift && (lift.scrollTop > 0 || dy < 0))) return;
+        dragging = true;
+      }
+      const { up, down } = liftStops();
+      let to = start + (y - y0);
+      if (to < up) to = up - (up - to) * 0.25; // rubbery past the ends
+      if (to > down) to = down + (to - down) * 0.3;
+      paintLift(lift, to);
+    }, { passive: true });
+    const end = () => {
+      if (!dragging) { if (caught) setLift(S.lift); return; } // caught but not dragged: carry on to where it was going
+      dragging = false;
+      const a = samples[0], b = samples[samples.length - 1];
+      const v = b && a && b.t > a.t ? ((b.y - a.y) / (b.t - a.t)) * 1000 : 0; // px per second, + is down
+      const { up, down } = liftStops(), y = liftY(lift);
+      const goUp = Math.abs(v) > 350 ? v < 0 : y < (up + down) / 2;
+      setLift(goUp, v);
+    };
+    lift.addEventListener('touchend', end, { passive: true });
+    lift.addEventListener('touchcancel', end, { passive: true });
     lift.addEventListener('wheel', (e) => { if (!S.lift && e.deltaY > 0) setLift(true); else if (S.lift && lift.scrollTop <= 0 && e.deltaY < 0) setLift(false); }, { passive: true });
+  }
+
+  // Swipe down on an open photo or video to go back: it follows the finger, shrinking a little,
+  // with Home showing behind it; let go past the line (or flick) and it flies back into its card.
+  function wireDismiss(root) {
+    const stage = root.querySelector('.media-screen .stage');
+    if (!stage) return;
+    let y0 = 0, x0 = 0, t0 = 0, dy = 0, active = false, dragging = false;
+    stage.addEventListener('touchstart', (e) => {
+      const t = e.touches[0], v = stage.querySelector('video');
+      // Leave the video's own controls (bottom of the player) alone.
+      if (e.touches.length > 1 || (v && t.clientY > v.getBoundingClientRect().bottom - 70)) { active = false; return; }
+      active = true; dragging = false; y0 = t.clientY; x0 = t.clientX; t0 = e.timeStamp; dy = 0;
+    }, { passive: true });
+    stage.addEventListener('touchmove', (e) => {
+      if (!active) return;
+      const t = e.touches[0];
+      dy = t.clientY - y0;
+      if (!dragging) {
+        if (dy < 10 || Math.abs(dy) < Math.abs(t.clientX - x0)) return;
+        dragging = true;
+        root.getAnimations().forEach((x) => x.finish());
+        if (homeEl && homeEl !== root && S.prev !== 'board' && S.prev !== 'search') homeEl.style.visibility = '';
+      }
+      const k = Math.max(0, dy);
+      root.style.transform = `translateY(${k}px) scale(${Math.max(0.82, 1 - k / 1800)})`;
+      root.style.borderRadius = Math.min(28, k / 5) + 'px';
+      root.style.overflow = 'hidden';
+    }, { passive: true });
+    const end = (e) => {
+      if (!active || !dragging) { active = false; return; }
+      active = false; dragging = false;
+      const v = dy / Math.max(1, e.timeStamp - t0);
+      if (dy > 110 || v > 0.6) { A.back(); return; }
+      const back = root.animate([{ transform: root.style.transform, borderRadius: root.style.borderRadius }, { transform: 'none', borderRadius: '0px' }], { duration: 300, easing: 'cubic-bezier(.2,.9,.3,1.15)' });
+      root.style.transform = ''; root.style.borderRadius = '';
+      back.onfinish = () => { if (homeEl && homeEl !== root && currentEl === root) homeEl.style.visibility = 'hidden'; };
+    };
+    stage.addEventListener('touchend', end, { passive: true });
+    stage.addEventListener('touchcancel', end, { passive: true });
   }
 
   // Notes and captions save a moment after you stop typing.

@@ -16,7 +16,7 @@ button { cursor: pointer; }
 
 .screen { position: absolute; inset: 0; isolation: isolate; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
 .screen::-webkit-scrollbar { display: none; }
-.ghost { position: fixed; left: 0; top: 0; z-index: 50; overflow: hidden; transform-origin: 0 0; pointer-events: none; will-change: transform; }
+.ghost { position: fixed; left: 0; top: 0; z-index: 7; overflow: hidden; transform-origin: 0 0; pointer-events: none; will-change: transform; }
 .ghost img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .screen { background: url(img/grain-soft.png) repeat 0 0 / 160px, #0A0A0A; box-shadow: 0 0 40px rgba(0,0,0,.6); }
 .glass { background: rgba(26,26,26,.42); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 20px 40px -18px rgba(0,0,0,.7); }
@@ -55,7 +55,7 @@ button { cursor: pointer; }
 .pill .ct { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #C8C8C8; }
 .pill svg { flex-shrink: 0; }
 
-.lift { position: absolute; left: 0; right: 0; top: 0; height: calc(100% - var(--st) - 58px); background: var(--surface); border-radius: 30px 30px 0 0; border-top: 1px solid rgba(255,255,255,.07); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 -30px 60px -24px rgba(0,0,0,.55); transform: translateY(var(--hero)); transition: transform .6s cubic-bezier(.32,0,.2,1); will-change: transform; overflow: hidden; z-index: 4; scrollbar-width: none; }
+.lift { position: absolute; left: 0; right: 0; top: 0; height: calc(100% - var(--st) - 58px); background: var(--surface); border-radius: 30px 30px 0 0; border-top: 1px solid rgba(255,255,255,.07); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 -30px 60px -24px rgba(0,0,0,.55); transform: translateY(var(--hero)); will-change: transform; overflow: hidden; z-index: 4; scrollbar-width: none; }
 .lift::-webkit-scrollbar { display: none; }
 .lift.up { transform: translateY(calc(var(--st) + 58px)); overflow-y: auto; overscroll-behavior: contain; }
 .grip { display: block; position: relative; width: 100%; height: 30px; border: 0; background: transparent; padding: 0; }

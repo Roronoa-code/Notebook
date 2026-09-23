@@ -11,7 +11,7 @@ const { chromium } = require('playwright-core');
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));
     await page.goto(pathToFileURL(path.resolve(__dirname, '../phone/app/src/main/assets/www/index.html')).href);
-    assert.equal(await page.locator('#lift').evaluate(el => getComputedStyle(el).transitionDuration.split(',')[0]), '0.6s', 'all-boards rise uses the tuned timing');
+    // The items panel is moved by a spring in code (it follows the finger), so there's no CSS timing to check here.
     await page.waitForTimeout(1200); // Let the one-time initial card entrance finish.
     const offsets = await page.evaluate(async () => {
       const lift = document.querySelector('#lift'), card = lift.querySelectorAll('.card')[2], result = [];
