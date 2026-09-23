@@ -94,10 +94,36 @@
     return h('div', { class: 'editor-wrap' }, toolbar, editor);
   }
 
+  // "+ New board" chip: type a name, press Enter, and the item goes straight onto it.
+  function newBoardChip(it) {
+    const chip = h('button', { type: 'button', class: 'chip tog add' }, icon('plus'), h('span', null, 'New board'));
+    chip.addEventListener('click', () => {
+      const input = h('input', { class: 'chip-input', placeholder: 'Board name', maxlength: '40', 'aria-label': 'New board name' });
+      let done = false;
+      const finish = async (save) => {
+        if (done) return; done = true;
+        const name = input.value.trim();
+        if (!save || !name) { input.replaceWith(chip); return; }
+        const made = NB.apply(await nb.addBoard(name));
+        if (!made) { input.replaceWith(chip); return; }
+        const current = made.snap.items.find((i) => i.id === it.id);
+        NB.apply(await nb.updateItem(it.id, { boards: [...current.boards, made.id] }));
+        toast(`Made “${NB.boardName(made.id)}” and added this to it`);
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); input.value = ''; input.blur(); }
+      });
+      input.addEventListener('blur', () => finish(true));
+      chip.replaceWith(input);
+      input.focus();
+    });
+    return chip;
+  }
+
   function boardChips(it) {
     const boards = NB.S.snap.boards;
-    if (!boards.length) return [h('p', { class: 'hint' }, 'Create a board from the board row first.')];
-    return boards.map((b) => {
+    return [...boards.map((b) => {
       const on = it.boards.includes(b.id);
       return h('button', { type: 'button', class: 'chip tog' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick: async () => {
         const next = on ? it.boards.filter((x) => x !== b.id) : [...it.boards, b.id];
@@ -106,7 +132,23 @@
         NB.S.snap = res.snap;
         refreshSide();
       } }, h('span', null, b.name), on ? icon('check') : null);
-    });
+    }), newBoardChip(it)];
+  }
+
+  // A short note on a photo or video: why it was saved, sizes, where it's from…
+  function captionBox(it) {
+    const box = h('textarea', { class: 'caption', 'aria-label': 'Note about this item', maxlength: '5000', placeholder: 'Why did you save this? e.g. chest 27in, want it in black' });
+    box.value = it.caption || '';
+    let timer = null;
+    const save = async () => {
+      clearTimeout(timer);
+      if (box.value === ((item() || {}).caption || '')) return;
+      const res = await nb.updateItem(it.id, { caption: box.value });
+      if (res.error) toast(`Your note couldn't be saved: ${res.error}`, { error: true }); else NB.S.snap = res.snap;
+    };
+    box.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(save, 600); });
+    box.addEventListener('blur', save);
+    return box;
   }
 
   function metaText(it) {
@@ -147,6 +189,7 @@
       h('div', { class: 'top' }, h('div', { class: 'nav' }, navBtn(-1), navBtn(1)), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', onclick: close }, icon('x'))),
       title,
       h('p', { class: 'meta' }, metaText(it)),
+      it.kind !== 'note' ? [h('h4', null, 'Note'), captionBox(it)] : null,
       h('h4', null, 'Boards'),
       h('div', { class: 'tags' }, boardChips(it)),
       h('p', { class: 'hint' }, 'One item can be on several boards. Taking it off a board never deletes it.'),
@@ -165,7 +208,12 @@
     const it = item();
     const panel = V.shell.querySelector('.viewer');
     panel.setAttribute('aria-label', it.title);
-    panel.replaceChildren(stageFor(it), side(it));
+    const stage = stageFor(it);
+    // Size the picture area to the photo/video's own shape so there's no empty black space.
+    panel.classList.toggle('fit', !!(it.kind !== 'note' && it.w && it.h));
+    panel.style.width = '';
+    panel.replaceChildren(stage, side(it));
+    fitStage();
     const editor = panel.querySelector('.editor');
     if (editor && focusEditor) {
       editor.focus();
@@ -173,6 +221,22 @@
       const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
     } else panel.querySelector('.iconbtn.spin').focus();
   }
+
+  // Sizes the panel so the photo/video frame matches its shape: no empty black bars.
+  function fitStage() {
+    const it = item();
+    const panel = V.shell && V.shell.querySelector('.viewer.fit');
+    if (!panel || !it) return;
+    const SIDE = 380, GAP = 26, PAD = 40;
+    const height = window.innerHeight * 0.9 - PAD;
+    const maxWidth = window.innerWidth * 0.9 - PAD - GAP - SIDE;
+    const width = Math.max(320, Math.min(maxWidth, height * (it.w / it.h)));
+    const stage = panel.querySelector('.stage');
+    stage.style.width = width + 'px';
+    stage.style.height = Math.min(height, width * (it.h / it.w)) + 'px';
+    panel.style.width = width + PAD + GAP + SIDE + 'px';
+  }
+  window.addEventListener('resize', fitStage);
 
   // ---------- actions ----------
   async function binItem(it) {

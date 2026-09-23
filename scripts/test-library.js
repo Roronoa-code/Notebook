@@ -38,7 +38,7 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   await lib.updateItem(n1, { html: '<h2>Autumn capsule</h2><ul><li>Brown loafers</li><li><b>Cream</b> knit</li><li>Edited</li></ul>' });
   await lib.updateItem(n2, { html: 'wallpaper places: unsplash', title: 'wallpaper places' });
   const photo = lib.data.items.find((i) => i.kind === 'photo');
-  await lib.updateItem(photo.id, { boards: [outfits, wallpapers, 'not-a-board'] });
+  await lib.updateItem(photo.id, { boards: [outfits, wallpapers, 'not-a-board'], caption: 'chest 27in' });
   assert.deepEqual(lib.item(photo.id).boards, [outfits, wallpapers]);
   ok('notes save and items can be on several boards (unknown boards ignored)');
 
@@ -104,6 +104,7 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   const csv = fs.readFileSync(path.join(ex.dir, 'boards.csv'), 'utf8');
   assert.match(csv, /"Autumn capsule","note","Notes\/Autumn capsule.txt","Outfits"/);
   assert.equal(csv.trim().split('\r\n').length, 7);
+  assert.ok(csv.includes(',"chest 27in"'), 'photo note is in boards.csv');
   ok('export has every media file, readable notes and a boards.csv');
 
   fs.writeFileSync(path.join(restored, 'library.json'), '{ damaged');

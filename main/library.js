@@ -222,6 +222,7 @@ class Library {
     const it = this.item(id);
     if (typeof changes.title === 'string') it.title = changes.title.trim().slice(0, 120) || (it.kind === 'note' ? 'Untitled note' : it.originalName);
     if (typeof changes.html === 'string' && it.kind === 'note') it.html = changes.html.slice(0, 500000);
+    if (typeof changes.caption === 'string' && it.kind !== 'note') it.caption = changes.caption.slice(0, 5000);
     if (Array.isArray(changes.boards)) it.boards = this.validBoards(changes.boards);
     it.updatedAt = now();
     await this.save();
@@ -353,7 +354,7 @@ class Library {
     const live = this.data.items.filter((i) => !i.deletedAt);
     const boardName = (id) => (this.data.boards.find((b) => b.id === id) || {}).name;
     const csv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = [['Title', 'Type', 'Exported file', 'Boards', 'Original file name', 'Added'].map(csv).join(',')];
+    const rows = [['Title', 'Type', 'Exported file', 'Boards', 'Original file name', 'Added', 'Note'].map(csv).join(',')];
     const used = new Set();
     try {
       await fsp.mkdir(path.join(partial, 'Media'), { recursive: true });
@@ -368,14 +369,14 @@ class Library {
           await fsp.copyFile(this.p(it.file), path.join(partial, out), fs.constants.COPYFILE_EXCL);
         }
         const boards = it.boards.map(boardName).filter(Boolean).join('; ');
-        rows.push([it.title, it.kind, out, boards, it.originalName || '', it.importedAt.slice(0, 10)].map(csv).join(','));
+        rows.push([it.title, it.kind, out, boards, it.originalName || '', it.importedAt.slice(0, 10), it.caption || ''].map(csv).join(','));
       }
       await fsp.writeFile(path.join(partial, 'boards.csv'), '﻿' + rows.join('\r\n') + '\r\n', 'utf8');
       await fsp.writeFile(path.join(partial, 'README.txt'), [
         'Notebook export', '',
         'Media  - every photo and video, named by its title.',
         'Notes  - every note as a plain text file.',
-        'boards.csv - opens in Excel or Google Sheets: which boards each item is on.', '',
+        'boards.csv - opens in Excel or Google Sheets: which boards each item is on, plus any note on a photo or video.', '',
         `Exported ${new Date().toLocaleString('en-GB')} - ${live.length} items, ${this.data.boards.length} boards.`
       ].join('\r\n'), 'utf8');
       await fsp.rename(partial, final);

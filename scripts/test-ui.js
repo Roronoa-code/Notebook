@@ -94,6 +94,23 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
 
   await page.click('.bcard[data-id="all"]');
   await page.waitForTimeout(900);
+  await page.locator('.grid .card', { hasText: 'wallpaper dusk' }).dragTo(page.locator('.bcard', { hasText: 'Icons' }));
+  await page.locator('.bcard', { hasText: 'Icons' }).locator('.count', { hasText: '1 item' }).waitFor();
+  ok('dragging a card onto a board card adds it to that board');
+
+  await page.locator('.grid .card', { hasText: 'wallpaper dusk' }).click();
+  await page.locator('.side .caption').fill('chest 27in, want it in black');
+  await page.locator('.side .chip.add').click();
+  await page.locator('.side .chip-input').fill('Videos Wallpaper');
+  await page.keyboard.press('Enter');
+  await page.locator('.side .chip.tog.on', { hasText: 'Videos Wallpaper' }).waitFor();
+  const fit = await page.evaluate(() => { const r = document.querySelector('.stage').getBoundingClientRect(); const i = document.querySelector('.stage img').getBoundingClientRect(); return { stageW: r.width, imgW: i.width }; });
+  assert.ok(Math.abs(fit.stageW - fit.imgW) < 4, 'photo fills its frame: ' + JSON.stringify(fit));
+  await page.screenshot({ path: path.join(OUT, '6-photo-note.png') });
+  await page.keyboard.press('Escape');
+  await page.locator('.card .cap-note', { hasText: 'chest 27in' }).waitFor();
+  ok('photo note saved and shown on the card; new board made from the open item; frame fits the photo');
+
   await page.screenshot({ path: path.join(OUT, '2-all-items.png') });
   await page.locator('.grid .card').first().click();
   await page.waitForTimeout(700);
@@ -108,6 +125,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.locator('.grid .card').first().waitFor();
   assert.equal(await page.locator('.grid .card').count(), 5);
   assert.equal(await page.locator('.grid .card img').count(), 4);
+  assert.equal(await page.locator('.card .cap-note').innerText(), 'chest 27in, want it in black');
   await page.locator('.card', { hasText: 'Autumn capsule' }).click();
   assert.match(await page.locator('.editor').innerText(), /Need brown loafers/);
   await page.keyboard.press('Escape');

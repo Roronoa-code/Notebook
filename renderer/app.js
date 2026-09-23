@@ -15,7 +15,7 @@
   NB.visibleItems = () => {
     const q = S.q.trim().toLowerCase();
     const list = itemsFor(S.board);
-    return q ? list.filter((i) => (i.title + ' ' + (i.kind === 'note' ? textOf(i.html) : '')).toLowerCase().includes(q)) : list;
+    return q ? list.filter((i) => (i.title + ' ' + (i.kind === 'note' ? textOf(i.html) : i.caption || '')).toLowerCase().includes(q)) : list;
   };
   NB.boardName = (id) => (boardById(id) || {}).name;
 
@@ -55,7 +55,7 @@
     const pics = items.filter((i) => i.thumbSrc).slice(0, 3);
     if (pics.length) return pics.map((i) => h('img', { src: i.thumbSrc, alt: '', loading: 'lazy', decoding: 'async' }));
     if (items.some((i) => i.kind === 'note')) return [h('div', { class: 'ph note' }, icon('note'))];
-    return [h('div', { class: 'ph' }, icon('plus'))];
+    return [h('div', { class: 'ph empty' })];
   }
 
   function renderBoards() {
@@ -66,9 +66,11 @@
     const all = [{ id: 'all', name: 'All items' }, ...S.snap.boards];
     for (const b of all) {
       const n = itemsFor(b.id).length;
-      nav.append(h('button', { type: 'button', class: 'bcard' + (S.board === b.id ? ' on' : ''), 'aria-pressed': String(S.board === b.id), 'data-id': b.id, onclick: () => go(b.id) },
+      const el = h('button', { type: 'button', class: 'bcard' + (S.board === b.id ? ' on' : ''), 'aria-pressed': String(S.board === b.id), 'data-id': b.id, onclick: () => go(b.id) },
         h('div', { class: 'stack', 'aria-hidden': 'true' }, stackFor(b.id)),
-        h('div', null, h('div', { class: 'name' }, b.name), h('div', { class: 'count' }, `${n} item${n === 1 ? '' : 's'}`))));
+        h('div', null, h('div', { class: 'name' }, b.name), h('div', { class: 'count' }, `${n} item${n === 1 ? '' : 's'}`)));
+      if (b.id !== 'all') dropTarget(el, b.id);
+      nav.append(el);
     }
     nav.append(h('button', { type: 'button', class: 'bcard add', onclick: newBoard }, icon('plus'), 'New board'));
     requestAnimationFrame(placeHighlight);
@@ -124,6 +126,7 @@
   function card(it, index) {
     const tilt = index % 2 ? '1.3deg' : '-1.3deg';
     const btn = h('button', { type: 'button', class: 'card', 'data-id': it.id, 'aria-label': `Open ${it.title}`, style: { '--tilt': tilt, animationDelay: Math.min(index * 30, 420) + 'ms' }, onclick: () => NB.viewer.open(it.id) });
+    if (!it.deletedAt) dragSource(btn, it);
     if (it.kind === 'note') {
       const tint = NOTE_TINTS[[...it.id].reduce((a, c) => a + c.charCodeAt(0), 0) % NOTE_TINTS.length];
       const body = h('div', { class: 'note-body' });
@@ -135,13 +138,13 @@
     }
     const media = h('div', { class: 'media' });
     if (it.thumbSrc) {
-      media.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', width: it.w || undefined, height: it.h || undefined }));
+      media.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: it.w || undefined, height: it.h || undefined }));
     } else {
       media.append(h('div', { class: 'ph', style: it.w && it.h ? { aspectRatio: `${it.w} / ${it.h}` } : null },
         icon(it.kind === 'video' ? 'video' : 'photo'), S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
     }
     if (it.kind === 'video') media.append(h('span', { class: 'badge' }, icon('play'), NB.duration(it.duration) || 'Video'));
-    btn.append(media, h('div', { class: 'cap' }, it.title));
+    btn.append(media, h('div', { class: 'cap' }, it.title), it.caption ? h('div', { class: 'cap-note' }, it.caption) : null);
     return btn;
   }
 
@@ -165,6 +168,58 @@
     const it = S.snap.items.find((i) => i.id === id);
     const old = document.querySelector(`.card[data-id="${id}"]`);
     if (it && old) { const fresh = card(it, 0); fresh.style.animation = 'none'; old.replaceWith(fresh); }
+  }
+
+  // ---------- dragging items onto boards ----------
+  const DRAG_TYPE = 'application/x-notebook-item';
+  let dragging = null;
+
+  function dragSource(el, it) {
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => {
+      dragging = it.id;
+      e.dataTransfer.setData(DRAG_TYPE, it.id);
+      e.dataTransfer.effectAllowed = 'copy';
+      el.classList.add('lifted');
+      showTray();
+    });
+    el.addEventListener('dragend', () => { dragging = null; el.classList.remove('lifted'); hideTray(); });
+  }
+
+  function dropTarget(el, boardId) {
+    const ours = (e) => [...e.dataTransfer.types].includes(DRAG_TYPE);
+    el.addEventListener('dragover', (e) => { if (ours(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; el.classList.add('dropping'); } });
+    el.addEventListener('dragleave', () => el.classList.remove('dropping'));
+    el.addEventListener('drop', (e) => {
+      if (!ours(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove('dropping');
+      addToBoard(e.dataTransfer.getData(DRAG_TYPE), boardId);
+    });
+  }
+
+  // While dragging, a glass tray of boards appears so you can drop from anywhere on the page.
+  function showTray() {
+    const tray = $('tray');
+    tray.replaceChildren(h('span', { class: 'tray-label' }, 'Drop on a board'));
+    for (const b of S.snap.boards) {
+      const target = h('div', { class: 'chip tog tray-target' }, b.name);
+      dropTarget(target, b.id);
+      tray.append(target);
+    }
+    tray.hidden = false;
+  }
+  const hideTray = () => { $('tray').hidden = true; };
+
+  async function addToBoard(id, boardId) {
+    const it = S.snap.items.find((i) => i.id === id);
+    const name = NB.boardName(boardId);
+    if (!it || !name) return;
+    if (it.boards.includes(boardId)) { toast(`Already on ${name}`); return; }
+    const before = it.boards;
+    const res = NB.apply(await nb.updateItem(id, { boards: [...before, boardId] }));
+    if (res) toast(`Added to ${name}`, { action: { label: 'Undo', run: async () => NB.apply(await nb.updateItem(id, { boards: before })) } });
   }
 
   // ---------- switching boards ----------
