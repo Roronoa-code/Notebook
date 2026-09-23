@@ -259,5 +259,68 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   ok('--background starts with no window, and sync answers /api/ping without a token with 401');
   await bg.close();
 
+  // ---------- Library menu: Back up, Export, then Restore with the original library gone (plan steps 5 and 8) ----------
+  ({ app, page, web } = await launch());
+  await page.locator('.grid .card').first().waitFor();
+  const BK = path.join(OUT, 'Backups'), EXP = path.join(OUT, 'Exports'), RS = path.join(OUT, 'Restored');
+  for (const d of [BK, EXP, RS]) fs.mkdirSync(d, { recursive: true });
+  // Each folder picker gets the next answer in the list; nothing opens in File Explorer.
+  const queuePickers = (paths) => app.evaluate(({ dialog, shell }, list) => {
+    const q = list.slice();
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [q.shift()] });
+    dialog.showMessageBox = async () => ({ response: 0 });
+    shell.openPath = async () => '';
+  }, paths);
+  const lib0 = JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8'));
+  const live0 = lib0.items.filter((i) => !i.deletedAt);
+  const note0 = live0.find((i) => i.kind === 'note' && /loafers/.test(i.html));
+
+  await queuePickers([BK]);
+  await page.click('#lib-btn');
+  await page.click('#backup');
+  await page.locator('.toast', { hasText: 'Backed up' }).waitFor();
+  const bkDir = path.join(BK, fs.readdirSync(BK).find((f) => f.startsWith('Notebook Backup')));
+  const bkLib = JSON.parse(fs.readFileSync(path.join(bkDir, 'library.json'), 'utf8'));
+  assert.equal(bkLib.items.length, lib0.items.length);
+  assert.deepEqual(bkLib.boards.map((b) => b.name), lib0.boards.map((b) => b.name));
+  for (const it of lib0.items.filter((i) => i.file)) assert.equal(fs.statSync(path.join(bkDir, it.file)).size, fs.statSync(path.join(LIB, it.file)).size, it.file);
+  ok(`Library → Back up makes a complete copy: ${bkLib.items.length} items, ${bkLib.boards.length} boards, every file the same size`);
+
+  await queuePickers([EXP]);
+  await page.click('#lib-btn');
+  await page.click('#export');
+  await page.locator('.toast', { hasText: 'Exported' }).waitFor();
+  const exDir = path.join(EXP, fs.readdirSync(EXP).find((f) => f.startsWith('Notebook Export')));
+  assert.equal(fs.readdirSync(path.join(exDir, 'Media')).length, live0.filter((i) => i.file).length, 'every photo and video');
+  const noteFiles = fs.readdirSync(path.join(exDir, 'Notes'));
+  assert.ok(noteFiles.some((f) => /loafers/.test(fs.readFileSync(path.join(exDir, 'Notes', f), 'utf8'))), 'note text is readable');
+  const csv = fs.readFileSync(path.join(exDir, 'boards.csv'), 'utf8');
+  assert.ok(csv.includes('Outfits') && csv.includes('chest 27in'), 'boards.csv has board membership and photo notes');
+  ok('Library → Export: every photo and video, notes as plain text, boards.csv with board membership (opens without Notebook)');
+  await app.close();
+
+  // The original library becomes unavailable; Restore from the welcome screen into a separate folder.
+  const away = LIB + ' (unavailable)';
+  fs.renameSync(LIB, away);
+  ({ app, page, web } = await launch());
+  await page.locator('#welcome').waitFor();
+  await queuePickers([bkDir, RS]);
+  await page.click('#w-restore');
+  await page.locator('.grid .card').first().waitFor();
+  const rsDir = path.join(RS, fs.readdirSync(RS).find((f) => f.startsWith('Notebook Library (restored')));
+  const rl = JSON.parse(fs.readFileSync(path.join(rsDir, 'library.json'), 'utf8'));
+  assert.equal(rl.items.length, lib0.items.length);
+  assert.deepEqual(rl.boards.map((b) => b.name), lib0.boards.map((b) => b.name));
+  for (const b of lib0.boards) await page.locator('.bcard .name', { hasText: b.name }).first().waitFor();
+  await page.locator(`.grid .card[data-id="${note0.id}"]`).click();
+  assert.match(await page.locator('.editor').innerText(), /brown loafers/);
+  await page.keyboard.press('Escape');
+  const binnedBefore = lib0.items.filter((i) => i.deletedAt).length;
+  assert.equal(rl.items.filter((i) => i.deletedAt).length, binnedBefore, 'the Bin comes back too');
+  assert.deepEqual(web, [], 'still no internet requests');
+  ok(`with the original library unavailable, Restore brings back all ${rl.items.length} items, edits and ${rl.boards.length} boards into a new folder`);
+  await app.close();
+  fs.renameSync(away, LIB);
+
   console.log(`\nAll ${passed} checks passed. Screenshots: ${OUT}`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });
