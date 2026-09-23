@@ -2,7 +2,7 @@
 // scroll) and picking several things at once (Ctrl-click or the tick) to stack, hide from the phone or bin.
 (() => {
   const { h, icon, toast } = NB;
-  const top = {}; // which picture is on top of each stack, for as long as the app is open
+  const top = {}; // the id of the picture on top of each stack, for as long as the app is open
 
   // ---------- stacks ----------
   const FAN = [
@@ -12,7 +12,8 @@
     { t: 'translate(0, 5%) scale(.84)', o: 0 }
   ];
   function place(el) {
-    const items = [...el.querySelectorAll('.fanitem')], len = items.length, t = top[el.dataset.stack] || 0;
+    const items = [...el.querySelectorAll('.fanitem')], len = items.length;
+    const t = Math.max(0, items.findIndex((b) => b.dataset.id === top[el.dataset.stack]));
     items.forEach((b, i) => {
       const k = (i - t + len) % len, f = FAN[Math.min(k, 3)];
       b.style.setProperty('--t', f.t);
@@ -24,15 +25,17 @@
     el.querySelector('.stackct span').textContent = `${t + 1}/${len}`;
   }
   function turn(el, dir) {
-    const len = el.querySelectorAll('.fanitem').length, id = el.dataset.stack;
-    top[id] = (((top[id] || 0) + dir) % len + len) % len;
+    const items = [...el.querySelectorAll('.fanitem')], len = items.length, id = el.dataset.stack;
+    const now = Math.max(0, items.findIndex((b) => b.dataset.id === top[id]));
+    top[id] = items[(((now + dir) % len) + len) % len].dataset.id;
     place(el);
   }
 
   // members: the stack's items in list order. media(it): the picture part of a card.
-  function stackCard(members, index, media) {
+  // Fixed order (oldest first), so a sync that re-sorts the list never changes a stack's shape.
+  function stackCard(unordered, index, media) {
+    const members = unordered.slice().sort((x, y) => (x.importedAt || '').localeCompare(y.importedAt || '') || x.id.localeCompare(y.id));
     const id = members[0].stack, len = members.length;
-    if ((top[id] || 0) >= len) top[id] = 0;
     const first = members[0];
     const el = h('div', { class: 'card stackcard', 'data-stack': id, style: { animationDelay: Math.min(index * 30, 420) + 'ms' } });
     const fan = h('div', { class: 'fan', style: { aspectRatio: first.w && first.h ? `${first.w} / ${first.h}` : '4 / 5' } },

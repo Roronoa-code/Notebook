@@ -94,9 +94,12 @@
     { t: 'translate(0, 5%) scale(.86)', o: 0 }
   ];
   const fanStyle = (k) => { const f = FAN[Math.min(k, 3)]; return `--t:${f.t};opacity:${f.o};z-index:${10 - k}${k ? ';pointer-events:none' : ''}`; };
-  function stackCard(members, n) {
-    const id = members[0].stack, len = members.length;
-    const top = (((S.stackTop[id] || 0) % len) + len) % len;
+  // A stack keeps a fixed order (oldest first) and remembers its top picture by id, so a sync that
+  // re-sorts the list never changes its shape or which picture is showing.
+  const stackOrder = (members) => members.slice().sort((x, y) => (x.importedAt || '').localeCompare(y.importedAt || '') || x.id.localeCompare(y.id));
+  function stackCard(unordered, n) {
+    const members = stackOrder(unordered), id = members[0].stack, len = members.length;
+    const top = Math.max(0, members.findIndex((m) => m.id === S.stackTop[id]));
     return `<div class="card stackcard" data-stack="${id}" style="--d:${Math.min(n * 40, 400)}ms">
       <div class="fan" style="aspect-ratio:${aspect(members[0])}">${members.map((m, i) => `<button type="button" class="fanitem" data-a="open" data-v="${m.id}" style="${fanStyle((i - top + len) % len)}" aria-label="Open ${esc(m.title)}, ${i + 1} of ${len} in a stack">${inner(m, true)}</button>`).join('')}</div>
       <span class="stackct" aria-hidden="true">${top + 1}/${len}</span></div>`;
@@ -116,8 +119,9 @@
   // Brings a stack's next (+1) or previous (-1) picture to the top.
   function turnStack(el, dir) {
     const items = [...el.querySelectorAll('.fanitem')], len = items.length, id = el.dataset.stack;
-    const top = ((((S.stackTop[id] || 0) + dir) % len) + len) % len;
-    S.stackTop[id] = top;
+    const now = Math.max(0, items.findIndex((b) => b.dataset.v === S.stackTop[id]));
+    const top = (((now + dir) % len) + len) % len;
+    S.stackTop[id] = items[top].dataset.v;
     items.forEach((b, i) => { b.style.cssText = fanStyle((i - top + len) % len); });
     el.querySelector('.stackct').textContent = `${top + 1}/${len}`;
     tick();
@@ -188,8 +192,14 @@
       stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn" style="height:40px">Tidy up</button></div>
         <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Start typing, then tap Tidy up to turn it into a heading and bullet points.">${sanitize(it.html)}</div></div>`;
     } else if (it.kind === 'video') {
-      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" controls playsinline preload="metadata"></video>
-        <p class="media-message" role="status"></p></div>`;
+      // Our own quiet player: plays on a loop with the sound off; tap to pause, drag the line to seek.
+      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><div class="vbox">
+        <img class="vposter" src="${url(it.thumb)}" alt="">
+        <video id="vid" src="${url(it.file)}" muted loop playsinline preload="auto" aria-label="${esc(it.title)}"></video>
+        <span class="vpaused" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></span>
+        <div class="vbar" role="slider" aria-label="Position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><div class="vfill"></div></div>
+        <button type="button" class="vsound" aria-label="Sound on" aria-pressed="false">${svg('M11 5L6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6', 18)}</button>
+      </div><p class="media-message" role="status"></p></div>`;
     } else {
       stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
     }

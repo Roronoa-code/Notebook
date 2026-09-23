@@ -19,9 +19,12 @@ window.NBMotion = (ctx) => {
     media.style.transform = was;
     return `translate(${(r.x + r.width / 2 - (m.x + m.width / 2)).toFixed(1)}px,${(r.y + r.height / 2 - (m.y + m.height / 2)).toFixed(1)}px) scale(${(r.width / m.width).toFixed(4)})`;
   }
+  // What moves: the photo, or a video's whole box (showing its still picture while it moves).
+  const mediaOf = (el) => el.querySelector('.stage .vbox') || el.querySelector('.stage img');
+  const stillVideo = (el) => { const v = el.querySelector('.vbox video'); if (v) { v.pause(); el.querySelector('.vbox').classList.remove('live'); } };
   const chromeOf = (el) => [...el.querySelectorAll('.sheet, .lbback')];
   function lightboxOpen(el, under) {
-    const media = el.querySelector('.stage img, .stage video'), scrim = el.querySelector('.scrim');
+    const media = mediaOf(el), scrim = el.querySelector('.scrim');
     const card = cardOf(under), r = card && card.getBoundingClientRect();
     const o = { duration: DUR, easing: EASE };
     scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.8, easing: 'ease-out' });
@@ -35,10 +38,11 @@ window.NBMotion = (ctx) => {
     return scrim.getAnimations()[0];
   }
   function lightboxClose(el, under) {
-    const media = el.querySelector('.stage img, .stage video'), scrim = el.querySelector('.scrim');
+    const media = mediaOf(el), scrim = el.querySelector('.scrim');
     const card = cardOf(under), r = card && card.getBoundingClientRect();
     const o = { duration: DUR, easing: EASE, fill: 'forwards' };
     const from = media ? media.style.transform || 'none' : 'none';
+    stillVideo(el);
     scrim.animate([{ opacity: getComputedStyle(scrim).opacity }, { opacity: 0 }], o);
     chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: 160, fill: 'forwards' }));
     let a;
@@ -180,6 +184,7 @@ window.NBMotion = (ctx) => {
       if (e.touches.length > 1) return;
       const t = e.touches[0];
       x0 = t.clientX; y0 = t.clientY; t0 = e.timeStamp; mode = 'maybe'; S.gesture = null; over = null;
+      clearTimeout(swallow); swallow = 0; // a new touch means the last gesture's stray tap never came
       target = e.target.closest('.card');
       stack = e.target.closest('.stackcard');
       topEl = stack && [...stack.querySelectorAll('.fanitem')].find((b) => !b.style.pointerEvents);
@@ -282,12 +287,12 @@ window.NBMotion = (ctx) => {
   function wireDismiss(root) {
     const stage = root.querySelector('.media-screen .stage');
     if (!stage) return;
-    const media = stage.querySelector('img, video'), scrim = root.querySelector('.scrim');
+    const media = mediaOf(root), scrim = root.querySelector('.scrim');
     let y0 = 0, x0 = 0, dx = 0, dy = 0, active = false, dragging = false, samples = [];
     stage.addEventListener('touchstart', (e) => {
-      const t = e.touches[0], v = stage.querySelector('video');
-      // Leave the video's own controls (bottom of the player) alone.
-      if (e.touches.length > 1 || (v && t.clientY > v.getBoundingClientRect().bottom - 70)) { active = false; return; }
+      const t = e.touches[0];
+      // Leave the video's position line and sound button alone.
+      if (e.touches.length > 1 || e.target.closest('.vbar, .vsound')) { active = false; return; }
       active = true; dragging = false; y0 = t.clientY; x0 = t.clientX; dx = dy = 0; samples = [{ y: y0, t: e.timeStamp }];
     }, { passive: true });
     stage.addEventListener('touchmove', (e) => {

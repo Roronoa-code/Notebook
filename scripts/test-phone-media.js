@@ -114,8 +114,12 @@ const { chromium } = require('playwright-core');
     await page.getByRole('button', { name: 'Close photo' }).click();
     await page.locator('[data-a="back"]').first().click();
     await page.locator('.card').nth(1).click();
-    assert.equal(await page.locator('video[controls]').count(), 1, 'one native video player');
-    assert.equal(await page.locator('#playbtn').count(), 0, 'no duplicate play overlay');
+    assert.equal(await page.locator('.vbox video').count(), 1, 'one video');
+    assert.equal(await page.locator('video[controls]').count(), 0, 'no Android controls: our own quiet player');
+    assert.equal(await page.locator('.vbox .vsound').count(), 1, 'a sound button');
+    assert.equal(await page.locator('.vbox video').evaluate((v) => v.muted && v.loop), true, 'loops with the sound off');
+    await page.locator('.vbox .vsound').click();
+    assert.equal(await page.locator('.vbox video').evaluate((v) => v.muted), false, 'sound button turns sound on');
     assert.deepEqual(errors, []);
     console.log('Phone media passed: expand, pinch/pan, swipe both ways, snap-back, animated/reversible details, single player, caption saving, slower boards, grid retention and reduced motion.');
   } finally { await browser.close(); }
