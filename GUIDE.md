@@ -31,9 +31,16 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   or paste a TikTok or Pinterest link (see below). If a board is open, new things land on it.
 - **Boards**: they're listed on the left. Use **New board**, then **Rename board** or
   **Delete board**. Deleting a board never deletes its items.
-- **Stacks**: Ctrl-click (or tick) two or more things, then **Stack**. A stack shows as one
-  card; use its arrows, or scroll sideways over it, to go through it. Open one and choose
-  **Take out of stack** to split it up. The same bar can **Hide from phone** or **Move to Bin**.
+- **Stacks**: drag a card onto another card to stack them (drag more on to add to it), or
+  Ctrl-click (or tick) several and press **Stack**. A stack shows as one card that takes the
+  shape of the picture on top; drag across it (or scroll sideways, or use the arrow keys) to go
+  through it. Inside a board, only stacks you made in that board are grouped; everything else
+  shows as separate cards there, and every stack is grouped in **All items**. Open one and
+  choose **Take out of stack** to split it up. The pick bar can also **Hide from phone** or
+  **Move to Bin**.
+- **Crop**: open a photo or video and press **Crop**, drag the frame (or its corners), then
+  **Save crop**. Only the part you chose shows, here and on your phone. The original file
+  stays whole: **Change crop** → **Show the whole picture** brings it all back.
 - **Open anything**: click it. Photos open full size (click to zoom), videos play inside
   the app, and notes open in the editor. Use ← → to move between items and Esc to close.
 - **Several boards**: tick boards on the right when an item is open.
@@ -86,7 +93,8 @@ bottom left says "Recognising 3 of 40…" while it works.
 **Pinterest** (bottom left) shows the real Pinterest website inside Notebook. Sign in once
 there yourself (it remembers you, separately from your normal browser). Open any pin and
 press **Save to library**, or right-click a pin and choose **Save to Notebook**. Nothing is
-saved unless you choose it. Pinterest sees what you browse there, just as it does in a browser.
+saved unless you choose it. Promoted (sponsored) pins are taken out before they show. Pinterest
+sees what you browse there, just as it does in a browser.
 
 ## Keeping it safe
 

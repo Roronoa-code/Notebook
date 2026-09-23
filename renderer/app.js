@@ -184,9 +184,9 @@
   function renderGrid() {
     const grid = $('grid'), empty = $('empty');
     const list = NB.visibleItems();
-    const glide = !S.anim && grid.children.length && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const glide = !S.anim && grid.querySelector(':scope > .card') && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const before = new Map(), beforeId = new Map();
-    if (glide) for (const el of grid.children) { const r = el.getBoundingClientRect(); before.set(el, r); for (const id of idsIn(el)) beforeId.set(id, r); }
+    if (glide) for (const el of grid.querySelectorAll(':scope > .card')) { const r = el.getBoundingClientRect(); before.set(el, r); for (const id of idsIn(el)) beforeId.set(id, r); }
     const els = NB.stacks.group(list, NB.smart.suggestion() ? null : currentBoardId()).map((x, i) => {
       const key = Array.isArray(x) ? 's:' + x.map((m) => m.id).sort().join(',') : 'c:' + x.id;
       const sig = Array.isArray(x) ? x.map(sigOf).join(';') : sigOf(x);
@@ -214,9 +214,10 @@
         if (els.includes(el) || r.bottom < 0 || r.top > innerHeight) continue;
         const into = els.find((x) => idsIn(el).some((id) => idsIn(x).includes(id)));
         if (into && (el.classList.contains('stackcard') || !into.classList.contains('stackcard'))) continue; // just redrawn: it glides as the new card
-        el.className = 'card-ghost';
-        Object.assign(el.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', margin: 0, zIndex: 3, pointerEvents: 'none', animation: 'none' });
-        document.body.append(el);
+        el.className = 'card-ghost'; // under the cards that stay, which glide over it
+        const g = grid.getBoundingClientRect();
+        Object.assign(el.style, { position: 'absolute', left: r.left - g.left + 'px', top: r.top - g.top + 'px', width: r.width + 'px', margin: 0, pointerEvents: 'none', animation: 'none' });
+        grid.prepend(el);
         const to = into ? into.getBoundingClientRect() : null;
         const end = to ? `translate(${to.left + to.width / 2 - (r.left + r.width / 2)}px, ${to.top + 40 - r.top}px) scale(.5)` : 'scale(.92)';
         el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => el.remove();

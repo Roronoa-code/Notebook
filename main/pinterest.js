@@ -1,6 +1,7 @@
 // The Pinterest panel (build plan B2): the real Pinterest website inside the app, signed in as you
 // (its own saved session, separate from everything else), with "Save to library". Nothing is saved
 // unless you press Save or choose "Save to Notebook" on a pin. The rest of the app stays offline.
+const path = require('path');
 const { WebContentsView, BrowserWindow, Menu, shell } = require('electron');
 
 const HOME = 'https://www.pinterest.com/';
@@ -16,7 +17,7 @@ function setupPinterest({ getWin, handle, send, save }) {
   const tell = () => send('pin:state', state());
 
   function make() {
-    view = new WebContentsView({ webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    view = new WebContentsView({ webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'pinterest-preload.js') } });
     view.setBackgroundColor('#0A0A0A');
     const wc = view.webContents;
     wc.setWindowOpenHandler(({ url }) => {

@@ -203,7 +203,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .picking .toasts { bottom: 100px; }
 
 /* grid */
-.grid { columns: 250px; column-gap: 22px; }
+.grid { columns: 250px; column-gap: 22px; position: relative; }
 .card { display: block; width: 100%; margin: 0 0 22px; padding: 0; border: 0; background: none; text-align: left; break-inside: avoid; }
 /* backwards (not both) and no filter: a lingering animation on a card stops the badge's glass from blurring */
 .grid.anim .card { animation: inR .65s var(--ease-out) backwards; }
