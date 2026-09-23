@@ -1,0 +1,41 @@
+{
+  "name": "notebook",
+  "productName": "Notebook",
+  "version": "1.0.0",
+  "description": "An offline Pinterest-style notebook for photos, videos and notes.",
+  "main": "main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node scripts/test-library.js",
+    "test:ui": "node scripts/test-ui.js",
+    "dist": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "local.abdul.notebook",
+    "productName": "Notebook",
+    "files": [
+      "main/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createStartMenuShortcut": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Notebook"
+    }
+  },
+  "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/figtree": "^5.3.0",
+    "electron": "^44.4.4",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.63.0"
+  }
+}
