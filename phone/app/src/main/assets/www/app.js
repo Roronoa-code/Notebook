@@ -154,11 +154,11 @@
     const list = onBoard(b.id);
     const cov = list.find((x) => x.thumb || (x.kind === 'photo' && x.file));
     return `<div class="screen">
-      <div style="position:relative;height:300px">
+      <div style="position:relative;height:calc(var(--st) + 300px)">
         ${cov ? `<img src="${url(cov.thumb || cov.file)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(2px)">` : ''}
         <div class="coverfade"></div>
-        <button type="button" class="iconbtn glass" data-a="boardBack" aria-label="Back" style="position:absolute;top:10px;left:16px">${svg(P.back)}</button>
-        <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:10px;right:16px">${svg(P.edit, 18)}</button>
+        <button type="button" class="iconbtn glass" data-a="boardBack" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px">${svg(P.back)}</button>
+        <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:calc(var(--st) + 10px);right:16px">${svg(P.edit, 18)}</button>
         <div style="position:absolute;left:22px;right:22px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
       </div>
       <div class="grid anim" id="boardgrid" style="padding-top:12px">${gridHTML(list, 'Nothing on this board yet. Open an item and tap this board, or tap + while you\'re here.')}</div>
@@ -182,7 +182,7 @@
     const kind = it.kind === 'note' ? 'Note' : it.kind === 'video' ? 'Video' : 'Photo';
     return `<div class="screen" style="overflow:hidden">
       ${stage}
-      <button type="button" class="iconbtn glass" data-a="back" aria-label="Back" style="position:absolute;top:10px;left:16px;z-index:3">${svg(P.back)}</button>
+      <button type="button" class="iconbtn glass" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:3">${svg(P.back)}</button>
       <span class="glass kindpill">${kind}</span>
       <div class="sheet frost${it.kind === 'note' ? ' compact' : ''}">
         <div class="handle"></div>
@@ -195,7 +195,7 @@
   }
 
   function syncHTML() {
-    return `<div class="screen" style="padding:20px 20px 120px;display:flex;flex-direction:column;gap:16px">
+    return `<div class="screen" style="padding:calc(var(--st) + 20px) 20px calc(var(--sb) + 120px);display:flex;flex-direction:column;gap:16px">
       <div style="display:flex;flex-direction:column;gap:6px"><div class="poster" style="font-size:64px">Sync</div><div style="font-size:14px;color:#9A9A9A">Phone and PC, over your home Wi-Fi. Nothing goes online.</div></div>
       <div id="syncbody"></div>
     </div>`;

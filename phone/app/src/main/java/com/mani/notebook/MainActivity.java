@@ -50,15 +50,25 @@ public class MainActivity extends Activity {
     private String pendingBoard = "";
     private Uri cameraUri;
     private Runnable afterNetPermission;
+    private int safeTop = 0, safeBottom = 0;
+
+    private void applySafeArea() {
+        if (web == null) return;
+        web.evaluateJavascript("document.documentElement.style.setProperty('--st','" + safeTop + "px');document.documentElement.style.setProperty('--sb','" + safeBottom + "px');", null);
+    }
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#0A0A0A"));
+        // Full screen: the page draws behind the status bar and gesture bar and keeps its buttons clear of them.
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
-            v.setPadding(0, bars.top, 0, bars.bottom);
+            float d = getResources().getDisplayMetrics().density;
+            safeTop = Math.round(bars.top / d);
+            safeBottom = Math.round(bars.bottom / d);
+            applySafeArea();
             return insets;
         });
         // Test builds only: lets the PC inspect the screens over USB/wireless debugging.
@@ -77,6 +87,9 @@ public class MainActivity extends Activity {
 
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) { return serve(request); }
+
+            @Override
+            public void onPageFinished(WebView view, String url) { applySafeArea(); }
         });
         web.setHapticFeedbackEnabled(true);
         web.addJavascriptInterface(new Native(), "NBNative");
