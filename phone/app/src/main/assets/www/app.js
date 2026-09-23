@@ -203,12 +203,13 @@
     } else {
       stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
     }
+    // Wide pictures leave room below, so their note and boards start open there.
     return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
       ${stage}
       <button type="button" class="iconbtn glass lbback" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:4">${svg(P.back)}</button>
       ${it.kind === 'note' ? '<span class="glass kindpill">Note</span>' : ''}
       <div class="sheet frost${it.kind === 'note' ? ' compact' : ''}">
-        ${it.kind !== 'note' ? `<details class="media-details"><summary><span>${esc(it.title)}</span><small>Details & boards</small></summary><div class="media-fields">` : '<div class="handle"></div>'}
+        ${it.kind !== 'note' ? `<details class="media-details"${it.w > it.h * 1.1 ? ' open' : ''}><summary><span>${esc(it.title)}</span><small>Details & boards</small></summary><div class="media-fields">` : '<div class="handle"></div>'}
         ${it.kind !== 'note' ? `<div style="display:flex;flex-direction:column;gap:8px"><label class="lbl" for="note">Note</label><textarea id="note" class="notebox" placeholder="Why did you save this?">${esc(it.caption || '')}</textarea></div>` : ''}
         <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Boards</span><div class="chips">${chips}</div></div>
         ${it.stack ? `<button type="button" class="btn" data-a="unstack" style="align-self:flex-start">Take out of stack</button>` : ''}
@@ -314,12 +315,23 @@
   }
 
   function updateChrome() {
-    const nav = $('#nav'), hide = S.screen === 'item';
-    if (nav.hidden && !hide && !matchMedia('(prefers-reduced-motion: reduce)').matches) nav.animate([{ opacity: 0, translate: '-50% 24px' }, { opacity: 1, translate: '-50% 0' }], { duration: 380, easing: 'cubic-bezier(.2,.75,.25,1)' });
-    nav.hidden = hide;
-    $('#nav-home').classList.toggle('on', S.screen === 'home');
-    $('#nav-sync').classList.toggle('on', S.screen === 'sync' || S.screen === 'bin');
-    $('#nav-search').classList.toggle('on', S.screen === 'search');
+    // The bar slides away under an open item and back when it closes. An open item sits on top of the
+    // screen it came from, so that screen's tab stays selected (nothing pops in on the way back).
+    const nav = $('#nav'), hide = S.screen === 'item', calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const tab = S.screen === 'item' ? (S.prev === 'item' ? 'home' : S.prev) : S.screen;
+    if (hide !== !!nav.dataset.away) {
+      nav.dataset.away = hide ? '1' : '';
+      nav.inert = hide;
+      nav.getAnimations().forEach((x) => x.cancel());
+      if (!hide) nav.hidden = false;
+      if (!calm) {
+        const a = nav.animate([{ opacity: 1, translate: '-50% 0' }, { opacity: 0, translate: '-50% 28px' }], { duration: hide ? 240 : 380, easing: 'cubic-bezier(.2,.75,.25,1)', direction: hide ? 'normal' : 'reverse', fill: hide ? 'forwards' : 'none' });
+        if (hide) a.onfinish = () => { if (nav.dataset.away) nav.hidden = true; a.cancel(); };
+      } else nav.hidden = hide;
+    }
+    $('#nav-home').classList.toggle('on', tab === 'home');
+    $('#nav-sync').classList.toggle('on', tab === 'sync' || tab === 'bin');
+    $('#nav-search').classList.toggle('on', tab === 'search');
     for (const el of app.querySelectorAll('.navbtn[id]')) {
       if (el.classList.contains('on')) el.setAttribute('aria-current', 'page');
       else el.removeAttribute('aria-current');

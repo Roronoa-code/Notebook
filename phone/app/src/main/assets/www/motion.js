@@ -179,6 +179,30 @@ window.NBMotion = (ctx) => {
     if (grid.dataset.wired) return;
     grid.dataset.wired = '1';
     let x0 = 0, y0 = 0, t0 = 0, mode = null, stack = null, topEl = null, hold = 0, target = null, over = null;
+    let fx = 0, fy = 0, scroller = null, scroll0 = 0, edgeFrame = 0;
+    // Where the held card is drawn: under the finger, allowing for any scrolling since the drag began.
+    function placeHeld() {
+      const dx = fx - x0, dy = fy - y0 + (scroller ? scroller.scrollTop - scroll0 : 0);
+      target.style.transform = `translate(${dx}px,${dy.toFixed(1)}px) scale(1.06) rotate(${(dx / 30).toFixed(2)}deg)`;
+      target.style.pointerEvents = 'none';
+      const under = document.elementFromPoint(fx, fy);
+      target.style.pointerEvents = '';
+      const next = under && under.closest('.grid .card');
+      const hit = next && next !== target ? next : null;
+      if (hit !== over) { if (over) over.classList.remove('droptarget'); if (hit) { hit.classList.add('droptarget'); tick(); } over = hit; }
+    }
+    // Holding a card near the top or bottom edge scrolls the list, faster the closer you are.
+    function edgeScroll() {
+      edgeFrame = 0;
+      if (mode !== 'drag' || !scroller) return;
+      const r = scroller.getBoundingClientRect(), top = Math.max(r.top, 0) + 110, bottom = Math.min(r.bottom, innerHeight) - 130;
+      const speed = fy < top ? -Math.min(18, (top - fy) / 5) : fy > bottom ? Math.min(18, (fy - bottom) / 5) : 0;
+      if (!speed) return;
+      const before = scroller.scrollTop;
+      scroller.scrollTop += speed;
+      if (scroller.scrollTop !== before) placeHeld();
+      edgeFrame = requestAnimationFrame(edgeScroll);
+    }
     const reset = (c) => { c.style.transition = ''; c.style.transform = ''; c.style.zIndex = ''; c.classList.remove('lifted'); };
     grid.addEventListener('touchstart', (e) => {
       if (e.touches.length > 1) return;
@@ -203,15 +227,12 @@ window.NBMotion = (ctx) => {
       if (mode === 'lift' || mode === 'drag') {
         e.preventDefault(); // the page doesn't scroll while a card is held
         if (mode === 'lift' && Math.hypot(dx, dy) < 6) return;
+        if (mode === 'lift') { scroller = target.closest('.lift.up') || (target.closest('.lift') ? null : target.closest('.screen')); scroll0 = scroller ? scroller.scrollTop : 0; }
         mode = 'drag';
         target.style.transition = 'none';
-        target.style.transform = `translate(${dx}px,${dy}px) scale(1.06) rotate(${(dx / 30).toFixed(2)}deg)`;
-        target.style.pointerEvents = 'none';
-        const under = document.elementFromPoint(t.clientX, t.clientY);
-        target.style.pointerEvents = '';
-        const next = under && under.closest('.grid .card');
-        const hit = next && next !== target ? next : null;
-        if (hit !== over) { if (over) over.classList.remove('droptarget'); if (hit) { hit.classList.add('droptarget'); tick(); } over = hit; }
+        fx = t.clientX; fy = t.clientY;
+        placeHeld();
+        if (!edgeFrame) edgeFrame = requestAnimationFrame(edgeScroll);
         return;
       }
       if (mode === 'maybe') {
@@ -224,6 +245,7 @@ window.NBMotion = (ctx) => {
     }, { passive: false });
     const end = (e) => {
       clearTimeout(hold);
+      cancelAnimationFrame(edgeFrame); edgeFrame = 0;
       const was = mode; mode = null;
       setTimeout(() => { S.gesture = null; }, 0);
       if (was === 'lift') { swallowClick(); reset(target); startSelect(target); return; } // held still: start picking

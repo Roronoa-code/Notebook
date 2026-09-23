@@ -124,6 +124,23 @@ const { chromium } = require('playwright-core');
     }
     if (!(await page.locator('#lift.up').count())) { await page.locator('.grip').click(); await page.waitForTimeout(900); }
     const loose = page.locator('#homegrid .card:not(.stackcard)');
+    // Holding a card at the bottom edge scrolls the list; letting go off any card puts it back.
+    {
+      await page.locator('#lift').evaluate((el) => { el.scrollTop = 0; });
+      const first = await centre(page.locator('#homegrid .card').first());
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [first] });
+      await page.waitForTimeout(550);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 6, y: 812 }] });
+      await page.waitForTimeout(600);
+      const scrolled = await page.locator('#lift').evaluate((el) => el.scrollTop);
+      assert.ok(scrolled > 20, `the list scrolls while a card is held at the edge (${scrolled}px)`);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 6, y: 400 }] });
+      await release();
+      await page.waitForTimeout(500);
+      assert.equal(await page.locator('#homegrid .stackcard').count(), 0, 'dropped on nothing: no stack');
+      await page.locator('#lift').evaluate((el) => { el.scrollTop = 0; });
+      await page.waitForTimeout(100);
+    }
     const n0 = await loose.count();
     // two cards fully on screen (the first card in each column)
     const [i0, i1] = await page.evaluate(() => { const cs = [...document.querySelectorAll('#homegrid .card:not(.stackcard)')]; const on = cs.map((c, i) => [i, c.getBoundingClientRect()]).filter(([, r]) => r.bottom < innerHeight - 90 && r.top > 0); return [on[0][0], on.find(([, r]) => r.left !== on[0][1].left)[0]]; });
@@ -145,6 +162,6 @@ const { chromium } = require('playwright-core');
     await page.locator('[data-a="selCancel"]').click();
 
     assert.deepEqual(errors, []);
-    console.log('Phone gestures passed: panel follows the finger, slow drags settle back, flicks lift, pull-down lowers, swipe-down closes a photo (small swipes snap back), hold-to-pick and Stack, flick through a stack, take out of a stack, drag onto a card or a stack to stack, a held stack counts as one.');
+    console.log('Phone gestures passed: panel follows the finger, slow drags settle back, flicks lift, pull-down lowers, swipe-down closes a photo (small swipes snap back), hold-to-pick and Stack, flick through a stack, take out of a stack, drag onto a card or a stack to stack, a held stack counts as one, the list scrolls while a card is held at the edge.');
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exitCode = 1; });
