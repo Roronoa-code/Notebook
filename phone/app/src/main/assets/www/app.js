@@ -150,10 +150,10 @@
       stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn" style="height:40px">Tidy up</button></div>
         <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Start typing, then tap Tidy up to turn it into a heading and bullet points.">${sanitize(it.html)}</div></div>`;
     } else if (it.kind === 'video') {
-      stage = `<div class="stage"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" controls playsinline preload="metadata"></video>
+      stage = `<div class="stage" style="${arStyle(it)}"><video id="vid" src="${url(it.file)}" poster="${url(it.thumb)}" controls playsinline preload="metadata"></video>
         <p class="media-message" role="status"></p></div>`;
     } else {
-      stage = `<div class="stage"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
+      stage = `<div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.file)}" alt="${esc(it.title)}" decoding="async"></button></div>`;
     }
     const kind = it.kind === 'note' ? 'Note' : it.kind === 'video' ? 'Video' : 'Photo';
     return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
@@ -417,7 +417,7 @@
     ghost.append(img);
     app.append(ghost);
     const small = { transform: `translate(${c.x}px,${c.y}px) scale(${c.width / w},${c.height / h})`, borderRadius: `${20 * w / c.width}px / ${20 * h / c.height}px` };
-    const big = { transform: `translate(${t.x}px,${t.y}px)`, borderRadius: '0px' };
+    const big = { transform: `translate(${t.x}px,${t.y}px)`, borderRadius: '22px' };
     card.style.opacity = '0'; target.style.opacity = '0';
     Object.assign(ghost.style, opening ? big : small); // where it rests if it has to wait for the full photo
     const anim = ghost.animate(opening ? [small, big] : [big, small], { duration: DUR, easing: EASE });
@@ -428,6 +428,9 @@
     flight = anim;
     return anim;
   }
+
+  // The photo's shape (width / height) for the rounded media frame; the stage falls back to a plain fit without it.
+  const arStyle = (it) => (it.w > 0 && it.h > 0 ? `--ar:${(it.w / it.h).toFixed(4)}` : '');
 
   function animateSwap(oldEl, el, kind) {
     const stage = $('#stage');
