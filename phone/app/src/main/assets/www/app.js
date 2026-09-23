@@ -65,7 +65,13 @@
     box.innerHTML = `<div class="toast" role="status"><span>${esc(msg)}</span>${undo ? '<button type="button" data-a="undo">Undo</button>' : ''}</div>`;
     toast.undo = undo || null;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { box.innerHTML = ''; toast.undo = null; }, undo ? 5000 : 2600);
+    toastTimer = setTimeout(() => {
+      toast.undo = null;
+      const t = box.firstElementChild;
+      if (!t || matchMedia('(prefers-reduced-motion: reduce)').matches) { box.innerHTML = ''; return; }
+      t.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px) scale(.96)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' })
+        .onfinish = () => { if (box.firstElementChild === t) box.innerHTML = ''; }; // fades up and away
+    }, undo ? 5000 : 2600);
   }
   const tick = () => { try { N.tick(); } catch (e) { /* no haptics */ } };
 
@@ -314,6 +320,23 @@
     return tiles.map((t) => { const on = S.coverId === t.id; return `<button type="button" class="tile${on ? ' on' : ''}" aria-pressed="${on}" aria-label="Use ${esc(t.label)} as cover" data-a="coverPick" data-v="${t.id}">${t.img ? `<img src="${t.img}" alt="">` : '<span class="manitile">MANI</span>'}</button>`; }).join('');
   }
 
+  // Pop-ups rise in (CSS) and sink away (here) instead of vanishing.
+  function showSheet(el, on) {
+    if (on) {
+      el.getAnimations().forEach((x) => x.cancel());
+      delete el.dataset.leaving;
+      el.inert = false;
+      if (el.hidden) el.hidden = false;
+      return;
+    }
+    if (el.hidden || el.dataset.leaving) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.hidden = true; return; }
+    el.dataset.leaving = '1';
+    el.inert = true;
+    const a = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(26px) scale(.97)' }], { duration: 200, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    a.onfinish = () => { if (el.dataset.leaving) { el.hidden = true; delete el.dataset.leaving; } el.inert = false; a.cancel(); };
+  }
+
   function updateChrome() {
     // The bar slides away under an open item and back when it closes. An open item sits on top of the
     // screen it came from, so that screen's tab stays selected (nothing pops in on the way back).
@@ -338,15 +361,15 @@
     }
     $('#addbtn').classList.toggle('open', S.add);
     $('#addbtn').setAttribute('aria-expanded', String(S.add));
-    $('#addsheet').hidden = !S.add;
+    showSheet($('#addsheet'), S.add);
     const cs = $('#coversheet');
     if (S.cover && cs.hidden) $('#tiles').innerHTML = tilesHTML();
-    cs.hidden = !S.cover;
+    showSheet(cs, S.cover);
     $('#seg-dots').classList.toggle('on', S.coverDots);
     $('#seg-plain').classList.toggle('on', !S.coverDots);
-    $('#formsheet').hidden = !S.sheet;
+    showSheet($('#formsheet'), !!S.sheet);
     const n = S.select ? S.select.size : 0;
-    $('#selbar').hidden = !S.select;
+    showSheet($('#selbar'), !!S.select);
     const cards = S.select ? M.pickedCards() : 0;
     if (S.select) { $('#selcount').textContent = cards ? `${cards} picked` : 'Tap things to stack'; $('#selstack').disabled = cards < 2; }
   }
@@ -377,7 +400,8 @@
     const sig = sigOf();
     if (sig !== boardSig) { boardSig = sig; rebuildWheel(); }
     else homeEl.querySelectorAll('.pill').forEach((el) => { const b = wheel()[+el.dataset.pill]; if (b && !b.isNew) el.querySelector('.ct').textContent = plural(onBoard(b.id).length, 'item'); });
-    homeEl.querySelector('#homegrid').innerHTML = gridHTML(homeList(), 'Nothing here yet. Tap + to add photos, videos or a note.');
+    const hg = homeEl.querySelector('#homegrid');
+    M.flipGrid(hg, () => { hg.innerHTML = gridHTML(homeList(), 'Nothing here yet. Tap + to add photos, videos or a note.'); });
     homeEl.querySelector('#count').textContent = String(live().length).padStart(2, '0') + ' items saved';
     homeEl.querySelector('#synced').textContent = statusText();
     homeEl.querySelector('#coverslot').innerHTML = coverHTML();
@@ -396,10 +420,10 @@
       const list = onBoard(b.id);
       $('#boardname').textContent = b.name;
       $('#boardcount').textContent = plural(list.length, 'item');
-      $('#boardgrid').innerHTML = gridHTML(list, 'Nothing on this board yet.');
+      M.flipGrid($('#boardgrid'), () => { $('#boardgrid').innerHTML = gridHTML(list, 'Nothing on this board yet.'); });
     } else if (S.screen === 'item') {
       const it = byId(S.item);
-      if (!it || it.deletedAt) { go(S.prev === 'item' ? 'home' : S.prev); return; }
+      if (!it || it.deletedAt) { go(S.prev === 'item' ? 'home' : S.prev, null, it && it.deletedAt ? 'binned' : 'fade'); return; }
       app.querySelectorAll('[data-a="boardToggle"]').forEach((el) => { const on = (it.boards || []).includes(el.dataset.v); el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); });
     } else if (S.screen === 'sync') {
       $('#syncbody').innerHTML = syncBodyHTML();
@@ -410,7 +434,7 @@
       const list = binned();
       $('#bincount').textContent = plural(list.length, 'item');
       $('#emptybin').hidden = !list.length;
-      $('#bingrid').innerHTML = gridHTML(list, 'The Bin is empty.');
+      M.flipGrid($('#bingrid'), () => { $('#bingrid').innerHTML = gridHTML(list, 'The Bin is empty.'); });
     }
   }
 
@@ -423,8 +447,8 @@
     if (old) old.querySelector('video')?.pause();
     let el;
     if (S.screen === 'home' && homeEl) {
+      homeEl.querySelector('#homegrid').classList.remove('anim'); // the first-load entrance is over; changes glide from here
       refreshHome();
-      homeEl.querySelector('#homegrid').classList.remove('anim');
       el = homeEl;
     } else if (underEl && underEl.dataset.screen === S.screen && old && old.classList.contains('media-screen')) {
       el = underEl; // back from an open photo to the board / search it was opened from
@@ -464,6 +488,7 @@
   }
 
   function go(screen, extra, kind) {
+    if (document.activeElement && document.activeElement.matches('input, textarea, [contenteditable="true"]')) document.activeElement.blur();
     Object.assign(S, extra || {}, { screen, add: false, cover: false, sheet: null, select: null });
     showScreen(kind || 'fade');
   }
@@ -577,12 +602,14 @@
   };
 
   // ---------- actions ----------
+  const TABS = { home: 0, board: 0, search: 1, sync: 2, bin: 2 };
+  const tabKind = (to) => { const from = TABS[S.screen] ?? 0; return TABS[to] === from ? 'fade' : TABS[to] > from ? 'tabR' : 'tabL'; };
   const currentBoard = () => (S.screen === 'board' ? S.board : '');
   const A = {
-    home: () => go('home', null, 'fade'),
+    home: () => go('home', null, tabKind('home')),
     boardBack: () => go('home', null, 'pop'),
-    sync: () => go('sync'),
-    search: () => go('search'),
+    sync: () => go('sync', null, tabKind('sync')),
+    search: () => go('search', null, tabKind('search')),
     selCancel: () => endSelect(),
     stackIds: (ids) => { if (call('stack', JSON.stringify(ids))) toast('Stacked. Flick it sideways to go through them.'); },
     selStack: () => { const ids = [...S.select]; if (call('stack', JSON.stringify(ids))) { endSelect(); toast(`Stacked ${ids.length}. Flick it sideways to go through them.`); } },
@@ -610,8 +637,13 @@
       S.tab = v;
       homeEl.querySelector('#tab-recent').classList.toggle('on', v === 'recent');
       homeEl.querySelector('#tab-notes').classList.toggle('on', v === 'notes');
-      const grid = homeEl.querySelector('#homegrid');
-      grid.classList.remove('anim'); grid.innerHTML = gridHTML(homeList(), v === 'notes' ? 'No notes yet. Tap + and choose New note.' : 'Nothing here yet.'); void grid.offsetWidth; grid.classList.add('anim');
+      const grid = homeEl.querySelector('#homegrid'), dir = v === 'notes' ? -1 : 1;
+      const swap = () => {
+        grid.classList.remove('anim'); grid.innerHTML = gridHTML(homeList(), v === 'notes' ? 'No notes yet. Tap + and choose New note.' : 'Nothing here yet.');
+        grid.animate([{ opacity: 0, transform: `translateX(${-dir * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.75,.25,1)' });
+      };
+      grid.getAnimations().forEach((x) => x.cancel());
+      grid.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 28}px)` }], { duration: 140, easing: 'ease-in', fill: 'forwards' }).onfinish = (e) => { e.target.cancel(); swap(); };
     },
     lift: () => setLift(!S.lift),
     addGallery: () => { S.add = false; updateChrome(); N.pick(currentBoard()); },

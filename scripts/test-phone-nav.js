@@ -84,7 +84,7 @@ const { chromium } = require('playwright-core');
     await page.locator('#addbtn').click();
     assert.equal(await page.locator('#addsheet').isVisible(), true);
     await page.locator('#addbtn').click();
-    assert.equal(await page.locator('#addsheet').isVisible(), false);
+    await page.locator('#addsheet').waitFor({ state: 'hidden', timeout: 1000 }); // sinks away rather than vanishing
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.locator('#nav-sync').click();
     assert.equal(await page.locator('#nav').evaluate((el) => getComputedStyle(el, '::before').transitionDuration), '0s');

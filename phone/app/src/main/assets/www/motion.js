@@ -54,6 +54,44 @@ window.NBMotion = (ctx) => {
     el.style.pointerEvents = 'none';
   }
 
+  // When a grid's contents change (added, binned, stacked, synced), cards glide from where they were to
+  // where they are now and new ones pop in, instead of the whole grid jumping.
+  function flipGrid(grid, mutate) {
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches || grid.classList.contains('anim');
+    const key = (c) => (c.classList.contains('stackcard') ? 's:' + c.dataset.stack : 'i:' + c.dataset.v);
+    const before = new Map();
+    if (!calm) for (const c of grid.querySelectorAll(':scope > .card')) {
+      const r = c.getBoundingClientRect();
+      before.set(key(c), r);
+      c.querySelectorAll('.fanitem').forEach((f) => before.set('i:' + f.dataset.v, r));
+    }
+    mutate();
+    if (calm) return;
+    const near = (r) => r.bottom > -200 && r.top < innerHeight + 200;
+    for (const c of grid.querySelectorAll(':scope > .card')) {
+      let r0 = before.get(key(c));
+      if (!r0 && c.classList.contains('stackcard')) { const f = [...c.querySelectorAll('.fanitem')].find((x) => before.has('i:' + x.dataset.v)); if (f) r0 = before.get('i:' + f.dataset.v); }
+      const r1 = c.getBoundingClientRect();
+      if (!near(r1) && (!r0 || !near(r0))) continue;
+      if (r0) {
+        const dx = r0.left - r1.left, dy = r0.top - r1.top;
+        if (Math.abs(dx) + Math.abs(dy) > 1) c.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: 420, easing: EASE });
+      } else c.animate([{ opacity: 0, transform: 'scale(.86)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 80, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: 'backwards' });
+    }
+  }
+
+  // Binned from an open photo: it drops away towards the bottom as the backdrop clears.
+  function lightboxBin(el) {
+    const media = mediaOf(el), scrim = el.querySelector('.scrim');
+    stillVideo(el);
+    const o = { duration: 380, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' };
+    scrim.animate([{ opacity: getComputedStyle(scrim).opacity }, { opacity: 0 }], { duration: 380, easing: 'ease-out', fill: 'forwards' });
+    chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: 160, fill: 'forwards' }));
+    const a = (media || scrim).animate([{ transform: media ? media.style.transform || 'none' : 'none', opacity: 1 }, { transform: 'translateY(45vh) scale(.25) rotate(-10deg)', opacity: 0 }], o);
+    a.onfinish = () => el.remove();
+    el.style.pointerEvents = 'none';
+  }
+
   function animateSwap(oldEl, el, kind) {
     const stage = ctx.$('#stage');
     if (!oldEl || oldEl === el) return;
@@ -72,11 +110,33 @@ window.NBMotion = (ctx) => {
       outAnim = lightboxOpen(el, oldEl);
       outAnim.onfinish = () => { if (ctx.current() === el) oldEl.style.visibility = 'hidden'; };
       return;
+    } else if (kind === 'binned' && oldEl.classList.contains('media-screen')) {
+      if (back) stage.insertBefore(el, oldEl);
+      lightboxBin(oldEl);
+      return;
     } else if (kind === 'unzoom' && oldEl.classList.contains('media-screen')) {
       lightboxClose(oldEl, el);
       return;
+    } else if ((kind === 'zoom' || kind === 'unzoom') && onScreen(rect)) {
+      // Notes: the card itself opens up into the note (its edges grow to the screen's; nothing shrinks),
+      // and folds back into the card on the way out. The screen underneath stays put.
+      const W = innerWidth, H = innerHeight;
+      const card = `inset(${rect.top.toFixed(1)}px ${(W - rect.right).toFixed(1)}px ${(H - rect.bottom).toFixed(1)}px ${rect.left.toFixed(1)}px round 20px)`;
+      const full = 'inset(0px 0px 0px 0px round 0px)';
+      const note = kind === 'zoom' ? el : oldEl;
+      const fold = note.animate([{ clipPath: kind === 'zoom' ? card : full }, { clipPath: kind === 'zoom' ? full : card }], { ...o, fill: 'forwards' });
+      note.querySelectorAll('.notestage > *, .sheet').forEach((x) => x.animate(kind === 'zoom'
+        ? [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }]
+        : [{ opacity: 1 }, { opacity: 0 }], { duration: kind === 'zoom' ? DUR : DUR * 0.5, delay: kind === 'zoom' ? DUR * 0.25 : 0, easing: EASE, fill: 'both' }));
+      if (kind === 'zoom') {
+        fold.onfinish = () => { fold.cancel(); if (ctx.current() === el) oldEl.style.visibility = 'hidden'; };
+      } else {
+        fold.onfinish = () => oldEl.remove();
+        oldEl.style.pointerEvents = 'none';
+      }
+      return;
     } else if (kind === 'zoom') {
-      // Notes (or a card that's off screen): the screen grows out of the card over Home.
+      // A card that's off screen: the screen rises into place over the one underneath.
       el.animate([{ transform: origin, opacity: .25 }, { transform: 'none', opacity: 1 }], o);
       outAnim = oldEl.animate([{ transform: 'none', opacity: 1 }, { transform: 'scale(.96)', opacity: .6 }], o);
     } else if (kind === 'unzoom') {
@@ -88,6 +148,11 @@ window.NBMotion = (ctx) => {
     } else if (kind === 'pop') {
       el.animate([{ transform: 'translateX(-22%)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], o);
       outAnim = oldEl.animate([{ transform: 'none' }, { transform: 'translateX(100%)' }], o);
+    } else if (kind === 'tabR' || kind === 'tabL') {
+      // Along the bottom bar: the next screen comes from the side you moved towards.
+      const d = kind === 'tabR' ? 1 : -1;
+      el.animate([{ opacity: 0, transform: `translateX(${d * 16}%)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE });
+      outAnim = oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-d * 10}%)` }], { duration: 300, easing: 'cubic-bezier(.4,0,.6,1)' });
     } else {
       el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE });
       outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
@@ -355,5 +420,5 @@ window.NBMotion = (ctx) => {
     stage.addEventListener('touchcancel', end, { passive: true });
   }
 
-  return { animateSwap, setLift, wireHome, wireGrid, wireDismiss, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
+  return { flipGrid, animateSwap, setLift, wireHome, wireGrid, wireDismiss, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
 };
