@@ -195,6 +195,23 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.waitForTimeout(300);
   assert.ok(!('phone' in onDisk().find((i) => i.id === topId)), 'back on the phone');
   ok('"Show on phone" switch saves, shows on the card, and switches back; Take out of stack');
+
+  // Stacks made in All show as loose cards inside a board; a stack made in the board groups there (and in All).
+  const pair = await page.evaluate(() => { const b = NB.S.snap.boards.find((x) => NB.S.snap.items.filter((i) => !i.deletedAt && i.kind !== 'note' && i.boards.includes(x.id)).length >= 2); return { board: b.id, ids: NB.S.snap.items.filter((i) => !i.deletedAt && i.kind !== 'note' && i.boards.includes(b.id)).slice(0, 2).map((i) => i.id) }; });
+  await page.evaluate(async (ids) => { NB.apply(await nb.stackItems(ids)); NB.refreshGrid(); }, pair.ids);
+  await page.locator('.grid .stackcard').waitFor();
+  await page.click(`.bcard[data-id="${pair.board}"]`);
+  await page.waitForTimeout(700);
+  assert.equal(await page.locator('.grid .stackcard').count(), 0, 'a stack made in All is loose cards in a board');
+  for (const id of pair.ids) await page.locator(`.grid .card[data-id="${id}"]`).click({ modifiers: ['Control'] });
+  await page.locator('#selbar .btn', { hasText: 'Stack' }).click();
+  await page.locator('.grid .stackcard').waitFor();
+  assert.ok(onDisk().filter((i) => pair.ids.includes(i.id)).every((i) => i.stackIn === pair.board), 'saved as stacked in this board');
+  await page.click('.bcard[data-id="all"]');
+  await page.locator('.grid .stackcard').waitFor();
+  await page.evaluate(async (id) => { NB.apply(await nb.unstackItem(id)); NB.refreshGrid(); }, pair.ids[0]);
+  await page.waitForFunction(() => !document.querySelector('.grid .stackcard'));
+  ok('stacks only group inside a board when they were made there; all stacks group in All items');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone

@@ -10,6 +10,7 @@
   const binned = () => S.snap.items.filter((i) => i.deletedAt);
   const boardById = (id) => S.snap.boards.find((b) => b.id === id);
   const currentBoardId = () => (boardById(S.board) ? S.board : null);
+  NB.currentBoardId = currentBoardId;
   const textOf = (html) => { const d = document.createElement('div'); d.innerHTML = NB.sanitize(html); return d.textContent || ''; };
   const itemsFor = (id) => (id === 'bin' ? binned() : id === 'all' ? live() : live().filter((i) => i.boards.includes(id)));
   NB.visibleItems = () => {
@@ -175,7 +176,7 @@
     const grid = $('grid'), empty = $('empty');
     const list = NB.visibleItems();
     grid.className = 'grid' + (S.anim ? ' anim ' + S.dir : '');
-    grid.replaceChildren(...NB.stacks.group(list).map((x, i) => (Array.isArray(x) ? NB.stacks.stackCard(x, i, media) : card(x, i))));
+    grid.replaceChildren(...NB.stacks.group(list, NB.smart.suggestion() ? null : currentBoardId()).map((x, i) => (Array.isArray(x) ? NB.stacks.stackCard(x, i, media) : card(x, i))));
     S.anim = false;
     empty.hidden = list.length > 0;
     if (list.length) return;

@@ -161,7 +161,29 @@ const { chromium } = require('playwright-core');
     assert.equal(await page.locator('#selstack').isDisabled(), true);
     await page.locator('[data-a="selCancel"]').click();
 
+    // Inside a board, the stack made in All shows as loose cards; a stack made in the board groups there.
+    await page.locator('.grip').click();
+    await page.waitForTimeout(900);
+    const pill = await page.evaluate(() => { const cy = innerHeight / 2; return [...document.querySelectorAll('.pill')].map((p) => [p.dataset.pill, Math.abs(p.getBoundingClientRect().top + p.getBoundingClientRect().height / 2 - cy), p.textContent]).sort((a, b) => a[1] - b[1])[0]; });
+    await page.locator(`.pill[data-pill="${pill[0]}"]`).click(); // turns the wheel to it (if it wasn't in front)
+    await page.waitForTimeout(700);
+    if (!(await page.locator('#boardgrid').count())) await page.locator(`.pill[data-pill="${pill[0]}"]`).click();
+    await page.locator('#boardgrid').waitFor();
+    await page.waitForTimeout(700);
+    const boardCards = page.locator('#boardgrid .card:not(.stackcard)');
+    assert.equal(await page.locator('#boardgrid .stackcard').count(), 0, 'a stack made in All is loose cards in a board');
+    assert.ok(await boardCards.count() >= 2, `the board “${pill[2].trim()}” needs two cards for this check`);
+    const b0 = await centre(boardCards.nth(0));
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [b0] });
+    await page.waitForTimeout(650);
+    await release();
+    await page.waitForTimeout(350);
+    await boardCards.nth(1).click();
+    await page.locator('#selstack').click();
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator('#boardgrid .stackcard').count(), 1, 'a stack made in the board groups in the board');
+
     assert.deepEqual(errors, []);
-    console.log('Phone gestures passed: panel follows the finger, slow drags settle back, flicks lift, pull-down lowers, swipe-down closes a photo (small swipes snap back), hold-to-pick and Stack, flick through a stack, take out of a stack, drag onto a card or a stack to stack, a held stack counts as one, the list scrolls while a card is held at the edge.');
+    console.log('Phone gestures passed: panel follows the finger, slow drags settle back, flicks lift, pull-down lowers, swipe-down closes a photo (small swipes snap back), hold-to-pick and Stack, flick through a stack, take out of a stack, drag onto a card or a stack to stack, a held stack counts as one, stacks made in All are loose inside a board while a stack made in the board groups there, the list scrolls while a card is held at the edge.');
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exitCode = 1; });

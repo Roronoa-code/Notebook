@@ -269,5 +269,25 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(qnId))), stack: '../x', updatedAt: iso(240000) }] }), /couldn't read/);
   ok('stacks: need two, join when overlapping, dissolve at one, sync from the phone, bad stack ids refused');
 
+  // Where a stack was made: in All (loose cards on boards) or in a board (grouped there too).
+  const stB = await sl.addBoard('Stack board');
+  const allStack = await sl.stackItems([pId, qId]);
+  assert.ok(sl.item(pId).stackIn === null && sl.item(qId).stackIn === null, 'stacked in All');
+  await sl.unstackItem(pId);
+  await sl.stackItems([pId, qId], stB);
+  assert.ok(sl.item(pId).stackIn === stB && sl.item(qId).stackIn === stB, 'stacked in a board');
+  assert.notEqual(sl.item(pId).stack, allStack);
+  await sl.unstackItem(qnId);
+  await sl.stackItems([qnId, pId]);
+  assert.equal(sl.item(qnId).stackIn, stB, 'joining from All keeps the board it was made in');
+  await sl.unstackItem(qnId);
+  assert.equal(sl.item(qnId).stackIn, null, 'taken out: no board either');
+  await sl.stackItems([qnId, pId], 'no-such-board');
+  assert.equal(sl.item(qnId).stackIn, stB, 'an unknown board is ignored');
+  await sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(qnId))), stackIn: 'phone-board', updatedAt: iso(300000) }] });
+  assert.equal(sl.item(qnId).stackIn, 'phone-board', 'where it was stacked syncs from the phone');
+  await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(qnId))), stackIn: '../x', updatedAt: iso(360000) }] }), /couldn't read/);
+  ok('stacks remember where they were made (All or a board), keep it when joined, sync it, refuse bad values');
+
   console.log(`\nAll ${passed} checks passed.`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

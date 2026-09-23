@@ -238,7 +238,7 @@ function registerHandlers() {
   handle('item:thumb', (id, bytes, meta) => lib.saveThumb(id, bytes, meta));
   handle('item:bin', (id) => lib.moveToBin(id));
   handle('items:onPhone', (ids, on) => lib.setOnPhone(Array.isArray(ids) ? ids.map(String) : [], !!on));
-  handle('items:stack', async (ids) => ({ id: await lib.stackItems(Array.isArray(ids) ? ids.map(String) : []) }));
+  handle('items:stack', async (ids, boardId) => ({ id: await lib.stackItems(Array.isArray(ids) ? ids.map(String) : [], typeof boardId === 'string' ? boardId : null) }));
   handle('item:unstack', (id) => lib.unstackItem(String(id)));
   handle('item:restore', (id) => lib.restore(id));
   handle('note:add', async (boardId) => ({ id: await lib.addNote(boardId) }));

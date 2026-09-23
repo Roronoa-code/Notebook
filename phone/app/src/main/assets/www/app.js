@@ -110,10 +110,11 @@
       <div class="fan" style="aspect-ratio:${aspect(members[0])}">${members.map((m, i) => `<button type="button" class="fanitem" data-a="open" data-v="${m.id}" style="${fanStyle((i - top + len) % len)}" aria-label="Open ${esc(m.title)}, ${i + 1} of ${len} in a stack">${inner(m, true)}</button>`).join('')}</div>
       <span class="stackct" aria-hidden="true">${top + 1}/${len}</span></div>`;
   }
-  function gridHTML(list, empty) {
+  // Inside a board (`board`), only stacks made in that board group; the rest show as loose cards.
+  function gridHTML(list, empty, board) {
     const done = new Set(), out = [];
     for (const it of list) {
-      if (it.stack && !it.deletedAt) {
+      if (it.stack && !it.deletedAt && (!board || it.stackIn === board)) {
         if (done.has(it.stack)) continue;
         const members = list.filter((x) => x.stack === it.stack);
         if (members.length > 1) { done.add(it.stack); out.push(stackCard(members, out.length)); continue; }
@@ -185,7 +186,7 @@
         <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:calc(var(--st) + 10px);right:16px">${svg(P.edit, 18)}</button>
         <div style="position:absolute;left:22px;right:22px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
       </div>
-      <div class="grid anim" id="boardgrid" style="padding-top:12px">${gridHTML(list, 'Nothing on this board yet. Open an item and tap this board, or tap + while you\'re here.')}</div>
+      <div class="grid anim" id="boardgrid" style="padding-top:12px">${gridHTML(list, 'Nothing on this board yet. Open an item and tap this board, or tap + while you\'re here.', b.id)}</div>
     </div>`;
   }
 
@@ -420,7 +421,7 @@
       const list = onBoard(b.id);
       $('#boardname').textContent = b.name;
       $('#boardcount').textContent = plural(list.length, 'item');
-      M.flipGrid($('#boardgrid'), () => { $('#boardgrid').innerHTML = gridHTML(list, 'Nothing on this board yet.'); });
+      M.flipGrid($('#boardgrid'), () => { $('#boardgrid').innerHTML = gridHTML(list, 'Nothing on this board yet.', b.id); });
     } else if (S.screen === 'item') {
       const it = byId(S.item);
       if (!it || it.deletedAt) { go(S.prev === 'item' ? 'home' : S.prev, null, it && it.deletedAt ? 'binned' : 'fade'); return; }
@@ -611,8 +612,8 @@
     sync: () => go('sync', null, tabKind('sync')),
     search: () => go('search', null, tabKind('search')),
     selCancel: () => endSelect(),
-    stackIds: (ids) => { if (call('stack', JSON.stringify(ids))) toast('Stacked. Flick it sideways to go through them.'); },
-    selStack: () => { const ids = [...S.select]; if (call('stack', JSON.stringify(ids))) { endSelect(); toast(`Stacked ${ids.length}. Flick it sideways to go through them.`); } },
+    stackIds: (ids) => { if (call('stack', JSON.stringify(ids), currentBoard())) toast('Stacked. Flick it sideways to go through them.'); },
+    selStack: () => { const ids = [...S.select]; if (call('stack', JSON.stringify(ids), currentBoard())) { endSelect(); toast(`Stacked ${ids.length}. Flick it sideways to go through them.`); } },
     unstack: () => { const it = byId(S.item); if (it && call('unstack', it.id)) { toast('Taken out of the stack'); A.back(); } },
     openBin: () => go('bin', null, 'push'),
     binBack: () => go('sync', null, 'pop'),

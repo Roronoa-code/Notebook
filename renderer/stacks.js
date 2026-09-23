@@ -62,10 +62,11 @@
   }
 
   // Items in list order, with each stack (two or more of its items in the list) as one entry.
-  function group(list) {
+  // Inside a board (`boardId`), only stacks made in that board group; the rest show as loose cards.
+  function group(list, boardId) {
     const done = new Set(), out = [];
     for (const it of list) {
-      if (it.stack && !it.deletedAt) {
+      if (it.stack && !it.deletedAt && (!boardId || it.stackIn === boardId)) {
         if (done.has(it.stack)) continue;
         const members = list.filter((x) => x.stack === it.stack);
         if (members.length > 1) { done.add(it.stack); out.push(members); continue; }
@@ -114,7 +115,7 @@
     el.replaceChildren(
       h('span', { class: 'count' }, `${n} picked`),
       h('button', { type: 'button', class: 'btn small', disabled: n < 2, onclick: async () => {
-        const res = NB.apply(await nb.stackItems(ids));
+        const res = NB.apply(await nb.stackItems(ids, NB.currentBoardId()));
         if (res) { picked.clear(); mark(); toast(`Stacked ${n}. Use the arrows (or scroll sideways) to go through them.`); }
       } }, icon('stack'), 'Stack'),
       h('button', { type: 'button', class: 'btn small', onclick: async () => {

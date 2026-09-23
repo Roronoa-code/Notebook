@@ -43,6 +43,7 @@ function cleanRemote(body) {
     if (it.deletedAt != null && !isIso(it.deletedAt)) bad('bin date');
     if (typeof it.title !== 'string') bad('item title');
     if (it.stack != null && (typeof it.stack !== 'string' || !ID_RE.test(it.stack))) bad('item stack');
+    if (it.stackIn != null && (typeof it.stackIn !== 'string' || !ID_RE.test(it.stackIn))) bad('item stack board');
     if (it.labels != null && (typeof it.labels !== 'object' || Array.isArray(it.labels))) bad('item labels');
     delete it.phone; // "show on phone" belongs to the PC; whatever the phone sends is ignored
     if (it.kind === 'note') {
