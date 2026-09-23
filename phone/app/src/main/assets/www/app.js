@@ -63,35 +63,41 @@
   function layoutPills() {
     app.querySelectorAll('.pill').forEach((el) => {
       const k = +el.dataset.pill, dist = k - S.focus, far = Math.abs(dist);
-      el.style.top = 92 + dist * 50 + 'px';
+      el.style.transform = 'translateY(' + dist * 50 + 'px)';
       el.style.zIndex = String(10 - far);
       el.style.setProperty('--glow', Math.max(0, 0.22 - far * 0.07).toFixed(2));
       el.style.opacity = far > 2 ? '0' : String([1, 0.8, 0.4][far]);
+      el.style.visibility = far > 3 ? 'hidden' : 'visible';
       el.style.pointerEvents = far > 2 ? 'none' : 'auto';
     });
   }
 
-  function heroHTML() {
+  function coverHTML() {
     const cov = S.coverId ? ITEMS.find((x) => x.id === S.coverId) : null;
+    return cov ? `<img class="cover ${S.coverDots ? 'dots' : 'plain'}" src="${cov.img}" alt=""><div class="coverfade"></div>` : `<img class="dither" src="${I}mani-disperse.png" alt="">`;
+  }
+
+  function heroHTML() {
     return `<div class="hero">
-      ${cov ? `<img class="cover ${S.coverDots ? 'dots' : 'plain'}" src="${cov.img}" alt=""><div class="coverfade"></div>` : `<img class="dither" src="${I}mani-dither2.png" alt="">`}
+      <div id="coverslot">${coverHTML()}</div>
       <div class="stackwrap" id="stack">${WHEEL.map(pillHTML).join('')}</div>
       <div class="micro status"><span style="color:#F2F2F2">${String(live().length).padStart(2, '0')} items saved</span><br>Synced with PC · ${esc(S.last)}</div>
       <button type="button" class="iconbtn glass coverbtn" data-a="cover" aria-label="Change cover">${svg(P.photo, 18, 1.9)}</button>
     </div>`;
   }
 
+  const homeList = () => (S.tab === 'notes' ? live().filter((x) => x.k === 'note') : live());
   function homeHTML(enter) {
-    const list = S.tab === 'notes' ? live().filter((x) => x.k === 'note') : live();
+    const list = homeList();
     return `<div class="screen${enter ? ' enter' : ''}" style="overflow:hidden">
       ${heroHTML()}
       <div class="lift${S.lift ? ' up' : ''}" id="lift">
         <button type="button" class="grip" data-a="lift" aria-label="${S.lift ? 'Lower items' : 'Lift items up'}"></button>
-        <div class="grid${enter ? ' anim' : ''}">${list.map(card).join('')}</div>
+        <div class="grid${enter ? ' anim' : ''}" id="homegrid">${list.map(card).join('')}</div>
       </div>
       <div class="topglass${S.lift ? ' on' : ''}" id="topglass"></div>
       <div class="topbar"><div class="wordmark">notebook<span>.</span></div>
-        <div class="seg glass"><button type="button" class="${S.tab === 'recent' ? 'on' : ''}" data-a="tab" data-v="recent">Recent</button><button type="button" class="${S.tab === 'notes' ? 'on' : ''}" data-a="tab" data-v="notes">Notes</button></div>
+        <div class="seg glass"><button type="button" class="${S.tab === 'recent' ? 'on' : ''}" data-a="tab" data-v="recent" id="tab-recent">Recent</button><button type="button" class="${S.tab === 'notes' ? 'on' : ''}" data-a="tab" data-v="notes" id="tab-notes">Notes</button></div>
       </div>
     </div>`;
   }
@@ -118,11 +124,20 @@
     const stage = it.k === 'note'
       ? `<div style="position:absolute;inset:0;background:#0F0F0F;padding:70px 26px 0;display:flex;flex-direction:column;gap:16px">
           <div style="display:flex;justify-content:flex-end"><button type="button" class="btn accent" data-a="tidy" style="height:40px">${S.tidied ? 'Undo tidy' : 'Tidy up'}</button></div>
-          ${S.tidied ? `<div class="tidied"><div style="font-size:30px;font-weight:300;letter-spacing:-.02em;margin-bottom:12px">Autumn capsule</div><ul style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:17px"><li>Need brown loafers</li><li>Cream knit (the chunky one)</li><li>Wide leg trousers</li></ul></div>`
-            : `<div style="font-size:18px;line-height:1.6">autumn capsule - need brown loafers, cream knit (the chunky one), wide leg trousers</div>`}
+          <div id="notebody">${noteBodyHTML()}</div>
         </div>`
-      : `<img src="${it.img}" alt="${esc(it.title)}" style="position:absolute;left:0;top:0;width:100%;height:62%;object-fit:cover">
-         ${it.k === 'video' ? `<button type="button" class="glass" data-a="play" aria-label="${S.playing ? 'Pause' : 'Play'}" style="position:absolute;left:50%;top:26%;translate:-50% 0;width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0">${S.playing ? '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>' : '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>'}</button>` : ''}`;
+      : itemParts(it);
+    return itemScreenHTML(enter, it, stage, chips, kind);
+  }
+  function noteBodyHTML() {
+    return S.tidied ? `<div class="tidied"><div style="font-size:30px;font-weight:300;letter-spacing:-.02em;margin-bottom:12px">Autumn capsule</div><ul style="margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:17px"><li>Need brown loafers</li><li>Cream knit (the chunky one)</li><li>Wide leg trousers</li></ul></div>`
+            : `<div style="font-size:18px;line-height:1.6">autumn capsule - need brown loafers, cream knit (the chunky one), wide leg trousers</div>`;
+  }
+  function itemParts(it) {
+    return `<img src="${it.img}" alt="${esc(it.title)}" style="position:absolute;left:0;top:0;width:100%;height:62%;object-fit:cover">
+         ${it.k === 'video' ? `<button type="button" class="glass" data-a="play" id="playbtn" aria-label="${S.playing ? 'Pause' : 'Play'}" style="position:absolute;left:50%;top:26%;translate:-50% 0;width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0">${S.playing ? '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>' : '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>'}</button>` : ''}`;
+  }
+  function itemScreenHTML(enter, it, stage, chips, kind) {
     return `<div class="screen${enter ? ' enter' : ''}" style="overflow:hidden">
       ${stage}
       <button type="button" class="iconbtn glass" data-a="back" aria-label="Back" style="position:absolute;top:10px;left:16px;z-index:3">${svg(P.back)}</button>
@@ -143,11 +158,11 @@
       <div class="glass" style="border-radius:30px;padding:22px;display:flex;flex-direction:column;gap:16px;background:rgba(255,255,255,.05)">
         <div style="display:flex;align-items:center;gap:14px"><span style="width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,.2);display:inline-flex;align-items:center;justify-content:center">${svg(P.pc, 24)}</span>
           <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:600">Mani's PC</span><span style="font-size:13px;color:#9A9A9A">Home Wi-Fi · paired</span></div></div>
-        <div style="font-size:44px;font-weight:200;letter-spacing:-.03em;line-height:1">${S.syncing ? 'Syncing…' : 'Up to date'}</div>
-        ${S.syncing ? '<div class="bar"><div></div></div>' : ''}
+        <div id="synctitle" style="font-size:44px;font-weight:200;letter-spacing:-.03em;line-height:1">${S.syncing ? 'Syncing…' : 'Up to date'}</div>
+        <div class="bar" id="syncbar"${S.syncing ? '' : ' hidden'}><div></div></div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
-          <div style="border-radius:18px;background:rgba(255,255,255,.05);padding:12px 14px;display:flex;flex-direction:column;gap:2px"><span class="lbl">Last sync</span><span style="font-size:16px;font-weight:600">${esc(S.last)}</span></div>
-          <div style="border-radius:18px;background:rgba(255,255,255,.05);padding:12px 14px;display:flex;flex-direction:column;gap:2px"><span class="lbl">Waiting</span><span style="font-size:16px;font-weight:600">${S.syncing ? '3 photos' : 'Nothing'}</span></div>
+          <div style="border-radius:18px;background:rgba(255,255,255,.05);padding:12px 14px;display:flex;flex-direction:column;gap:2px"><span class="lbl">Last sync</span><span id="synclast" style="font-size:16px;font-weight:600">${esc(S.last)}</span></div>
+          <div style="border-radius:18px;background:rgba(255,255,255,.05);padding:12px 14px;display:flex;flex-direction:column;gap:2px"><span class="lbl">Waiting</span><span id="syncwait" style="font-size:16px;font-weight:600">${S.syncing ? '3 photos' : 'Nothing'}</span></div>
         </div>
         <button type="button" class="btn white" data-a="syncNow" style="width:100%">Sync now</button>
       </div>
@@ -159,66 +174,124 @@
     </div>`;
   }
 
-  function overlaysHTML() {
-    const nav = S.screen === 'item' ? '' : `<nav class="nav glass" aria-label="Main">
-      <button type="button" class="navbtn${S.screen === 'home' ? ' on' : ''}" data-a="home" aria-label="Home">${svg(P.home)}${S.screen === 'home' ? '<span>Home</span>' : ''}</button>
+  // ---------- persistent parts: the nav and pop-up panels are built once and only shown/hidden ----------
+  function chromeHTML() {
+    return `<div id="stage"></div>
+    <nav class="nav glass" id="nav" aria-label="Main">
+      <button type="button" class="navbtn" data-a="home" id="nav-home" aria-label="Home">${svg(P.home)}<span class="navlbl">Home</span></button>
       <button type="button" class="navbtn" data-a="search" aria-label="Search">${svg(P.search)}</button>
-      <button type="button" class="addbtn${S.add ? ' open' : ''}" data-a="add" aria-label="Add" aria-expanded="${S.add}">${svg(P.plus, 22, 2.4)}</button>
-      <button type="button" class="navbtn${S.screen === 'sync' ? ' on' : ''}" data-a="sync" aria-label="Sync">${svg(P.sync)}${S.screen === 'sync' ? '<span>Sync</span>' : ''}</button>
-    </nav>`;
-    const add = !S.add ? '' : `<div class="popsheet frost">
+      <button type="button" class="addbtn" data-a="add" id="addbtn" aria-label="Add" aria-expanded="false">${svg(P.plus, 22, 2.4)}</button>
+      <button type="button" class="navbtn" data-a="sync" id="nav-sync" aria-label="Sync">${svg(P.sync)}<span class="navlbl">Sync</span></button>
+    </nav>
+    <div class="popsheet frost" id="addsheet" hidden>
       <button type="button" class="addrow" data-a="addGallery">${svg(P.photo, 20, 1.9)}Photos and videos from Gallery</button>
       <button type="button" class="addrow" data-a="addCamera">${svg(P.camera, 20, 1.9)}Take a photo</button>
-      <button type="button" class="addrow" data-a="addNote">${svg(P.note, 20, 1.9)}New note</button></div>`;
-    const tiles = [{ id: '', label: 'MANI' }].concat(live().filter((x) => x.img).map((x) => ({ id: x.id, label: x.title, img: x.img })));
-    const cover = !S.cover ? '' : `<div class="popsheet frost" style="padding:16px;display:flex;flex-direction:column;gap:14px">
+      <button type="button" class="addrow" data-a="addNote">${svg(P.note, 20, 1.9)}New note</button>
+    </div>
+    <div class="popsheet frost" id="coversheet" hidden style="padding:16px;flex-direction:column;gap:14px">
       <div style="display:flex;align-items:center;justify-content:space-between"><span class="lbl">Cover</span>
-        <div class="seg" style="background:rgba(255,255,255,.06)"><button type="button" class="${S.coverDots ? 'on' : ''}" data-a="dots">Dotted</button><button type="button" class="${S.coverDots ? '' : 'on'}" data-a="plain">Photo</button></div></div>
-      <div class="tiles">${tiles.map((t) => { const on = (S.coverId || '') === t.id; return `<button type="button" class="tile${on ? ' on' : ''}" aria-pressed="${on}" aria-label="Use ${esc(t.label)} as cover" data-a="coverPick" data-v="${t.id}">${t.img ? `<img src="${t.img}" alt="">` : '<span class="manitile">MANI</span>'}</button>`; }).join('')}</div></div>`;
-    return nav + add + cover + '<div id="toastbox"></div>';
+        <div class="seg" style="background:rgba(255,255,255,.06)"><button type="button" data-a="dots" id="seg-dots">Dotted</button><button type="button" data-a="plain" id="seg-plain">Photo</button></div></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <div id="toastbox"></div>`;
   }
 
-  // ---------- render ----------
-  let lastScreen = null;
-  function render() {
-    const enter = S.screen !== lastScreen;
-    lastScreen = S.screen;
-    const keepScroll = $('#lift') ? $('#lift').scrollTop : 0;
-    const body = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML }[S.screen](enter);
-    app.innerHTML = body + overlaysHTML();
-    app.style.setProperty('--hero', Math.round(Math.min(600, window.innerHeight * 0.7)) + 'px');
-    if (S.screen === 'home') { layoutPills(); wireHome(); if (!enter && S.lift) $('#lift').scrollTop = keepScroll; }
-    const note = $('#note');
-    if (note) note.addEventListener('input', () => { S.captions[S.item] = note.value; });
+  function tilesHTML() {
+    const tiles = [{ id: '', label: 'MANI' }].concat(live().filter((x) => x.img).map((x) => ({ id: x.id, label: x.title, img: x.img })));
+    return tiles.map((t) => { const on = (S.coverId || '') === t.id; return `<button type="button" class="tile${on ? ' on' : ''}" aria-pressed="${on}" aria-label="Use ${esc(t.label)} as cover" data-a="coverPick" data-v="${t.id}">${t.img ? `<img src="${t.img}" alt="">` : '<span class="manitile">MANI</span>'}</button>`; }).join('');
+  }
+
+  function updateChrome() {
+    $('#nav').hidden = S.screen === 'item';
+    $('#nav-home').classList.toggle('on', S.screen === 'home');
+    $('#nav-sync').classList.toggle('on', S.screen === 'sync');
+    $('#addbtn').classList.toggle('open', S.add);
+    $('#addbtn').setAttribute('aria-expanded', String(S.add));
+    $('#addsheet').hidden = !S.add;
+    const cs = $('#coversheet');
+    if (S.cover && cs.hidden) $('#tiles').innerHTML = tilesHTML();
+    cs.hidden = !S.cover;
+    $('#seg-dots').classList.toggle('on', S.coverDots);
+    $('#seg-plain').classList.toggle('on', !S.coverDots);
+  }
+
+  // ---------- screens: only the screen you move to is built; Home is kept so it comes back exactly as you left it ----------
+  let homeEl = null, homeVer = -1, dataVer = 0;
+  const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML };
+
+  function build(name) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = builders[name](true);
+    return tmp.firstElementChild;
+  }
+
+  function refreshHome() {
+    if (!homeEl || homeVer === dataVer) return;
+    homeEl.querySelectorAll('.pill').forEach((el) => {
+      const b = WHEEL[+el.dataset.pill];
+      if (!b.isNew) { const n = onBoard(b.id).length; el.querySelector('.ct').textContent = n + (n === 1 ? ' item' : ' items'); }
+    });
+    homeEl.querySelector('#homegrid').innerHTML = homeList().map(card).join('');
+    homeEl.querySelector('.status span').textContent = String(live().length).padStart(2, '0') + ' items saved';
+    homeVer = dataVer;
+  }
+
+  function showScreen() {
+    const stage = $('#stage');
+    const old = stage.firstElementChild;
+    let el;
+    if (S.screen === 'home' && homeEl) {
+      refreshHome();
+      el = homeEl;
+      el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
+    } else {
+      el = build(S.screen);
+      if (S.screen === 'home') { homeEl = el; homeVer = dataVer; }
+    }
+    if (old && old !== el) old.remove();
+    if (!el.isConnected) stage.appendChild(el);
+    if (S.screen === 'home' && !el.dataset.wired) { layoutPills(); wireHome(el); el.dataset.wired = '1'; }
+    const note = el.querySelector('#note');
+    if (note) note.addEventListener('input', () => { S.captions[S.item] = note.value; dataVer++; });
+    updateChrome();
+  }
+
+  function go(screen, extra) {
+    Object.assign(S, extra || {}, { screen, add: false, cover: false });
+    showScreen();
   }
 
   let toastTimer = null;
   function toast(msg) {
-    const box = $('#toastbox');
-    if (!box) return;
-    box.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
+    $('#toastbox').innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { const b = $('#toastbox'); if (b) b.innerHTML = ''; }, 2400);
+    toastTimer = setTimeout(() => { $('#toastbox').innerHTML = ''; }, 2400);
   }
+
+  // A light tick from the phone's vibration motor (through the app), used when the board wheel moves.
+  const tick = () => { try { if (window.NBNative) window.NBNative.tick(); } catch (e) { /* no haptics outside the app */ } };
 
   function setLift(v) {
     S.lift = v;
-    const el = $('#lift');
+    const el = homeEl && homeEl.querySelector('#lift');
     if (!el) return;
     el.classList.toggle('up', v);
-    $('#topglass').classList.toggle('on', v);
+    homeEl.querySelector('#topglass').classList.toggle('on', v);
     el.querySelector('.grip').setAttribute('aria-label', v ? 'Lower items' : 'Lift items up');
     if (!v) el.scrollTop = 0;
   }
 
-  function moveFocus(step) {
-    S.focus = Math.max(0, Math.min(WHEEL.length - 1, S.focus + step));
+  function setFocus(k) {
+    k = Math.max(0, Math.min(WHEEL.length - 1, k));
+    if (k === S.focus) return;
+    S.focus = k;
     layoutPills();
+    tick();
   }
 
-  function wireHome() {
+  function wireHome(root) {
     // Items sheet: the first swipe up lifts it over the header; after that it scrolls. At the top, swipe down to lower it.
-    const lift = $('#lift');
+    const lift = root.querySelector('#lift');
     let y0 = 0;
     lift.addEventListener('touchstart', (e) => { y0 = e.touches[0].clientY; }, { passive: true });
     lift.addEventListener('touchmove', (e) => {
@@ -227,12 +300,12 @@
       else if (S.lift && lift.scrollTop <= 0 && dy < -24) { e.preventDefault(); setLift(false); }
     }, { passive: false });
     // Board wheel: swipe up/down to move through boards; tap a dim pill to bring it to the middle, tap the middle one to open it.
-    const stack = $('#stack');
+    const stack = root.querySelector('#stack');
     let sy = 0, swiped = false;
     stack.addEventListener('touchstart', (e) => { sy = e.touches[0].clientY; swiped = false; }, { passive: true });
     stack.addEventListener('touchmove', (e) => {
       const dy = e.touches[0].clientY - sy;
-      if (Math.abs(dy) > 36) { moveFocus(dy < 0 ? 1 : -1); sy = e.touches[0].clientY; swiped = true; }
+      if (Math.abs(dy) > 36) { setFocus(S.focus + (dy < 0 ? 1 : -1)); sy = e.touches[0].clientY; swiped = true; }
       e.preventDefault();
     }, { passive: false });
     stack.addEventListener('click', (e) => {
@@ -240,44 +313,66 @@
       if (!el || swiped) { swiped = false; return; }
       const k = +el.dataset.pill;
       el.classList.remove('jig'); void el.offsetWidth; el.classList.add('jig');
-      if (k !== S.focus) { S.focus = k; layoutPills(); return; }
+      if (k !== S.focus) { setFocus(k); return; }
       const b = WHEEL[k];
       if (b.isNew) { toast('Name your new board'); return; }
       setTimeout(() => go('board', { board: b.id }), 260);
     });
   }
 
-  function go(screen, extra) {
-    Object.assign(S, extra || {}, { screen, add: false, cover: false });
-    if (screen !== 'home') S.lift = false;
-    render();
+  function setCover() {
+    if (homeEl) homeEl.querySelector('#coverslot').innerHTML = coverHTML();
+    $('#tiles').innerHTML = tilesHTML();
+    updateChrome();
   }
 
-  // ---------- actions ----------
+  // ---------- actions: each one changes only the part of the screen it affects ----------
   const A = {
     home: () => go('home'),
     sync: () => go('sync'),
     search: () => toast('Search opens here'),
-    add: () => { S.add = !S.add; S.cover = false; render(); },
-    cover: () => { S.cover = !S.cover; S.add = false; render(); },
-    coverPick: (v) => { S.coverId = v || null; render(); },
-    dots: () => { S.coverDots = true; render(); },
-    plain: () => { S.coverDots = false; render(); },
-    tab: (v) => { S.tab = v; lastScreen = null; render(); },
+    add: () => { S.add = !S.add; S.cover = false; updateChrome(); },
+    cover: () => { S.cover = !S.cover; S.add = false; updateChrome(); },
+    coverPick: (v) => { S.coverId = v || null; setCover(); },
+    dots: () => { S.coverDots = true; setCover(); },
+    plain: () => { S.coverDots = false; setCover(); },
+    tab: (v) => {
+      if (S.tab === v || !homeEl) return;
+      S.tab = v;
+      homeEl.querySelector('#tab-recent').classList.toggle('on', v === 'recent');
+      homeEl.querySelector('#tab-notes').classList.toggle('on', v === 'notes');
+      const grid = homeEl.querySelector('#homegrid');
+      grid.classList.remove('anim'); grid.innerHTML = homeList().map(card).join(''); void grid.offsetWidth; grid.classList.add('anim');
+    },
     lift: () => setLift(!S.lift),
-    addGallery: () => { S.add = false; render(); toast('Opens your Gallery'); },
-    addCamera: () => { S.add = false; render(); toast('Opens the camera'); },
+    addGallery: () => { S.add = false; updateChrome(); toast('Opens your Gallery'); },
+    addCamera: () => { S.add = false; updateChrome(); toast('Opens the camera'); },
     addNote: () => go('item', { item: 'i3', prev: S.screen, tidied: false }),
     open: (v) => go('item', { item: v, prev: S.screen, playing: false, tidied: false }),
     back: () => go(S.prev === 'item' ? 'home' : S.prev),
-    bin: () => { S.binned[S.item] = true; go(S.prev === 'item' ? 'home' : S.prev); toast('Moved to Bin · keeps its boards'); },
-    boardToggle: (v) => { const m = S.mem[S.item]; S.mem[S.item] = m.includes(v) ? m.filter((x) => x !== v) : m.concat(v); render(); },
-    play: () => { S.playing = !S.playing; render(); },
-    tidy: () => { S.tidied = !S.tidied; render(); },
+    bin: () => { S.binned[S.item] = true; dataVer++; go(S.prev === 'item' ? 'home' : S.prev); toast('Moved to Bin · keeps its boards'); },
+    boardToggle: (v, el) => {
+      const m = S.mem[S.item], on = !m.includes(v);
+      S.mem[S.item] = on ? m.concat(v) : m.filter((x) => x !== v);
+      el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on));
+      dataVer++;
+    },
+    play: (v, el) => {
+      S.playing = !S.playing;
+      el.setAttribute('aria-label', S.playing ? 'Pause' : 'Play');
+      el.innerHTML = S.playing ? '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>' : '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>';
+    },
+    tidy: (v, el) => { S.tidied = !S.tidied; el.textContent = S.tidied ? 'Undo tidy' : 'Tidy up'; $('#notebody').innerHTML = noteBodyHTML(); },
     syncNow: () => {
       if (S.syncing) return;
-      S.syncing = true; render();
-      setTimeout(() => { S.syncing = false; S.last = 'just now'; if (S.screen === 'sync') render(); toast('Sync is coming in a later version'); }, 1800);
+      S.syncing = true;
+      $('#synctitle').textContent = 'Syncing…'; $('#syncbar').hidden = false; $('#syncwait').textContent = '3 photos';
+      setTimeout(() => {
+        S.syncing = false; S.last = 'just now';
+        if (S.screen === 'sync') { $('#synctitle').textContent = 'Up to date'; $('#syncbar').hidden = true; $('#syncwait').textContent = 'Nothing'; $('#synclast').textContent = 'just now'; }
+        if (homeEl) homeEl.querySelector('.status').lastChild.textContent = 'Synced with PC · just now';
+        toast('Sync is coming in a later version');
+      }, 1800);
     },
     scan: () => toast('Opens the camera to scan')
   };
@@ -288,12 +383,15 @@
 
   // Android back gesture: close a panel or step back before leaving the app.
   window.nbBack = () => {
-    if (S.add || S.cover) { S.add = S.cover = false; render(); return true; }
+    if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }
     if (S.screen === 'item') { A.back(); return true; }
     if (S.screen !== 'home') { go('home'); return true; }
     return false;
   };
-  window.addEventListener('resize', () => app.style.setProperty('--hero', Math.round(Math.min(600, window.innerHeight * 0.7)) + 'px'));
-  render();
+  const setHero = () => app.style.setProperty('--hero', Math.round(Math.min(600, window.innerHeight * 0.7)) + 'px');
+  window.addEventListener('resize', setHero);
+  setHero();
+  app.innerHTML = chromeHTML();
+  showScreen();
 })();

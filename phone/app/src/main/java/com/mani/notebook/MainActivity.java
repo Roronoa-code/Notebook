@@ -4,7 +4,9 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.HapticFeedbackConstants;
 import android.view.WindowInsets;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -47,12 +49,23 @@ public class MainActivity extends Activity {
                 return true; // never navigate away or open links
             }
         });
+        web.setHapticFeedbackEnabled(true);
+        web.addJavascriptInterface(new Native(), "NBNative");
         root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
         web.loadUrl("file:///android_asset/www/index.html");
 
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::goBack);
+        }
+    }
+
+    // Lets the page ask for a light haptic tick (used when the board wheel moves). Only this app's own bundled page can call it.
+    private class Native {
+        @JavascriptInterface
+        public void tick() {
+            runOnUiThread(() -> web.performHapticFeedback(
+                Build.VERSION.SDK_INT >= 34 ? HapticFeedbackConstants.SEGMENT_FREQUENT_TICK : HapticFeedbackConstants.CLOCK_TICK));
         }
     }
 
