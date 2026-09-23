@@ -16,7 +16,8 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
 
 // Phone sync listens on 127.0.0.1 during the check, so Windows Firewall doesn't ask.
 const SYNC_PORT = 47851;
-const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: String(SYNC_PORT) };
+// The stand-in recogniser keeps the real models out of this check; the window opens on the second monitor.
+const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: String(SYNC_PORT), NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
 const startApp = (extra = []) => {
   // Set NOTEBOOK_EXE to test the packaged app (dist/win-unpacked/Notebook.exe) instead of the source.
   const exe = process.env.NOTEBOOK_EXE;

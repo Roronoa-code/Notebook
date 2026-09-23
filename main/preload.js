@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('nb', {
   restoreBackup: call('backup:restore'),
   exportAll: call('export:run'),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  // Recognition, styles and suggestions (build plan Track A)
+  aiStatus: call('ai:status'),
+  setLabels: call('ai:labels'),
+  setStyles: call('ai:setStyles'),
+  rescan: call('ai:rescan'),
+  suggestions: call('suggest:list'),
+  dismissSuggestion: call('suggest:dismiss'),
+  renameSuggestion: call('suggest:rename'),
+  keepSuggestion: call('suggest:keep'),
+  onAiProgress: (fn) => ipcRenderer.on('ai:progress', (_e, s) => fn(s)),
   // Phone sync
   syncOpen: call('sync:open'),
   syncStatus: call('sync:status'),

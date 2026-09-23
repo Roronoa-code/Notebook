@@ -256,6 +256,48 @@ class Library {
     await this.save();
   }
 
+  // ---------- recognition (build plan A1-A3) ----------
+
+  // What the PC recognised. Like a thumbnail, this isn't a synced edit (updatedAt stays) and a
+  // re-scan only ever replaces `ai`, never the user's corrections in `labels`. Call save() after.
+  setAi(id, ai) {
+    const it = this.data.items.find((i) => i.id === id);
+    if (it) it.ai = ai;
+  }
+
+  // The user's own corrections (main type, extra types, styles). They win over what was recognised,
+  // survive every re-scan and sync like any edit. `null` for a field goes back to the recognised value.
+  async setLabels(id, changes, types, styles) {
+    const it = this.item(id);
+    const next = { ...(it.labels || {}) };
+    if ('main' in changes) {
+      if (changes.main === null) delete next.main;
+      else if (types.includes(changes.main)) next.main = changes.main;
+      else throw new FriendlyError("That isn't one of the types.");
+    }
+    if ('extra' in changes) {
+      if (changes.extra === null) delete next.extra;
+      else next.extra = [...new Set((Array.isArray(changes.extra) ? changes.extra : []).filter((t) => types.includes(t)))];
+    }
+    if ('styles' in changes) {
+      if (changes.styles === null) delete next.styles;
+      else next.styles = [...new Set((Array.isArray(changes.styles) ? changes.styles : []).map(String).filter((s) => styles.includes(s)))].slice(0, 3);
+    }
+    if (Object.keys(next).length) it.labels = next; else delete it.labels;
+    it.updatedAt = now();
+    await this.save();
+  }
+
+  // The outfit style list (the user's own, starting from the 8 defaults).
+  styles(defaults) { return (this.data.settings && Array.isArray(this.data.settings.styles) && this.data.settings.styles.length) ? this.data.settings.styles : defaults; }
+  async setStyles(list) {
+    const clean = [...new Set((Array.isArray(list) ? list : []).map((s) => String(s).trim().toLowerCase().slice(0, 24)).filter(Boolean))].slice(0, 16);
+    if (!clean.length) throw new FriendlyError('Keep at least one style.');
+    this.data.settings = { ...(this.data.settings || {}), styles: clean };
+    await this.save();
+    return clean;
+  }
+
   // "Show on phone" (on unless switched off). Not a synced edit, so updatedAt stays: the PC just
   // stops sending the item, and the phone removes its copy on the next sync.
   async setOnPhone(ids, on) {

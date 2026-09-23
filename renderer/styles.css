@@ -91,6 +91,27 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .popgrid .btn { justify-content: flex-start; }
 .popgrid .btn:last-child { grid-column: 1 / -1; }
 
+/* recognition: filters, labels, suggestions */
+.filters { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.frow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fchip { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; transition: background .2s, color .2s, transform .35s var(--spring); }
+.fchip:hover { color: var(--ink); transform: translateY(-1px); }
+.fchip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.fchip.ghost { border-style: dashed; }
+.fchip svg { width: 14px; height: 14px; }
+.swatch { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); flex-shrink: 0; }
+.select { height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface2); color: var(--ink); padding: 0 10px; font-weight: 600; }
+.recog { display: flex; flex-direction: column; gap: 10px; }
+.recrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chip.small { height: 32px; font-size: 13px; }
+.colourtag { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--surface2); font-size: 13px; font-weight: 600; }
+.recog-status { margin: 0 4px 6px; font-size: 12px; color: var(--muted); }
+.suggested { display: flex; flex-direction: column; gap: 2px; max-height: 32vh; overflow-y: auto; scrollbar-width: none; }
+.navrow.sug .sugname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sugbar { flex-basis: 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.rename.small { height: 40px; width: 260px; font: 700 16px Figtree, sans-serif; text-transform: none; }
+.stylepop { left: auto; right: 44px; bottom: auto; top: 150px; width: 420px; }
+
 /* chips (boards on an open item) */
 .chip { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid transparent; background: transparent; font-weight: 600; font-size: 14px; color: var(--ink2); white-space: nowrap; transition: background .2s, color .3s, transform .45s var(--spring); }
 .chip:hover { background: var(--hover); color: var(--ink); transform: translateY(-2px); }

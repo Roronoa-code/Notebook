@@ -43,6 +43,7 @@ function cleanRemote(body) {
     if (it.deletedAt != null && !isIso(it.deletedAt)) bad('bin date');
     if (typeof it.title !== 'string') bad('item title');
     if (it.stack != null && (typeof it.stack !== 'string' || !ID_RE.test(it.stack))) bad('item stack');
+    if (it.labels != null && (typeof it.labels !== 'object' || Array.isArray(it.labels))) bad('item labels');
     delete it.phone; // "show on phone" belongs to the PC; whatever the phone sends is ignored
     if (it.kind === 'note') {
       if (it.file != null) bad('a note with a file');
@@ -123,6 +124,7 @@ function mergeInto(data, remote, nowMs = Date.now()) {
       const keep = { thumb: li.thumb, w: li.w, h: li.h, duration: li.duration };
       const next = { ...ri };
       if (li.phone === false) next.phone = false; // the PC's "show on phone" survives a newer phone edit
+      if (li.ai) next.ai = li.ai; else delete next.ai; // what the PC recognised stays the PC's own, like its thumbnails
       if ('thumb' in keep && keep.thumb !== undefined) next.thumb = keep.thumb; else delete next.thumb;
       for (const k of ['w', 'h', 'duration']) if (next[k] == null && keep[k] != null) next[k] = keep[k];
       replaceInPlace(li, next);

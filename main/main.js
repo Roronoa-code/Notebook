@@ -1,11 +1,13 @@
 // The app shell: opens the window, keeps the app offline (apart from phone sync on the home
 // network), and answers requests from the page.
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, session, Menu, protocol, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, session, Menu, protocol, Tray, nativeImage, screen } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
 const { Library, PHOTO_EXT, VIDEO_EXT } = require('./library');
 const { SyncServer } = require('./sync-server');
+const { setupFeatures } = require('./features');
+let features = null;
 
 // The page and the library files are both served from nb://notebook/ so the page can
 // make thumbnails from them. /app/ is the interface, /lib/ is the current library folder.
@@ -65,7 +67,7 @@ const sync = new SyncServer({
   settingsFile: path.join(app.getPath('userData'), 'sync.json'),
   host: process.env.NOTEBOOK_SYNC_HOST || undefined, // the checks use 127.0.0.1 so Windows Firewall doesn't ask
   port: Number(process.env.NOTEBOOK_SYNC_PORT) || undefined,
-  onLibraryChanged: ({ arrived }) => send('lib:changed', { snap: lib && lib.data ? snapshot() : null, arrived }),
+  onLibraryChanged: ({ arrived }) => { send('lib:changed', { snap: lib && lib.data ? snapshot() : null, arrived }); if (features) features.kick(); },
   onStatusChanged: () => send('sync:changed'),
   onKeepReady: (on) => applyKeepReady(on)
 });
@@ -126,7 +128,9 @@ function snapshot() {
   return {
     root: lib.root,
     boards: lib.data.boards,
-    items: lib.data.items.map((it) => ({ ...it, src: url(it.file), thumbSrc: url(it.thumb), waiting: lib.waiting.has(it.id) }))
+    items: lib.data.items.map((it) => ({ ...it, src: url(it.file), thumbSrc: url(it.thumb), waiting: lib.waiting.has(it.id) })),
+    types: features ? features.types : [],
+    styles: features ? features.styles() : []
   };
 }
 
@@ -147,6 +151,7 @@ function handle(channel, fn) {
   ipcMain.handle(channel, async (_event, ...args) => {
     try {
       const extra = await fn(...args);
+      if (features && lib) features.kick(); // new or changed pictures get recognised in the background
       return { ok: true, ...(extra || {}), snap: lib && lib.data ? snapshot() : null };
     } catch (err) {
       console.error(channel, err);
@@ -183,6 +188,7 @@ async function confirm(message, detail, okLabel) {
 }
 
 function registerHandlers() {
+  features = setupFeatures({ app, handle, getLib: () => lib, send, snapshot });
   handle('lib:state', async () => {
     const saved = readConfig().libraryPath;
     if (!lib && saved && fs.existsSync(saved)) await useLibrary(saved);
@@ -290,7 +296,10 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: true }
   });
-  win.once('ready-to-show', () => { win.maximize(); win.show(); });
+  // The checks can open the window on the second monitor (NOTEBOOK_WINDOW_DISPLAY=second) without taking focus.
+  const other = process.env.NOTEBOOK_WINDOW_DISPLAY === 'second' && screen.getAllDisplays().find((d) => d.id !== screen.getPrimaryDisplay().id);
+  if (other) win.setBounds({ ...other.workArea, width: Math.min(1440, other.workArea.width), height: Math.min(1000, other.workArea.height) });
+  win.once('ready-to-show', () => { if (other) win.showInactive(); else { win.maximize(); win.show(); } });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // With "Keep Notebook ready for your phone" on, closing hides the window so sync keeps working.

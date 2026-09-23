@@ -25,6 +25,7 @@ Both sides keep the same library folder layout: `library.json`, `media/`, `thumb
   - Tombstones older than 90 days are dropped.
 - **Stacks:** items with the same `stack` id (an id, or `null`/missing) show as one stack. Stacking and unstacking bump `updatedAt` like any edit.
 - **Show on phone:** `phone: false` means the PC doesn't send the item to the phone (missing means shown). Only the PC sets it: the PC ignores `phone` from the phone and keeps its own value even when the phone's copy is newer. It doesn't bump `updatedAt`. The phone removes items that stop arriving (and their files), as with any item missing from the answer. Exception: a hidden item whose file the PC is still waiting for keeps being sent until it's uploaded, so nothing is lost.
+- **Recognition:** `ai` is what the PC recognised (type, colours, styles). It's device-local like `thumb`: it doesn't bump `updatedAt`, and the PC keeps its own `ai` when the phone's copy is newer. `labels` are the user's corrections (`main`, `extra`, `styles`); they bump `updatedAt` and sync like any edit, and a re-scan never changes them.
 - `file` is always `media/<itemId><ext>`, lower-case extension, identical on both sides. `thumb` is device-local: each side makes its own.
 
 ## Discovery (finding the PC after its IP changes)

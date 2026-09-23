@@ -203,6 +203,7 @@
       title,
       h('p', { class: 'meta micro' }, metaText(it)),
       it.kind !== 'note' ? [h('h4', { class: 'micro' }, 'Note'), captionBox(it)] : null,
+      NB.smart.labelsPanel(it),
       h('h4', { class: 'micro' }, 'Boards'),
       h('div', { class: 'tags' }, boardChips(it)),
       h('p', { class: 'hint' }, 'One item can be on several boards. Taking it off a board never deletes it.'),

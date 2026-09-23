@@ -14,8 +14,16 @@
   const itemsFor = (id) => (id === 'bin' ? binned() : id === 'all' ? live() : live().filter((i) => i.boards.includes(id)));
   NB.visibleItems = () => {
     const q = S.q.trim().toLowerCase();
-    const list = itemsFor(S.board);
+    const g = NB.smart.suggestion();
+    const list = g ? live().filter((i) => g.ids.includes(i.id)) : NB.smart.filter(itemsFor(S.board));
     return q ? list.filter((i) => (i.title + ' ' + (i.kind === 'note' ? textOf(i.html) : i.caption || '')).toLowerCase().includes(q)) : list;
+  };
+  NB.refreshGrid = () => { renderContext(); renderGrid(); };
+  // Showing a suggested group (or back to the boards). `boardId`: jump to a board made from it.
+  NB.showSuggestion = (g, boardId) => {
+    S.anim = true;
+    if (boardId) { go(boardId); return; }
+    render();
   };
   NB.boardName = (id) => (boardById(id) || {}).name;
 
@@ -28,6 +36,7 @@
       if (S.board !== 'all' && S.board !== 'bin' && !boardById(S.board)) S.board = 'all';
       render();
       queueThumbs();
+      clearTimeout(apply.sug); apply.sug = setTimeout(() => NB.smart.loadSuggestions(), 600); // groups follow the library
     }
     return res;
   };
@@ -111,12 +120,18 @@
       requestAnimationFrame(() => { input.focus(); input.select(); });
       return;
     }
+    const g = NB.smart.suggestion();
+    if (g) {
+      box.append(h('h2', { class: 'ctx-title' }, g.name), h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`), NB.smart.suggestionBar(g));
+      return;
+    }
     box.append(h('h2', { class: 'ctx-title' }, board ? board.name : S.board === 'bin' ? 'Bin' : 'All items'));
     box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
     if (board) {
       box.append(h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board'));
       box.append(h('button', { type: 'button', class: 'btn small danger', onclick: () => NB.run('deleteBoard', board.id) }, 'Delete board'));
     }
+    if (S.board !== 'bin') { const bar = NB.smart.filterBar(itemsFor(S.board)); if (bar) box.append(bar); }
     if (S.board === 'bin' && binned().length) {
       box.append(h('button', { type: 'button', class: 'btn small danger', onclick: async () => {
         const res = await NB.run('emptyBin');
@@ -167,6 +182,7 @@
     const board = boardById(S.board);
     const [title, text] = S.q.trim() ? [`Nothing matches “${S.q.trim()}”`, 'Try a different word, or clear the search.']
       : S.board === 'bin' ? ['The Bin is empty', 'Things you delete wait here until you empty the Bin.']
+      : NB.smart.active() ? ['Nothing matches these filters', 'Try another type, colour or style, or clear the filters.']
       : board ? ['Nothing on this board yet', `Open any item and tick “${board.name}”, or add new things while you're here and they'll land on this board.`]
       : ['Your notebook is empty', 'Add photos, videos or a note from the top left, or drag files onto this window.'];
     empty.replaceChildren(h('h2', { class: 'display' }, title), h('p', null, text));
@@ -239,6 +255,7 @@
     S.dir = order.indexOf(id) >= order.indexOf(S.board) ? 'r' : 'l';
     S.board = id; S.anim = true; S.renaming = false;
     NB.stacks.clear();
+    NB.smart.hideSuggestion();
     render();
     $('page').scrollTo({ top: 0, behavior: 'smooth' });
     const el = document.querySelector(`.bcard[data-id="${id}"]`);

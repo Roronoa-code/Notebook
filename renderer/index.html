@@ -57,7 +57,9 @@
   </div>
   <div class="micro navlabel">Boards</div>
   <nav class="boards" id="boards" aria-label="Boards"></nav>
+  <div class="suggested" id="suggested" hidden></div>
   <div class="navfoot">
+    <p class="recog-status" id="recog-status" role="status" hidden></p>
     <button type="button" class="navrow" id="bin-btn" aria-pressed="false"><svg class="i"><use href="#i-bin"/></svg><span>Bin</span><span class="n" id="bin-count">0</span></button>
     <button type="button" class="navrow" id="phone"><svg class="i"><use href="#i-phone"/></svg><span>Phone</span></button>
     <button type="button" class="navrow" id="lib-btn" aria-expanded="false" aria-controls="lib-pop"><svg class="i"><use href="#i-folder"/></svg><span>Library</span></button>
@@ -92,6 +94,7 @@
 <script src="util.js"></script>
 <script src="viewer.js"></script>
 <script src="stacks.js"></script>
+<script src="smart.js"></script>
 <script src="phone.js"></script>
 <script src="app.js"></script>
 </body>
