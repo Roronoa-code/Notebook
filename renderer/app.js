@@ -3,7 +3,7 @@
   const { h, icon, toast } = NB;
   const $ = (id) => document.getElementById(id);
   const S = NB.S = { snap: null, board: 'all', q: '', dir: 'r', anim: true, renaming: false, bad: new Set(), queued: new Set(), busy: false };
-  const NOTE_TINTS = ['#1F1D16', '#171D27', '#241A1C', '#1A221D'];
+  const NOTE_TINTS = ['#171717', '#141414', '#1A1A1A', '#121212'];
 
   // ---------- data helpers ----------
   const live = () => S.snap.items.filter((i) => !i.deletedAt);
@@ -68,7 +68,7 @@
       const n = itemsFor(b.id).length;
       const el = h('button', { type: 'button', class: 'bcard' + (S.board === b.id ? ' on' : ''), 'aria-pressed': String(S.board === b.id), 'data-id': b.id, onclick: () => go(b.id) },
         h('div', { class: 'stack', 'aria-hidden': 'true' }, stackFor(b.id)),
-        h('div', null, h('div', { class: 'name' }, b.name), h('div', { class: 'count' }, `${n} item${n === 1 ? '' : 's'}`)));
+        h('div', null, h('div', { class: 'name' }, b.name), h('div', { class: 'count micro' }, `${n} item${n === 1 ? '' : 's'}`)));
       if (b.id !== 'all') dropTarget(el, b.id);
       nav.append(el);
     }
@@ -110,7 +110,8 @@
       requestAnimationFrame(() => { input.focus(); input.select(); });
       return;
     }
-    box.append(h('div', { class: 'count' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
+    box.append(h('h2', { class: 'ctx-title' }, board ? board.name : S.board === 'bin' ? 'Bin' : 'All items'));
+    box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
     if (board) {
       box.append(h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board'));
       box.append(h('button', { type: 'button', class: 'btn small danger', onclick: () => NB.run('deleteBoard', board.id) }, 'Delete board'));
@@ -144,7 +145,7 @@
         icon(it.kind === 'video' ? 'video' : 'photo'), S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
     }
     if (it.kind === 'video') media.append(h('span', { class: 'badge' }, icon('play'), NB.duration(it.duration) || 'Video'));
-    btn.append(media, h('div', { class: 'cap' }, it.title), it.caption ? h('div', { class: 'cap-note' }, it.caption) : null);
+    btn.append(media, h('div', { class: 'cap' }, it.title), ...(it.caption ? [h('div', { class: 'cap-note' }, it.caption)] : []));
     return btn;
   }
 
@@ -202,7 +203,7 @@
   // While dragging, a glass tray of boards appears so you can drop from anywhere on the page.
   function showTray() {
     const tray = $('tray');
-    tray.replaceChildren(h('span', { class: 'tray-label' }, 'Drop on a board'));
+    tray.replaceChildren(h('span', { class: 'tray-label micro' }, 'Drop on a board'));
     for (const b of S.snap.boards) {
       const target = h('div', { class: 'chip tog tray-target' }, b.name);
       dropTarget(target, b.id);

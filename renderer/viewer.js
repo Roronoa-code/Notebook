@@ -56,7 +56,7 @@
   function noteEditor(it) {
     const editor = h('div', { class: 'editor', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Note', 'data-placeholder': 'Start typing… then press Tidy up to turn it into a heading and bullet points.', spellcheck: 'true' });
     editor.innerHTML = NB.sanitize(it.html);
-    const tidyBtn = h('button', { type: 'button', class: 'btn accent small' }, icon('sparkle'), h('span', null, 'Tidy up'));
+    const tidyBtn = h('button', { type: 'button', class: 'btn accent small' }, h('span', null, 'Tidy up'));
     const setTidyLabel = () => { tidyBtn.lastChild.textContent = V.tidyUndo != null ? 'Undo tidy' : 'Tidy up'; };
     V.tidyUndo = null;
     editor.addEventListener('input', () => { if (V.tidyUndo != null) { V.tidyUndo = null; setTidyLabel(); } scheduleSave(editor); });
@@ -188,9 +188,9 @@
     return h('div', { class: 'side' },
       h('div', { class: 'top' }, h('div', { class: 'nav' }, navBtn(-1), navBtn(1)), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', onclick: close }, icon('x'))),
       title,
-      h('p', { class: 'meta' }, metaText(it)),
-      it.kind !== 'note' ? [h('h4', null, 'Note'), captionBox(it)] : null,
-      h('h4', null, 'Boards'),
+      h('p', { class: 'meta micro' }, metaText(it)),
+      it.kind !== 'note' ? [h('h4', { class: 'micro' }, 'Note'), captionBox(it)] : null,
+      h('h4', { class: 'micro' }, 'Boards'),
       h('div', { class: 'tags' }, boardChips(it)),
       h('p', { class: 'hint' }, 'One item can be on several boards. Taking it off a board never deletes it.'),
       it.kind !== 'note' ? h('button', { type: 'button', class: 'linkbtn', onclick: () => nb.revealItem(it.id) }, 'Show file in folder') : null,

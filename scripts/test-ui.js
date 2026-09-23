@@ -54,7 +54,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await answerPickers(app, videos);
   await page.click('#add-videos');
   await page.waitForFunction(() => document.querySelectorAll('.grid .card img').length === 4, null, { timeout: 30000 });
-  assert.equal(await page.locator('.bcard.on .count').innerText(), '4 items');
+  assert.match(await page.locator('.bcard.on .count').innerText(), /^4 items$/i); // shown in capitals by CSS
   ok('2 photos + 2 videos imported onto Outfits, previews made for all 4');
 
   await page.click('#new-note');
