@@ -28,6 +28,8 @@
     render();
   };
   NB.boardName = (id) => (boardById(id) || {}).name;
+  NB.refreshCard = (id) => refreshCard(id);
+  NB.renderBoards = () => renderBoards();
 
   // Every change goes through here: show errors in plain English, otherwise redraw.
   NB.apply = function apply(res) {
@@ -37,7 +39,7 @@
       S.snap = res.snap;
       if (S.board !== 'all' && S.board !== 'bin' && !boardById(S.board)) S.board = 'all';
       render();
-      queueThumbs();
+      NB.previews.queue();
       clearTimeout(apply.sug); apply.sug = setTimeout(() => NB.smart.loadSuggestions(), 600); // groups follow the library
     }
     return res;
@@ -334,13 +336,17 @@
         if (els.includes(el) || r.bottom < 0 || r.top > innerHeight) continue;
         const into = els.find((x) => idsIn(el).some((id) => idsIn(x).includes(id)));
         if (into && (el.classList.contains('stackcard') || !into.classList.contains('stackcard'))) continue; // just redrawn: it glides as the new card
-        el.className = 'card-ghost'; // under the cards that stay, which glide over it
+        // A copy fades (the card itself is kept, ready for when a filter brings it back),
+        // under the cards that stay, which glide over it.
+        const ghost = el.cloneNode(true);
+        ghost.className = 'card-ghost';
+        ghost.setAttribute('aria-hidden', 'true');
         const g = grid.getBoundingClientRect();
-        Object.assign(el.style, { position: 'absolute', left: r.left - g.left + 'px', top: r.top - g.top + 'px', width: r.width + 'px', margin: 0, pointerEvents: 'none', animation: 'none' });
-        grid.prepend(el);
+        Object.assign(ghost.style, { position: 'absolute', left: r.left - g.left + 'px', top: r.top - g.top + 'px', width: r.width + 'px', margin: 0, pointerEvents: 'none', animation: 'none' });
+        grid.prepend(ghost);
         const to = into ? into.getBoundingClientRect() : null;
         const end = to ? `translate(${to.left + to.width / 2 - (r.left + r.width / 2)}px, ${to.top + 40 - r.top}px) scale(.5)` : 'scale(.92)';
-        el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => el.remove();
+        ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => ghost.remove();
       }
     }
     empty.hidden = list.length > 0;
@@ -449,73 +455,6 @@
     if (res) { go(res.id); S.renaming = true; renderContext(); }
   }
 
-  // ---------- previews (thumbnails) ----------
-  function queueThumbs() {
-    for (const it of S.snap.items) {
-      if (it.kind !== 'note' && !it.thumbSrc && !it.waiting && !S.bad.has(it.id) && !S.queued.has(it.id)) { S.queued.add(it.id); thumbQueue.push(it.id); }
-    }
-    pumpThumbs();
-  }
-  // Previews are made three at a time; the board list is redrawn at most a few times a second meanwhile.
-  const thumbQueue = [];
-  let pumping = 0, boardsSoon = 0;
-  const redrawBoardsSoon = () => { if (!boardsSoon) boardsSoon = setTimeout(() => { boardsSoon = 0; renderBoards(); }, 300); };
-  function pumpThumbs() { while (pumping < 3 && thumbQueue.length) pumpOne(); }
-  async function pumpOne() {
-    pumping++;
-    while (thumbQueue.length) {
-      const id = thumbQueue.shift();
-      const it = S.snap.items.find((i) => i.id === id);
-      if (!it) continue;
-      try {
-        const { bytes, meta } = await (it.kind === 'video' ? videoThumb(it.src) : photoThumb(it.src));
-        const res = await nb.saveThumb(id, bytes, meta);
-        if (res.error) throw new Error(res.error);
-        S.snap = res.snap;
-      } catch (err) {
-        console.warn('preview failed', id, err);
-        S.bad.add(id);
-      }
-      refreshCard(id);
-      redrawBoardsSoon();
-      NB.viewer.refresh();
-    }
-    pumping--;
-  }
-
-  const toJpeg = (source, w, h) => new Promise((resolve, reject) => {
-    const scale = Math.min(1, 640 / w);
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
-    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
-    c.toBlob((b) => (b ? b.arrayBuffer().then(resolve, reject) : reject(new Error('no image'))), 'image/jpeg', 0.85);
-  });
-
-  async function photoThumb(src) {
-    const img = new Image();
-    img.src = src;
-    await img.decode();
-    return { bytes: await toJpeg(img, img.naturalWidth, img.naturalHeight), meta: { w: img.naturalWidth, h: img.naturalHeight } };
-  }
-
-  function videoThumb(src) {
-    return new Promise((resolve, reject) => {
-      const v = document.createElement('video');
-      const done = (fn, val) => { clearTimeout(timer); v.removeAttribute('src'); v.load(); fn(val); };
-      const timer = setTimeout(() => done(reject, new Error('timed out')), 20000);
-      v.muted = true; v.preload = 'auto';
-      v.onerror = () => done(reject, new Error('unplayable'));
-      v.onloadedmetadata = () => { v.currentTime = Math.min(1, (v.duration || 0) * 0.25); };
-      v.onseeked = async () => {
-        try {
-          if (!v.videoWidth) throw new Error('no picture');
-          done(resolve, { bytes: await toJpeg(v, v.videoWidth, v.videoHeight), meta: { w: v.videoWidth, h: v.videoHeight, duration: v.duration } });
-        } catch (err) { done(reject, err); }
-      };
-      v.src = src;
-    });
-  }
-
   // ---------- adding things ----------
   async function afterImport(res) {
     if (!res || res.cancelled) return;
@@ -571,7 +510,7 @@
       closeLib();
     };
     $('bin-btn').onclick = () => go(S.board === 'bin' ? 'all' : 'bin');
-    $('lib-keys').onclick = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); shortcuts(); };
+    $('lib-keys').onclick = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); NB.shortcuts(); };
     $('search').addEventListener('input', (e) => { S.q = e.target.value; renderContext(); renderGrid(); });
     $('lib-btn').onclick = () => {
       const pop = $('lib-pop');
@@ -626,43 +565,6 @@
     });
   }
 
-  // ---------- the shortcuts sheet (press ?) ----------
-  function shortcuts() {
-    if (document.querySelector('.keys')) return;
-    const K = (...k) => h('span', { class: 'kbd' }, k.map((x) => h('kbd', null, x)));
-    const row = (keys, what) => h('div', { class: 'krow' }, keys, h('span', null, what));
-    const close = () => { sheet.classList.add('out'); scrim.classList.add('out'); setTimeout(() => { sheet.remove(); scrim.remove(); }, 200); window.removeEventListener('keydown', key, true); };
-    const key = (e) => { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); close(); } };
-    const scrim = h('div', { class: 'scrim keys-scrim', onclick: () => close() });
-    const sheet = h('section', { class: 'keys popover', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts and gestures' },
-      h('div', { class: 'keys-head' }, h('h2', { class: 'display' }, 'Shortcuts'), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', onclick: () => close() }, icon('x'))),
-      h('div', { class: 'kgrid' },
-        h('div', null, h('h4', { class: 'micro' }, 'Adding'),
-          row(K('Ctrl', 'V'), 'Paste a picture, or a TikTok / Pinterest link'),
-          row(K('Drag in'), 'Photos, videos, whole folders, or pictures from a browser'),
-          row(K('Ctrl', 'N'), 'New note')),
-        h('div', null, h('h4', { class: 'micro' }, 'The board'),
-          row(K('Ctrl', 'F'), 'Search (words, types, styles, colours)'),
-          row(K('Ctrl', '+ / −'), 'Bigger or smaller cards (or Ctrl + wheel)'),
-          row(K('Ctrl', 'A'), 'Pick everything showing'),
-          row(K('Delete'), 'Move what’s picked to the Bin'),
-          row(K('Esc'), 'Stop picking, or clear the search')),
-        h('div', null, h('h4', { class: 'micro' }, 'Cards'),
-          row(K('Drag onto a card'), 'Stack them'),
-          row(K('Drag across a stack'), 'Flick through it (or scroll sideways)'),
-          row(K('Drag onto a board'), 'Add it to that board'),
-          row(K('Ctrl', 'click'), 'Pick several'),
-          row(K('Drag a board'), 'Move it up or down the list')),
-        h('div', null, h('h4', { class: 'micro' }, 'Open item'),
-          row(K('←', '→'), 'Previous or next'),
-          row(K('Delete'), 'Move it to the Bin'),
-          row(K('Esc'), 'Close'))));
-    document.body.append(scrim, sheet);
-    window.addEventListener('keydown', key, true);
-    sheet.querySelector('.iconbtn').focus();
-  }
-  NB.shortcuts = shortcuts;
-
   // ---------- keyboard ----------
   function wireKeys() {
     window.addEventListener('keydown', (e) => {
@@ -671,7 +573,7 @@
       if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
       else if (!typing && e.ctrlKey && e.key.toLowerCase() === 'a' && S.board !== 'bin') { e.preventDefault(); NB.stacks.pickAll(); }
       else if (!typing && e.key === 'Delete' && NB.stacks.isPicking()) { e.preventDefault(); NB.stacks.binPicked(); }
-      else if (!typing && e.key === '?') { e.preventDefault(); shortcuts(); }
+      else if (!typing && e.key === '?') { e.preventDefault(); NB.shortcuts(); }
       else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
       else if (e.key === 'Escape') {
         if (NB.stacks.isPicking()) NB.stacks.clear();
