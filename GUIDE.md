@@ -110,6 +110,10 @@ sees what you browse there, just as it does in a browser.
 
 ## Keeping it safe
 
+- **Back up every week** (Library menu): switch it on and choose a folder, ideally on another
+  drive. The first copy is made straight away, then a new one whenever Notebook starts and the
+  last is a week old. The newest three are kept; older automatic ones are deleted. Backups you
+  make yourself are never touched.
 - **Back up**: copies the whole library into a new dated folder and checks every file.
   Back up to a separate drive now and then (your B: drive if it's a separate physical
   drive, plus an occasional external drive).

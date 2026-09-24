@@ -336,5 +336,32 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(pId))), crop: { x: 0, y: 0, w: 5, h: 1 }, updatedAt: iso(480000) }] }), /couldn't read/);
   ok('crop: saved as fractions, a synced edit, the file never changes, bad crops refused (here and from the phone), can be removed');
 
+  // Weekly backups keep the newest three they made; a backup made by hand in the same folder stays.
+  process.env.NOTEBOOK_AUTOBACKUP_DELAY_MS = '1';
+  const { setupAutoBackup } = require('../main/autobackup');
+  const autoDir = path.join(ROOT, 'auto');
+  fs.mkdirSync(path.join(autoDir, 'Notebook Backup by hand'), { recursive: true });
+  fs.writeFileSync(path.join(autoDir, 'Notebook Backup by hand', 'backup-info.json'), '{}');
+  let conf = {}; const handlers = {}; const events = [];
+  const ab = setupAutoBackup({ handle: (c, fn) => { handlers[c] = fn; }, getLib: () => sl, readConfig: () => conf, writeConfig: (x) => { conf = { ...conf, ...x }; }, pickFolder: async () => autoDir, send: (c, s) => events.push(s.status) });
+  const waitDone = async (n) => { for (let i = 0; i < 200 && events.filter((e) => e === 'done').length < n; i++) await new Promise((r) => setTimeout(r, 50)); };
+  await handlers['backup:auto:set'](true);
+  await waitDone(1);
+  for (let run = 2; run <= 4; run++) {
+    conf.autoBackup.last = new Date(Date.now() - 8 * 864e5).toISOString(); // a week has passed
+    await new Promise((r) => setTimeout(r, 1100)); // backups are named by the second
+    ab.check();
+    await waitDone(run);
+  }
+  const autoLeft = fs.readdirSync(autoDir).sort();
+  assert.equal(autoLeft.filter((f) => f !== 'Notebook Backup by hand').length, 3, 'the newest three automatic backups are kept: ' + autoLeft.join(', '));
+  assert.ok(autoLeft.includes('Notebook Backup by hand'), 'a backup made by hand is never touched');
+  ab.check(); await new Promise((r) => setTimeout(r, 300));
+  assert.equal(events.filter((e) => e === 'done').length, 4, 'not again until a week has passed');
+  const inside = {}; let conf2 = {};
+  setupAutoBackup({ handle: (c, fn) => { inside[c] = fn; }, getLib: () => sl, readConfig: () => conf2, writeConfig: (x) => { conf2 = { ...conf2, ...x }; }, pickFolder: async () => path.join(syncDir, 'media'), send: () => {} });
+  await assert.rejects(inside['backup:auto:set'](true), /outside the library/);
+  ok('weekly backups: first one straight away, then only when a week has passed, newest three kept, hand-made backups untouched, never inside the library');
+
   console.log(`\nAll ${passed} checks passed.`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

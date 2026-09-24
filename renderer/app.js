@@ -494,6 +494,29 @@
     if (res) NB.viewer.open(res.id, { focus: true });
   }
 
+  // "Back up every week" in the Library menu.
+  function wireAutoBackup() {
+    const box = $('auto-backup'), info = $('auto-backup-info');
+    const ago = (iso) => { const d = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
+    const draw = (s) => {
+      box.checked = !!s.on;
+      info.replaceChildren(!s.on ? 'Keeps the last 3 copies in a folder you choose, ideally on another drive.'
+        : s.running ? `Backing up now to ${s.dir}…` : `To ${s.dir}${s.last ? ` · last one ${ago(s.last)}` : ''} · `,
+      ...(s.on && !s.running ? [h('button', { type: 'button', class: 'linkbtn', onclick: async () => draw(await nb.autoBackupFolder()) }, 'Change folder')] : []));
+    };
+    nb.autoBackup().then(draw);
+    box.addEventListener('change', async () => {
+      const s = await nb.setAutoBackup(box.checked);
+      if (s.error) { toast(s.error, { error: true }); box.checked = false; return; }
+      draw(s);
+    });
+    nb.onAutoBackup((s) => {
+      draw(s);
+      if (s.status === 'done') toast(`Backed up automatically: ${s.items} items (${NB.bytes(s.bytes)})`);
+      if (s.status === 'failed') toast(`The weekly backup didn’t work: ${s.error}`, { error: true });
+    });
+  }
+
   function wireDock() {
     $('add-photos').onclick = async () => afterImport(await NB.run('pickFiles', 'photos', currentBoardId()));
     $('add-videos').onclick = async () => afterImport(await NB.run('pickFiles', 'videos', currentBoardId()));
@@ -504,6 +527,7 @@
       closeLib();
     };
     $('restore').onclick = restore;
+    wireAutoBackup();
     $('phone').onclick = () => NB.phone.open();
     $('export').onclick = async () => {
       const res = await NB.run('exportAll');

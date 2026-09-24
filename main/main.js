@@ -7,7 +7,8 @@ const { Readable } = require('stream');
 const { Library, PHOTO_EXT, VIDEO_EXT } = require('./library');
 const { SyncServer } = require('./sync-server');
 const { setupFeatures } = require('./features');
-let features = null;
+const { setupAutoBackup } = require('./autobackup');
+let features = null, autoBackup = null;
 
 // The page and the library files are both served from nb://notebook/ so the page can
 // make thumbnails from them. /app/ is the interface, /lib/ is the current library folder.
@@ -164,6 +165,7 @@ async function useLibrary(root) {
   lib = await Library.openOrCreate(root);
   writeConfig({ libraryPath: root });
   await sync.start(lib); // never throws: problems show in the Phone panel
+  if (autoBackup) autoBackup.check();
   const opened = lib; // fingerprints for older items, quietly, so duplicates are noticed
   setTimeout(() => opened.fillHashes().catch((err) => console.error('fingerprints', err)), 4000);
   return { recovered: lib.recovered };
@@ -191,6 +193,7 @@ async function confirm(message, detail, okLabel) {
 
 function registerHandlers() {
   features = setupFeatures({ app, handle, getLib: () => lib, send, snapshot, getWin: () => win });
+  autoBackup = setupAutoBackup({ handle, getLib: () => lib, readConfig, writeConfig, pickFolder, send });
   handle('lib:state', async () => {
     const saved = readConfig().libraryPath;
     if (!lib && saved && fs.existsSync(saved)) await useLibrary(saved);

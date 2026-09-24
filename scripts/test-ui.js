@@ -464,6 +464,24 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   for (const it of lib0.items.filter((i) => i.file)) assert.equal(fs.statSync(path.join(bkDir, it.file)).size, fs.statSync(path.join(LIB, it.file)).size, it.file);
   ok(`Library → Back up makes a complete copy: ${bkLib.items.length} items, ${bkLib.boards.length} boards, every file the same size`);
 
+  // Back up every week: switching it on asks for a folder and makes the first backup straight away.
+  const AUTO = path.join(OUT, 'auto backups');
+  fs.mkdirSync(AUTO, { recursive: true });
+  await queuePickers([AUTO]);
+  if (await page.locator('#lib-pop').isHidden()) await page.click('#lib-btn');
+  await page.locator('#auto-backup').check();
+  await page.locator('.toast', { hasText: 'Backed up automatically' }).waitFor({ timeout: 60000 });
+  const autoDirs = fs.readdirSync(AUTO).filter((f) => f.startsWith('Notebook Backup') && !f.includes('in progress'));
+  assert.equal(autoDirs.length, 1, 'the first automatic backup is made');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(AUTO, autoDirs[0], 'library.json'), 'utf8')).items.length, lib0.items.length);
+  assert.match(await page.locator('#auto-backup-info').innerText(), /last one today/);
+  const cfgAuto = JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'config.json'), 'utf8')).autoBackup;
+  assert.ok(cfgAuto.on && cfgAuto.dir === AUTO && cfgAuto.made.length === 1);
+  await page.locator('#auto-backup').uncheck();
+  await until(() => JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'config.json'), 'utf8')).autoBackup.on === false, 'switched off');
+  if (await page.locator('#lib-pop').isVisible()) await page.click('#lib-btn');
+  ok('Back up every week: switching it on makes the first backup straight away, into the chosen folder');
+
   await queuePickers([EXP]);
   await page.click('#lib-btn');
   await page.click('#export');
