@@ -347,7 +347,13 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   // Boards can be dragged into a new order.
   const boardNames = () => page.locator('.bcard[data-id]:not([data-id="all"]) .name').allInnerTexts();
   const namesBefore = await boardNames();
-  await page.locator('.bcard', { hasText: namesBefore[namesBefore.length - 1] }).dragTo(page.locator('.bcard', { hasText: namesBefore[0] }), { targetPosition: { x: 40, y: 6 } });
+  // The drag events go straight to the two board cards (a mouse drag here depends on how far the list has scrolled).
+  await page.evaluate(([from, to]) => {
+    const card = (name) => [...document.querySelectorAll('.bcard[data-id]')].find((c) => c.querySelector('.name').textContent === name);
+    const a = card(from), b = card(to), d = new DataTransfer(), r = b.getBoundingClientRect();
+    const fire = (el, type, y) => el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: d, clientX: r.left + 20, clientY: y }));
+    fire(a, 'dragstart', 0); fire(b, 'dragover', r.top + 4); fire(b, 'drop', r.top + 4); fire(a, 'dragend', 0);
+  }, [namesBefore[namesBefore.length - 1], namesBefore[0]]);
   await page.waitForFunction((first) => document.querySelector('.bcard[data-id]:not([data-id="all"]) .name').textContent !== first, namesBefore[0]);
   const namesAfter = await boardNames();
   assert.equal(namesAfter[0], namesBefore[namesBefore.length - 1], 'the last board moved to the top');
