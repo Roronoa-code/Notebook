@@ -32,7 +32,7 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   website), or a TikTok or Pinterest link (see below). You can also drag a picture straight out
   of your browser. If a board is open, new things land on it. The same picture is never added
   twice: you're told it's already there, with **Show it**.
-- **Boards**: they're listed on the left; drag one up or down to move it. Use **New board**,
+- **Boards**: they're listed on the left; drag one up or down to move it (or Alt + ↑ / ↓). Use **New board**,
   then **Rename board** or **Delete board** (click it twice). Deleting a board never deletes its items.
 - **Card size**: Ctrl + mouse wheel over the board, or Ctrl + plus / minus (Ctrl + 0 goes back).
   Videos play quietly on their cards while the pointer rests on them.
@@ -105,7 +105,8 @@ bottom left says "Recognising 3 of 40…" while it works.
 **Pinterest** (bottom left) shows the real Pinterest website inside Notebook. Sign in once
 there yourself (it remembers you, separately from your normal browser). Open any pin and
 press **Save to library**, or right-click a pin and choose **Save to Notebook**. Nothing is
-saved unless you choose it. Promoted (sponsored) pins are taken out before they show. Pinterest
+saved unless you choose it. Promoted (sponsored) pins are taken out before they show. It opens
+where you left it, and menus you open over it aren't hidden behind it. Pinterest
 sees what you browse there, just as it does in a browser.
 
 ## Keeping it safe

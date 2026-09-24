@@ -87,6 +87,18 @@ const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 
   ok('menus opened over Pinterest show: Pinterest steps aside and comes back');
   await page.click('#pin-close');
   await page.locator('#pinpanel').waitFor({ state: 'hidden' });
+  await page.waitForTimeout(1500); // the last page is remembered a moment after it opens
   await app.close();
+
+  // After a restart, the panel opens where you left it.
+  const app2 = await electron.launch({ ...(process.env.NOTEBOOK_EXE ? { executablePath: process.env.NOTEBOOK_EXE } : { args: [APP] }), env });
+  const page2 = await app2.firstWindow();
+  await page2.locator('.bcard').first().waitFor();
+  await page2.click('#pin-btn');
+  const pinUrl = () => app2.evaluate(({ webContents }) => (webContents.getAllWebContents().find((w) => /pinterest/.test(w.getURL())) || { getURL: () => '' }).getURL());
+  for (let i = 0; i < 60 && !/\/pin\//.test(await pinUrl()); i++) await page2.waitForTimeout(500);
+  assert.match(await pinUrl(), /\/pin\//, 'reopens on the last pin');
+  ok('after a restart, the Pinterest panel opens on the last page you had open');
+  await app2.close();
   console.log(`\nAll ${passed} checks passed. Screenshot: ${OUT}`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

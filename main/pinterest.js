@@ -2,7 +2,8 @@
 // (its own saved session, separate from everything else), with "Save to library". Nothing is saved
 // unless you press Save or choose "Save to Notebook" on a pin. The rest of the app stays offline.
 const path = require('path');
-const { WebContentsView, Menu, shell } = require('electron');
+const fs = require('fs');
+const { WebContentsView, Menu, shell, app } = require('electron');
 const { attachAdFilter } = require('./adfilter');
 
 const HOME = 'https://www.pinterest.com/';
@@ -10,6 +11,11 @@ const PARTITION = 'persist:pinterest';
 const pinOf = (url) => { try { const u = new URL(url); return /pinterest\.|^pin\.it$/.test(u.hostname) && /^\/pin\/[\w-]+/.test(u.pathname) ? `https://www.pinterest.com${u.pathname.match(/^\/pin\/[\w-]+/)[0]}/` : null; } catch { return null; } };
 // Sign-in pages Pinterest opens in a pop-up (Google, Apple, Facebook): allowed in a small window with the same session.
 const SIGN_IN = /(^|\.)(pinterest\.[a-z.]+|google\.com|accounts\.google\.com|appleid\.apple\.com|facebook\.com)$/i;
+
+// The panel reopens where you left it (even after a restart). Only Pinterest pages are remembered.
+const lastFile = () => path.join(app.getPath('userData'), 'pinterest-last.json');
+const isPinterest = (url) => { try { return /(^|\.)pinterest\.[a-z.]+$/i.test(new URL(url).hostname); } catch { return false; } };
+function lastPage() { try { const u = JSON.parse(fs.readFileSync(lastFile(), 'utf8')).url; return isPinterest(u) ? u : HOME; } catch { return HOME; } }
 
 function setupPinterest({ getWin, handle, send, save }) {
   let view = null, loading = false;
@@ -31,13 +37,16 @@ function setupPinterest({ getWin, handle, send, save }) {
     });
     wc.on('did-start-navigation', (_e, _url, inPage, isMain) => { if (isMain && !inPage) { loading = true; tell(); } });
     for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-finish-load', 'did-fail-load']) wc.on(ev, () => { loading = false; tell(); });
+    let saveTimer = null;
+    const remember = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { const url = wc.getURL(); if (isPinterest(url)) fs.promises.writeFile(lastFile(), JSON.stringify({ url })).catch(() => {}); }, 1000); };
+    wc.on('did-navigate', remember); wc.on('did-navigate-in-page', remember);
     // Right-click a pin: "Save to Notebook" saves that pin without opening it.
     wc.on('context-menu', (_e, p) => {
       const pin = pinOf(p.linkURL) || pinOf(wc.getURL());
       if (!pin) return;
       Menu.buildFromTemplate([{ label: 'Save to Notebook', click: () => save(pin) }]).popup({ window: getWin() });
     });
-    wc.loadURL(HOME);
+    wc.loadURL(lastPage());
   }
 
   handle('pin:open', (bounds) => {

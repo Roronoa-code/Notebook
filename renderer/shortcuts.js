@@ -26,7 +26,7 @@
           row(K('Drag across a stack'), 'Flick through it (or scroll sideways)'),
           row(K('Drag onto a board'), 'Add it to that board'),
           row(K('Ctrl', 'click'), 'Pick several'),
-          row(K('Drag a board'), 'Move it up or down the list')),
+          row(K('Drag a board'), 'Move it up or down the list (or Alt + ↑ / ↓)')),
         h('div', null, h('h4', { class: 'micro' }, 'Open item'),
           row(K('←', '→'), 'Previous or next'),
           row(K('Delete'), 'Move it to the Bin'),

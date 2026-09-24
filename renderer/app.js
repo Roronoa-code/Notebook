@@ -97,6 +97,15 @@
   let movingBoard = null;
   function boardDrag(el, id) {
     el.draggable = true;
+    // Keyboard: Alt + up / down moves the focused board.
+    el.addEventListener('keydown', async (e) => {
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      const order = S.snap.boards.map((b) => b.id), i = order.indexOf(id), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+      if (j < 0 || j >= order.length) return;
+      [order[i], order[j]] = [order[j], order[i]];
+      if (NB.apply(await nb.reorderBoards(order))) { const again = document.querySelector(`.bcard[data-id="${id}"]`); if (again) again.focus(); }
+    });
     el.addEventListener('dragstart', (e) => { if (e.target !== el) return; movingBoard = id; e.dataTransfer.setData(BOARD_TYPE, id); e.dataTransfer.effectAllowed = 'move'; el.classList.add('moving'); });
     el.addEventListener('dragend', () => { movingBoard = null; el.classList.remove('moving'); document.querySelectorAll('.bcard.before, .bcard.after').forEach((x) => x.classList.remove('before', 'after')); });
     el.addEventListener('dragover', (e) => {

@@ -358,7 +358,11 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const namesAfter = await boardNames();
   assert.equal(namesAfter[0], namesBefore[namesBefore.length - 1], 'the last board moved to the top');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8')).boards.map((b) => b.name), namesAfter, 'and the order is saved');
-  ok('boards can be dragged into a new order');
+  const movedFirst = namesAfter[0];
+  await page.locator('.bcard', { hasText: movedFirst }).focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.waitForFunction((n) => document.querySelectorAll('.bcard[data-id]:not([data-id="all"]) .name')[1].textContent === n, movedFirst);
+  ok('boards can be dragged into a new order, or moved with Alt + arrow keys');
 
   // Ctrl + A picks everything, Delete bins it, Undo brings it all back. Delete also bins an open item.
   const liveCount = await page.evaluate(() => NB.S.snap.items.filter((i) => !i.deletedAt).length);
