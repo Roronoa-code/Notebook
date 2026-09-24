@@ -49,8 +49,10 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
 - **Crop**: open a photo or video and press **Crop**, drag the frame (or its corners), then
   **Save crop**. Only the part you chose shows, here and on your phone. The original file
   stays whole: **Change crop** → **Show the whole picture** brings it all back.
-- **Open anything**: click it. Photos open full size (click to zoom), videos play inside
-  the app, and notes open in the editor. Use ← → to move between items and Esc to close.
+- **Open anything**: click it. Photos open full size (click to zoom), and notes open in the
+  editor. Videos play quietly on a loop: click (or Space) to pause, drag along the line at the
+  bottom to move through it, and the speaker (or M) for sound. GIFs move on their cards.
+  Use ← → to move between items and Esc to close.
 - **Several boards**: tick boards on the right when an item is open.
 - **Notes**: bold, italic, bullet lists, headings. **Tidy up** turns messy text into a
   heading and bullet points (no AI, all on your PC). **Undo tidy** puts it back.

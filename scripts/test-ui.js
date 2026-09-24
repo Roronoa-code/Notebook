@@ -99,6 +99,18 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.screenshot({ path: path.join(OUT, '4-video.png') });
   ok(`Samsung-style MP4 plays inside the app (${played.w}px wide, ${played.d.toFixed(1)}s)`);
 
+  // The quiet player: plays on its own with the sound off; click pauses, the speaker turns sound on.
+  await page.waitForFunction(() => { const v = document.querySelector('.vbox video'); return v && !v.paused && v.muted && v.loop; });
+  await page.locator('.vbox').click({ position: { x: 60, y: 60 } });
+  await page.waitForFunction(() => document.querySelector('.vbox video').paused && document.querySelector('.vbox.paused'));
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => !document.querySelector('.vbox video').paused);
+  await page.locator('.vbox').hover();
+  await page.locator('.vsound').click();
+  assert.equal(await page.locator('.vbox video').evaluate((v) => v.muted), false, 'sound on');
+  assert.equal(await page.locator('.vsound').getAttribute('aria-pressed'), 'true');
+  ok('the quiet player: plays muted on a loop, click or Space pauses, the speaker turns sound on');
+
   await page.locator('.side .chip.tog', { hasText: 'Wallpapers' }).click();
   await page.locator('.side .chip.tog.on', { hasText: 'Wallpapers' }).waitFor();
   await page.locator('.side .btn.danger').click();

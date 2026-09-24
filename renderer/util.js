@@ -79,6 +79,18 @@ NB.bytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6
 
 NB.date = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
+// If something unexpected goes wrong on the page, say so in plain words instead of failing silently.
+(() => {
+  let last = 0;
+  const tell = (msg) => {
+    if (/ResizeObserver loop/.test(msg) || Date.now() - last < 8000 || !document.getElementById('toasts')) return;
+    last = Date.now();
+    NB.toast(`Something didn’t work there (${String(msg).slice(0, 80)}). Your notebook is safe; try again.`, { error: true });
+  };
+  window.addEventListener('error', (e) => tell(e.message || 'an error'));
+  window.addEventListener('unhandledrejection', (e) => tell((e.reason && (e.reason.message || e.reason)) || 'an error'));
+})();
+
 // Messages at the bottom of the screen, with an optional button such as Undo.
 NB.toast = function toast(message, opts = {}) {
   const box = document.getElementById('toasts');

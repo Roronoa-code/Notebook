@@ -44,13 +44,63 @@
     }
     if (it.kind === 'video') {
       const stage = h('div', { class: 'stage' });
-      const video = h('video', { src: it.src, controls: !V.cropping, preload: 'metadata', playsinline: true, style: { objectViewBox: V.cropping ? '' : NB.viewBox(it) } });
+      const video = h('video', { src: it.src, preload: 'auto', playsInline: true, loop: true, style: { objectViewBox: V.cropping ? '' : NB.viewBox(it) } });
+      video.muted = true;
       video.addEventListener('error', () => stage.replaceChildren(h('p', { class: 'ph' },
         "This video's format can't play inside Notebook. It's still safely stored: use “Show file in folder” to open it in another player.")));
-      stage.append(video);
+      if (V.cropping) { stage.append(video); return stage; }
+      stage.append(quietPlayer(it, video));
       return stage;
     }
     return noteEditor(it);
+  }
+
+  // The quiet player (like the phone's): plays on a loop with the sound off. Click to pause, drag along
+  // the line to move through it, the speaker for sound. Space and M work too.
+  function quietPlayer(it, video) {
+    const fill = h('div', { class: 'vfill' });
+    const time = h('span', { class: 'vtime', 'aria-hidden': 'true' });
+    const bar = h('div', { class: 'vbar', role: 'slider', tabindex: '0', 'aria-label': 'Position', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, fill);
+    const sound = h('button', { type: 'button', class: 'vsound', 'aria-label': 'Sound on', 'aria-pressed': 'false' }, icon('mute'));
+    const box = h('div', { class: 'vbox', tabindex: '-1', 'aria-label': 'Video: Space plays or pauses, M for sound' },
+      it.thumbSrc ? h('img', { class: 'vposter', src: it.thumbSrc, alt: '', style: { objectViewBox: NB.viewBox(it) } }) : null,
+      video, h('span', { class: 'vpaused', 'aria-hidden': 'true' }, icon('play')), time, bar, sound);
+    // The still picture stays underneath until the video is really playing, so nothing flashes.
+    video.addEventListener('playing', () => { box.classList.add('live'); box.classList.remove('paused'); });
+    video.addEventListener('pause', () => box.classList.add('paused'));
+    let frame = 0;
+    const paint = () => {
+      if (!box.isConnected) return;
+      const p = video.duration ? video.currentTime / video.duration : 0;
+      fill.style.transform = `scaleX(${p.toFixed(4)})`;
+      bar.setAttribute('aria-valuenow', String(Math.round(p * 100)));
+      time.textContent = video.duration ? `${NB.duration(video.currentTime)} / ${NB.duration(video.duration)}` : '';
+      frame = requestAnimationFrame(paint);
+    };
+    frame = requestAnimationFrame(paint);
+    video.play().catch(() => box.classList.add('paused'));
+    const toggle = () => { if (video.paused) video.play().catch(() => {}); else video.pause(); };
+    const setSound = (on) => {
+      video.muted = !on;
+      sound.setAttribute('aria-pressed', String(on));
+      sound.setAttribute('aria-label', on ? 'Sound off' : 'Sound on');
+      sound.replaceChildren(icon(on ? 'sound' : 'mute'));
+    };
+    box.addEventListener('click', (e) => { if (!e.target.closest('.vbar, .vsound')) toggle(); });
+    sound.addEventListener('click', () => setSound(video.muted));
+    const seek = (x) => { const r = bar.getBoundingClientRect(); if (video.duration) video.currentTime = Math.max(0, Math.min(1, (x - r.left) / r.width)) * video.duration; };
+    bar.addEventListener('pointerdown', (e) => {
+      bar.setPointerCapture(e.pointerId); box.classList.add('seeking'); seek(e.clientX);
+      const move = (m) => seek(m.clientX);
+      const up = () => { box.classList.remove('seeking'); bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); };
+      bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+    });
+    bar.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); video.currentTime = Math.min(video.duration || 0, video.currentTime + 2); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); video.currentTime = Math.max(0, video.currentTime - 2); }
+    });
+    V.player = { toggle, sound: () => setSound(video.muted), stop: () => cancelAnimationFrame(frame) };
+    return box;
   }
 
   function noteEditor(it) {
@@ -253,6 +303,7 @@
     const it = item();
     const panel = V.shell.querySelector('.viewer');
     panel.setAttribute('aria-label', it.title);
+    if (V.player) { V.player.stop(); V.player = null; } // the previous item's player
     const stage = stageFor(it);
     // Size the picture area to the photo/video's own shape so there's no empty black space.
     panel.classList.toggle('fit', !!(it.kind !== 'note' && it.w && it.h));
@@ -264,7 +315,7 @@
       editor.focus();
       const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
       const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-    } else panel.querySelector('.iconbtn.spin').focus();
+    } else (panel.querySelector('.vbox') || panel.querySelector('.iconbtn.spin')).focus({ preventScroll: true }); // a video takes the keys (Space, M)
   }
 
   // Sizes the panel so the photo/video frame matches its shape: no empty black bars.
@@ -317,6 +368,9 @@
     if (e.key === 'Escape' && document.querySelector('.ddlist:not(.out)')) return; // Esc closes the open dropdown first
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], video');
+    if (e.target.closest && e.target.closest('.vbar') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // moving through the video
+    if (!typing && V.player && e.key === ' ' && !(e.target.closest && e.target.closest('button'))) { e.preventDefault(); V.player.toggle(); return; }
+    if (!typing && V.player && e.key.toLowerCase() === 'm') { e.preventDefault(); V.player.sound(); return; }
     if (!typing && e.key === 'Delete') { const it = item(); if (it && !it.deletedAt) { e.preventDefault(); binItem(it); } }
     if (!typing && e.key === 'ArrowLeft') step(-1);
     if (!typing && e.key === 'ArrowRight') step(1);
@@ -325,6 +379,7 @@
   async function close() {
     if (!V.shell) return;
     V.cropping = null; V.crop = null;
+    if (V.player) { V.player.stop(); V.player = null; }
     if (V.shell.contains(document.activeElement)) document.activeElement.blur(); // saves a title being edited
     await flush();
     V.shell.remove();

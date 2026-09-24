@@ -200,7 +200,8 @@
     const box = h('div', { class: 'media' });
     const shape = NB.shape(it);
     if (it.thumbSrc) {
-      box.append(h('img', { src: it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: shape ? Math.round(shape.w) : undefined, height: shape ? Math.round(shape.h) : undefined, style: { objectViewBox: NB.viewBox(it) } }));
+      // A GIF moves on the board: the card shows the file itself (its preview is only a still).
+      box.append(h('img', { src: /\.gif$/i.test(it.file || '') ? it.src : it.thumbSrc, alt: '', loading: 'lazy', decoding: 'async', draggable: false, width: shape ? Math.round(shape.w) : undefined, height: shape ? Math.round(shape.h) : undefined, style: { objectViewBox: NB.viewBox(it) } }));
     } else {
       box.append(h('div', { class: 'ph', style: shape ? { aspectRatio: `${shape.w} / ${shape.h}` } : null },
         icon(it.kind === 'video' ? 'video' : 'photo'), it.waiting ? 'Waiting for your phone to send this' : S.bad.has(it.id) ? "Can't show a preview of this file" : 'Making preview…'));
