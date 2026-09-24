@@ -32,4 +32,16 @@ for (const mark of [{ is_promoted: true }, { promoter: { id: 'a' } }, { is_downs
 const plain = JSON.stringify({ data: [pin('1'), pin('2')] });
 assert.equal(filterText(plain).text, plain);
 assert.equal(filterText('<html>not json').text, '<html>not json');
-console.log('Ad filter passed: promoted pins leave lists, id tables, wrappers and references; other answers are untouched.');
+// The page itself: its data blocks are cleaned, "<" inside text can't end the block, everything else stays.
+const { filterHtml } = require('../main/adfilter');
+const block = JSON.stringify({ feed: [pin('1', { title: 'a </script> b' }), ad('Zz')] }).replace(/</g, '\\u003c');
+const html = `<html><head><script id="__PWS_INITIAL_PROPS__" type="application/json">${block}</script><script>var x = 1;</script></head><body>hi</body></html>`;
+const hOut = filterHtml(html);
+assert.equal(hOut.removed, 1);
+const inner = hOut.text.match(/type="application\/json">([\s\S]*?)<\/script>/)[1];
+assert.ok(!inner.includes('<'), 'no raw "<" inside the data block');
+assert.deepEqual(JSON.parse(inner).feed.map((p) => p.id), ['1']);
+assert.equal(JSON.parse(inner).feed[0].title, 'a </script> b');
+assert.ok(hOut.text.includes('<script>var x = 1;</script>') && hOut.text.endsWith('<body>hi</body></html>'));
+assert.equal(filterHtml('<html>no data</html>').text, '<html>no data</html>');
+console.log('Ad filter passed: promoted pins leave lists, id tables, wrappers, references and the page\'s own data; other answers are untouched.');
