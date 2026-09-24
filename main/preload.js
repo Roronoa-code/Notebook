@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('nb', {
   revealItem: call('item:reveal'),
   pickFiles: call('items:pick'),
   importPaths: call('items:import'),
+  importData: call('items:importData'),
   updateItem: call('item:update'),
   saveThumb: call('item:thumb'),
   moveToBin: call('item:bin'),

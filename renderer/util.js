@@ -90,6 +90,31 @@ NB.toast = function toast(message, opts = {}) {
   setTimeout(close, opts.error ? 9000 : opts.action ? 6000 : 3800);
 };
 
+// A small menu of choices under `anchor` (e.g. "Add to board"), in the same look as the dropdowns.
+// options: [{ value, label }]. Closes on a pick, Esc or a click elsewhere.
+NB.menu = function menu(anchor, label, options, onPick) {
+  const { h } = NB;
+  document.querySelectorAll('.ddlist.menu').forEach((m) => m.remove());
+  let at = 0;
+  const list = h('div', { class: 'ddlist menu', role: 'menu', 'aria-label': label, tabindex: '-1' },
+    options.map((o, i) => h('div', { role: 'menuitem', class: 'ddopt', onpointerenter: () => { at = i; mark(); }, onclick: () => { close(); onPick(o.value); } }, o.label)));
+  const mark = () => [...list.children].forEach((o, i) => o.classList.toggle('at', i === at));
+  const r = anchor.getBoundingClientRect();
+  const below = innerHeight - r.bottom > Math.min(320, options.length * 36 + 16);
+  Object.assign(list.style, { left: Math.min(r.left, innerWidth - 240) + 'px', minWidth: Math.max(180, r.width) + 'px', [below ? 'top' : 'bottom']: (below ? r.bottom + 6 : innerHeight - r.top + 6) + 'px' });
+  list.classList.add(below ? 'down' : 'up');
+  const close = () => { list.classList.add('out'); setTimeout(() => list.remove(), 180); document.removeEventListener('pointerdown', outside, true); };
+  const outside = (e) => { if (!list.contains(e.target)) close(); };
+  list.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); anchor.focus(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); at = (at + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length; mark(); }
+    else if (e.key === 'Enter') { e.preventDefault(); close(); onPick(options[at].value); }
+  });
+  document.body.append(list);
+  mark(); list.focus();
+  setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+};
+
 // A dropdown in the app's own look (instead of Windows' menu). options: [{ value, label }].
 // Keyboard: Enter/Space/arrows open it, arrows move, Enter picks, Esc closes.
 NB.dropdown = function dropdown({ label, value, options, onChange }) {

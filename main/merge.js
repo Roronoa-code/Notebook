@@ -138,6 +138,7 @@ function mergeInto(data, remote, nowMs = Date.now()) {
       const next = { ...ri };
       if (li.phone === false) next.phone = false; // the PC's "show on phone" survives a newer phone edit
       if (li.ai) next.ai = li.ai; else delete next.ai; // what the PC recognised stays the PC's own, like its thumbnails
+      if (li.hash) next.hash = li.hash; // and so does its file fingerprint
       if ('thumb' in keep && keep.thumb !== undefined) next.thumb = keep.thumb; else delete next.thumb;
       for (const k of ['w', 'h', 'duration']) if (next[k] == null && keep[k] != null) next[k] = keep[k];
       replaceInPlace(li, next);

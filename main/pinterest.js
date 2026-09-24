@@ -2,7 +2,8 @@
 // (its own saved session, separate from everything else), with "Save to library". Nothing is saved
 // unless you press Save or choose "Save to Notebook" on a pin. The rest of the app stays offline.
 const path = require('path');
-const { WebContentsView, BrowserWindow, Menu, shell } = require('electron');
+const { WebContentsView, Menu, shell } = require('electron');
+const { attachAdFilter } = require('./adfilter');
 
 const HOME = 'https://www.pinterest.com/';
 const PARTITION = 'persist:pinterest';
@@ -20,6 +21,7 @@ function setupPinterest({ getWin, handle, send, save }) {
     view = new WebContentsView({ webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'pinterest-preload.js') } });
     view.setBackgroundColor('#0A0A0A');
     const wc = view.webContents;
+    attachAdFilter(wc); // promoted pins are taken out before Pinterest's page sees them
     wc.setWindowOpenHandler(({ url }) => {
       let host = ''; try { host = new URL(url).hostname; } catch { /* ignore */ }
       if (SIGN_IN.test(host)) return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, parent: getWin(), webPreferences: { partition: PARTITION, sandbox: true } } };

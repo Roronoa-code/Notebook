@@ -35,7 +35,8 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   // Names the stand-in recogniser understands: two outfits, a wallpaper, an icon and a profile picture.
   const jpg = src.filter((f) => f.endsWith('.jpg'));
   const files = [['outfit coat.jpg', jpg[0]], ['outfit shirt.jpg', jpg[1]], ['wall lake.jpg', jpg[1]], ['icon logo.jpg', jpg[0]], ['face pfp.jpg', jpg[0]]]
-    .map(([name, from]) => { const to = path.join(samples, name); fs.copyFileSync(from, to); return to; });
+    // A few extra bytes after the picture make each file different, so none is skipped as a duplicate.
+    .map(([name, from]) => { const to = path.join(samples, name); fs.writeFileSync(to, Buffer.concat([fs.readFileSync(from), Buffer.from(name)])); return to; });
 
   let { app, page, web } = await launch();
   await page.locator('#welcome').waitFor();

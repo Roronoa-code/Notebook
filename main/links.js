@@ -14,10 +14,18 @@ async function saveLink({ lib, dl, url, boardId }) {
   url = String(url || '').trim();
   // Not a TikTok or Pinterest link at all: say so, but don't clutter the retry list with it.
   if (!dl.constructor.site(url)) return { ok: false, error: 'That doesn’t look like a TikTok or Pinterest post link.' };
+  // Saved before: nothing to download.
+  const had = lib.data.items.find((i) => i.source === url);
+  if (had) return { ok: true, added: [], already: had.deletedAt ? 'bin' : 'notebook' };
   let got = null;
   try {
     got = await dl.fetch(url);
     const res = await lib.importFiles(got.files, boardId || null);
+    if (!res.added.length && res.skipped.length && res.skipped.every((s) => s.duplicate)) {
+      L.retry = L.retry.filter((r) => r.url !== url);
+      await lib.save();
+      return { ok: true, added: [], already: res.skipped.some((s) => /Bin/.test(s.reason)) ? 'bin' : 'notebook' };
+    }
     if (!res.added.length) throw Object.assign(new Error(), { friendly: 'The post downloaded but none of its files could be added.' });
     // The post's own description as the title, or a plain one (never a long file name full of hashtags).
     const title = got.title || (dl.constructor.site(url) === 'tiktok' ? 'TikTok post' : 'Pinterest pin');

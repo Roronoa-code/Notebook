@@ -21,7 +21,8 @@
     if (r.snap) NB.apply({ snap: r.snap });
     if (r.ok) {
       const n = r.added.length;
-      const msg = n > 1 ? `Saved ${n} photos from the slideshow, stacked together` : 'Saved to your notebook';
+      const msg = r.already ? (r.already === 'bin' ? 'You saved that before: it’s in your Bin' : 'Already in your notebook')
+        : n > 1 ? `Saved ${n} photos from the slideshow, stacked together` : 'Saved to your notebook';
       setStatus(msg); toast(msg);
     } else {
       setStatus(r.error); toast(r.error, { error: true, action: { label: 'Links', run: openLinks } });
@@ -29,9 +30,12 @@
     if (document.querySelector('.linkspop')) drawLinks();
   });
 
-  // Paste a link anywhere (not while typing somewhere) and it's saved straight away.
+  // Paste a link anywhere (not while typing somewhere) and it's saved straight away. A pasted picture
+  // (a screenshot, or an image copied from a browser) is added the same way.
   document.addEventListener('paste', (e) => {
     if (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]')) return;
+    const media = [...e.clipboardData.files].filter((f) => /^(image|video)\//.test(f.type));
+    if (media.length) { e.preventDefault(); NB.importBlobs(media); return; }
     const text = (e.clipboardData.getData('text/plain') || '').trim();
     if (isLink(text)) { e.preventDefault(); save(text); }
   });
@@ -68,7 +72,7 @@
       const r = await nb.updateDownloader();
       drawLinks(r.error || `Downloader updated: yt-dlp ${r.update.versions.ytdlp}, gallery-dl ${r.update.versions.gallerydl}.`);
     } }, icon('restore'), h('span', null, 'Update downloader'));
-    pop.replaceChildren(
+    pop.replaceChildren(...[ // (a null left in would show as the word "null")
       h('strong', null, 'Saving from links'),
       h('p', { class: 'hint' }, 'Paste a TikTok or Pinterest link anywhere and it’s saved to your notebook. Anything that fails waits here.'),
       !info.ready ? h('p', { class: 'hint bad' }, 'The downloader tools aren’t set up on this PC yet (see the guide).') : null,
@@ -79,7 +83,7 @@
           h('button', { type: 'button', class: 'btn small', onclick: async () => { const x = await nb.forgetLink(r.url); retry = x.retry; drawLinks(); } }, 'Remove'))))) : h('p', { class: 'hint' }, 'Nothing waiting to retry.'),
       h('div', { class: 'popgrid' }, check, update),
       note ? h('p', { class: 'status' }, note) : null,
-      info.versions ? h('p', { class: 'hint' }, `yt-dlp ${info.versions.ytdlp} · gallery-dl ${info.versions.gallerydl}. Nothing updates by itself.`) : null);
+      info.versions ? h('p', { class: 'hint' }, `yt-dlp ${info.versions.ytdlp} · gallery-dl ${info.versions.gallerydl}. Nothing updates by itself.`) : null].filter(Boolean));
   }
   $('links-btn').addEventListener('click', openLinks);
   document.addEventListener('mousedown', (e) => { const p = document.querySelector('.linkspop'); if (p && !p.contains(e.target) && !$('links-btn').contains(e.target)) { p.remove(); $('links-btn').setAttribute('aria-expanded', 'false'); } });
@@ -122,6 +126,6 @@
   $('pin-save').addEventListener('click', async () => { const r = await nb.pinSave(); if (r && r.error) setStatus(r.error); });
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) closePanel(); });
 
-  NB.links = { save, closePanel, isOpen: () => open };
+  NB.links = { save, isLink, closePanel, isOpen: () => open };
   nb.links().then((i) => { retry = i.retry || []; renderCount(); });
 })();

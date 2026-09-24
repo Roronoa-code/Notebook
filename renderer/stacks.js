@@ -152,12 +152,16 @@
     const items = NB.S.snap.items.filter((i) => picked.has(i.id));
     const allOff = items.every((i) => i.phone === false);
     const ids = [...picked];
-    el.replaceChildren(
+    el.replaceChildren(...[
       h('span', { class: 'count' }, `${n} picked`),
       h('button', { type: 'button', class: 'btn small', disabled: n < 2, onclick: async () => {
         const res = NB.apply(await nb.stackItems(ids, NB.currentBoardId()));
         if (res) { picked.clear(); mark(); toast(`Stacked ${n}. Use the arrows (or scroll sideways) to go through them.`); }
       } }, icon('stack'), 'Stack'),
+      NB.S.snap.boards.length ? h('button', { type: 'button', class: 'btn small', onclick: (e) => NB.menu(e.currentTarget, 'Add to board', NB.S.snap.boards.map((b) => ({ value: b.id, label: b.name })), async (boardId) => {
+        await NB.addToBoard(ids, boardId);
+        picked.clear(); mark();
+      }) }, icon('plus'), 'Add to board') : null,
       h('button', { type: 'button', class: 'btn small', onclick: async () => {
         const res = NB.apply(await nb.setOnPhone(ids, allOff));
         if (res) { picked.clear(); mark(); toast(allOff ? `${n === 1 ? 'It' : 'They'}'ll show on your phone after the next sync` : `${n === 1 ? 'It' : 'They'}'ll leave your phone at the next sync. ${n === 1 ? 'It stays' : 'They stay'} here.`); }
@@ -167,7 +171,7 @@
         picked.clear(); mark();
         toast(`Moved ${n} to the Bin`, { action: { label: 'Undo', run: async () => { for (const id of ids) NB.apply(await nb.restore(id)); } } });
       } }, icon('bin'), 'Move to Bin'),
-      h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Stop picking', onclick: clear }, icon('x')));
+      h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Stop picking', onclick: clear }, icon('x'))].filter(Boolean));
   }
 
   NB.stacks = { stackCard, group, click, pickBox, mark, clear, isPicking: () => picked.size > 0 };

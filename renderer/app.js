@@ -17,7 +17,8 @@
     const q = S.q.trim().toLowerCase();
     const g = NB.smart.suggestion();
     const list = g ? live().filter((i) => g.ids.includes(i.id)) : NB.smart.filter(itemsFor(S.board));
-    return q ? list.filter((i) => (i.title + ' ' + (i.kind === 'note' ? textOf(i.html) : i.caption || '')).toLowerCase().includes(q)) : list;
+    const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
+    return q ? list.filter((i) => words(i).includes(q)) : list; // title, notes, and what it is (type, style, clothing colours)
   };
   NB.refreshGrid = () => { renderContext(); renderGrid(); };
   // Showing a suggested group (or back to the boards). `boardId`: jump to a board made from it.
@@ -133,7 +134,17 @@
     box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
     if (board) {
       box.append(h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board'));
-      box.append(h('button', { type: 'button', class: 'btn small danger', onclick: () => NB.run('deleteBoard', board.id) }, 'Delete board'));
+      // Deleting asks once more (a second click within a few seconds). Its items always stay in your notebook.
+      box.append(h('button', { type: 'button', class: 'btn small danger', onclick: async (e) => {
+        const b = e.currentTarget;
+        if (!b.dataset.sure) {
+          b.dataset.sure = '1'; b.textContent = 'Click again to delete';
+          setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = 'Delete board'; } }, 3500);
+          return;
+        }
+        const name = board.name;
+        if (await NB.run('deleteBoard', board.id)) toast(`Deleted the board “${name}”. Its items are still in your notebook.`);
+      } }, 'Delete board'));
     }
     if (S.board !== 'bin') { const bar = NB.smart.filterBar(itemsFor(S.board)); if (bar) box.append(bar); }
     if (S.board === 'bin' && binned().length) {
@@ -172,8 +183,83 @@
     const btn = h('button', { type: 'button', class: 'card', 'data-id': it.id, 'aria-label': `Open ${it.title}`, style: { '--tilt': tilt, animationDelay: Math.min(index * 30, 420) + 'ms' },
       onclick: (e) => (it.deletedAt ? NB.viewer.open(it.id) : NB.stacks.click(e, [it.id], () => NB.viewer.open(it.id))) });
     if (!it.deletedAt) dragSource(btn, [it.id]);
-    btn.append(media(it), h('span', { class: 'sr' }, it.title), it.deletedAt ? null : NB.stacks.pickBox([it.id]));
+    if (it.kind === 'video' && it.src) hoverPlay(btn, it);
+    btn.append(media(it), h('span', { class: 'sr' }, it.title));
+    if (!it.deletedAt) btn.append(NB.stacks.pickBox([it.id]));
     return btn;
+  }
+
+  // A video card plays (quietly, on a loop) while the pointer rests on it, so the board keeps moving.
+  function hoverPlay(btn, it) {
+    let wait = 0, v = null;
+    btn.addEventListener('mouseenter', () => {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      wait = setTimeout(() => {
+        const box = btn.querySelector('.media');
+        if (!box || v) return;
+        v = h('video', { class: 'hoverplay', src: it.src, loop: true, playsInline: true, preload: 'auto', style: { objectViewBox: NB.viewBox(it) } });
+        v.muted = true;
+        v.addEventListener('playing', () => v && v.classList.add('on'), { once: true });
+        box.append(v);
+        v.play().catch(() => {});
+      }, 160);
+    });
+    btn.addEventListener('mouseleave', () => {
+      clearTimeout(wait);
+      if (!v) return;
+      const x = v; v = null;
+      x.classList.remove('on');
+      setTimeout(() => { x.pause(); x.removeAttribute('src'); x.load(); x.remove(); }, 260);
+    });
+  }
+
+  // Card size: Ctrl + mouse wheel over the board, or Ctrl + plus / minus (Ctrl + 0 goes back). Each step
+  // is one column more or less, so it always visibly changes. Remembered as a card width.
+  const GAP = 22, DEFAULT = 250;
+  let size = (() => { try { const v = +localStorage.getItem('nb.cardSize'); return v >= 120 && v <= 900 ? v : DEFAULT; } catch { return DEFAULT; } })();
+  document.documentElement.style.setProperty('--card', size + 'px');
+  function resize(step) {
+    const W = $('grid').clientWidth || 1000;
+    const cols = (w) => Math.max(1, Math.floor((W + GAP) / (w + GAP)));
+    const want = step === 0 ? cols(DEFAULT) : Math.max(1, Math.min(10, cols(size) - step));
+    const next = step === 0 ? DEFAULT : Math.floor((W + GAP) / want) - GAP;
+    if (next === size || next < 120) return;
+    size = next;
+    try { localStorage.setItem('nb.cardSize', String(size)); } catch { /* remembering is a nicety */ }
+    glideAround(() => document.documentElement.style.setProperty('--card', size + 'px'));
+  }
+  let wheelWait = 0;
+  window.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey || !e.target.closest('#page')) return;
+    e.preventDefault();
+    if (performance.now() < wheelWait) return;
+    wheelWait = performance.now() + 180;
+    resize(e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
+  window.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey || e.altKey || NB.viewer.isOpen() || (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]'))) return;
+    const k = { '=': 1, '+': 1, '-': -1, '_': -1, 0: 0 }[e.key];
+    if (k === undefined) return;
+    e.preventDefault();
+    resize(k);
+  });
+
+  // Runs `change` (anything that moves cards without redrawing them) and glides every card from
+  // where it was to where it ends up.
+  function glideAround(change) {
+    const grid = $('grid');
+    const cards = [...grid.querySelectorAll(':scope > .card')];
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const was = reduce ? null : cards.map((c) => c.getBoundingClientRect());
+    change();
+    if (!was) return;
+    cards.forEach((c, i) => {
+      const a = was[i], b = c.getBoundingClientRect();
+      if (!b.width || (a.bottom < 0 && b.bottom < 0) || (a.top > innerHeight && b.top > innerHeight)) return;
+      const sx = a.width / b.width, dx = a.left - b.left, dy = a.top - b.top;
+      if (Math.abs(dx) + Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01) return;
+      c.animate([{ transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${sx})` }, { transformOrigin: 'top left', transform: 'none' }], { duration: 480, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    });
   }
 
   // Cards that haven't changed are kept (no reload, no flash). When the list changes in place (a filter,
@@ -271,6 +357,7 @@
     });
   }
   NB.dragSource = dragSource;
+  NB.addToBoard = (ids, boardId) => addToBoard(ids, boardId);
 
   function dropTarget(el, boardId) {
     el.addEventListener('dragover', (e) => { if (ours(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; el.classList.add('dropping'); } });
@@ -398,11 +485,32 @@
     const n = res.added.length;
     const where = NB.boardName(currentBoardId());
     if (n) toast(`Added ${n} item${n === 1 ? '' : 's'}${where ? ` to ${where}` : ''}`);
-    if (res.skipped.length) {
-      const list = res.skipped.slice(0, 3).map((s) => `${s.name} (${s.reason})`).join(', ');
-      toast(`${res.skipped.length} file${res.skipped.length === 1 ? ' was' : 's were'} skipped: ${list}${res.skipped.length > 3 ? '…' : ''}`, { error: true });
+    // The same picture twice isn't an error: say where the one you already have is.
+    const twins = res.skipped.filter((s) => s.duplicate), bad = res.skipped.filter((s) => !s.duplicate);
+    if (twins.length === 1) toast(`${twins[0].name}: ${twins[0].reason}`, { action: { label: 'Show it', run: () => NB.viewer.open(twins[0].duplicate) } });
+    else if (twins.length) toast(`${twins.length} were already in your notebook, so they weren’t added twice`);
+    if (bad.length) {
+      const list = bad.slice(0, 3).map((s) => `${s.name} (${s.reason})`).join(', ');
+      toast(`${bad.length} file${bad.length === 1 ? ' was' : 's were'} skipped: ${list}${bad.length > 3 ? '…' : ''}`, { error: true });
     }
   }
+  NB.afterImport = afterImport;
+
+  // Pictures that aren't files on disk (pasted, or dragged out of a browser) are sent over as bytes.
+  const EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'image/bmp': '.bmp', 'image/heic': '.heic', 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm' };
+  NB.importBlobs = async (files) => {
+    const stamp = new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/[:,]/g, (c) => (c === ':' ? '.' : ''));
+    const all = { added: [], skipped: [] };
+    for (const f of files) {
+      const ext = EXT[f.type] || '';
+      const named = /\.[a-z0-9]{2,5}$/i.test(f.name) && !/^image\.(png|jpe?g)$/i.test(f.name); // "image.png" is just what browsers call a copied picture
+      const res = await nb.importData(named ? f.name : `Pasted ${stamp}${files.length > 1 ? ` (${files.indexOf(f) + 1})` : ''}${ext}`, new Uint8Array(await f.arrayBuffer()), currentBoardId());
+      if (res.error) { toast(res.error, { error: true }); continue; }
+      all.added.push(...res.added); all.skipped.push(...res.skipped);
+      NB.apply(res);
+    }
+    afterImport(all);
+  };
 
   async function newNote() {
     const res = await NB.run('addNote', currentBoardId());
@@ -454,7 +562,9 @@
   function wireDrop() {
     const drop = $('drop');
     let depth = 0;
-    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    // Files from Explorer, pictures dragged out of a browser, or a TikTok/Pinterest link dragged in.
+    const types = (e) => [...(e.dataTransfer?.types || [])];
+    const hasFiles = (e) => types(e).includes('Files') || (types(e).includes('text/uri-list') && !types(e).includes(DRAG_TYPE));
     window.addEventListener('dragenter', (e) => {
       if (!hasFiles(e) || !S.snap) return;
       depth++;
@@ -467,8 +577,14 @@
       e.preventDefault();
       depth = 0; drop.hidden = true;
       if (!S.snap) return;
-      const paths = [...e.dataTransfer.files].map((f) => nb.pathForFile(f)).filter(Boolean);
+      const files = [...e.dataTransfer.files];
+      const paths = files.map((f) => nb.pathForFile(f)).filter(Boolean);
+      const loose = files.filter((f) => !nb.pathForFile(f) && /^(image|video)\//.test(f.type));
+      const link = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n').map((x) => x.trim()).find((x) => x && !x.startsWith('#'));
       if (paths.length) afterImport(await NB.run('importPaths', paths, currentBoardId()));
+      else if (loose.length) NB.importBlobs(loose);
+      else if (link && NB.links.isLink(link)) NB.links.save(link);
+      else if (link) toast('Drop photos or videos here, or a TikTok or Pinterest link. To keep a picture from a website, drag the picture itself.', { error: true });
     });
   }
 

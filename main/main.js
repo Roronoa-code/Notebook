@@ -164,6 +164,8 @@ async function useLibrary(root) {
   lib = await Library.openOrCreate(root);
   writeConfig({ libraryPath: root });
   await sync.start(lib); // never throws: problems show in the Phone panel
+  const opened = lib; // fingerprints for older items, quietly, so duplicates are noticed
+  setTimeout(() => opened.fillHashes().catch((err) => console.error('fingerprints', err)), 4000);
   return { recovered: lib.recovered };
 }
 
@@ -233,6 +235,19 @@ function registerHandlers() {
     return lib.importFiles(res.filePaths, boardId);
   });
   handle('items:import', (paths, boardId) => lib.importFiles(Array.isArray(paths) ? paths.filter((p) => typeof p === 'string') : [], boardId));
+  // A pasted or dropped picture that isn't a file on disk (a screenshot, an image copied or dragged
+  // from a browser): written to a temporary file, imported like any other, then the temporary file goes.
+  handle('items:importData', async (name, bytes, boardId) => {
+    const ext = path.extname(String(name || '')).toLowerCase();
+    if (![...PHOTO_EXT, ...VIDEO_EXT].includes(ext)) { const e = new Error(); e.friendly = 'Only photos and videos can be added.'; throw e; }
+    if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 2e9) { const e = new Error(); e.friendly = "That picture couldn't be read."; throw e; }
+    const clean = path.basename(String(name)).replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').slice(0, 120).trim() || 'Pasted' + ext;
+    const dir = await fs.promises.mkdtemp(path.join(app.getPath('temp'), 'notebook-paste-'));
+    try {
+      await fs.promises.writeFile(path.join(dir, clean), bytes);
+      return await lib.importFiles([path.join(dir, clean)], boardId);
+    } finally { await fs.promises.rm(dir, { recursive: true, force: true }); }
+  });
 
   handle('item:update', (id, changes) => lib.updateItem(id, changes || {}));
   handle('item:thumb', (id, bytes, meta) => lib.saveThumb(id, bytes, meta));
@@ -299,7 +314,14 @@ function createWindow() {
   // The checks can open the window on the second monitor (NOTEBOOK_WINDOW_DISPLAY=second) without taking focus.
   const other = process.env.NOTEBOOK_WINDOW_DISPLAY === 'second' && screen.getAllDisplays().find((d) => d.id !== screen.getPrimaryDisplay().id);
   if (other) win.setBounds({ ...other.workArea, width: Math.min(1440, other.workArea.width), height: Math.min(1000, other.workArea.height) });
-  win.once('ready-to-show', () => { if (other) win.showInactive(); else { win.maximize(); win.show(); } });
+  // Otherwise it opens where you left it (if that place is still on a screen), or maximised the first time.
+  const was = !other && readConfig().window;
+  const onScreen = was && screen.getAllDisplays().some((d) => { const a = d.workArea; return was.x < a.x + a.width - 80 && was.x + was.width > a.x + 80 && was.y >= a.y - 20 && was.y < a.y + a.height - 80; });
+  if (onScreen) win.setBounds({ x: was.x, y: was.y, width: Math.max(900, was.width), height: Math.max(620, was.height) });
+  win.once('ready-to-show', () => { if (other) win.showInactive(); else { if (!onScreen || was.maximized) win.maximize(); win.show(); } });
+  let placeTimer = null;
+  const remember = () => { clearTimeout(placeTimer); placeTimer = setTimeout(() => { if (win && !win.isDestroyed() && !win.isMinimized() && !other) writeConfig({ window: { ...win.getNormalBounds(), maximized: win.isMaximized() } }); }, 600); };
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) win.on(ev, remember);
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // With "Keep Notebook ready for your phone" on, closing hides the window so sync keeps working.

@@ -32,6 +32,21 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   for (const f of samples) assert.equal(hash(f), before[f]);
   ok('original files are unchanged');
 
+  // The same picture again (here or under another name) is skipped, pointing at the one you have.
+  const mediaCount = fs.readdirSync(path.join(libDir, 'media')).length;
+  const copyName = path.join(ROOT, 'originals', 'same picture renamed.jpg');
+  fs.copyFileSync(samples.find((f) => f.endsWith('.jpg')), copyName);
+  const twice = await lib.importFiles([samples.find((f) => f.endsWith('.jpg')), copyName]);
+  assert.equal(twice.added.length, 0);
+  assert.equal(twice.skipped.length, 2);
+  assert.ok(twice.skipped.every((s) => s.duplicate && /already in your notebook/.test(s.reason)));
+  assert.equal(fs.readdirSync(path.join(libDir, 'media')).length, mediaCount, 'no extra copies left behind');
+  const oldItem = lib.data.items.find((i) => i.kind === 'photo');
+  delete oldItem.hash; // as if saved before fingerprints existed
+  assert.equal(await lib.fillHashes(), 1);
+  assert.ok(oldItem.hash && (await lib.importFiles([copyName])).skipped[0].duplicate === oldItem.id, 'older items get fingerprints too');
+  ok('the same picture twice is skipped (even renamed), leaves no extra copy, and older items get fingerprints');
+
   const n1 = await lib.addNote(outfits);
   const n2 = await lib.addNote(null);
   await lib.updateItem(n1, { html: '<h2>Autumn capsule</h2><ul><li>Brown loafers</li><li><b>Cream</b> knit</li></ul>', title: 'Autumn capsule' });

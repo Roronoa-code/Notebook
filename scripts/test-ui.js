@@ -256,6 +256,68 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.waitForFunction((id) => !NB.S.snap.items.find((i) => i.id === id).crop, cropId);
   await page.keyboard.press('Escape');
   ok('Crop: drag the frame, save; the card and open photo show only that part (file untouched); Show the whole picture undoes it');
+
+  // Paste a picture (like a screenshot): it's added. Pasting it again says it's already there.
+  const pasteImage = () => page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 48;
+    const g = c.getContext('2d'); g.fillStyle = '#c33'; g.fillRect(0, 0, 64, 48); g.fillStyle = '#fff'; g.fillRect(8, 8, 20, 20);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    const d = new DataTransfer(); d.items.add(new File([blob], 'image.png', { type: 'image/png' }));
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true }));
+  });
+  const countBefore = await page.evaluate(() => NB.S.snap.items.length);
+  await pasteImage();
+  await page.waitForFunction((n) => NB.S.snap.items.length === n + 1, countBefore);
+  const pasted = onDisk().find((i) => /^Pasted /.test(i.originalName));
+  assert.ok(pasted && pasted.kind === 'photo' && pasted.hash, 'a pasted picture is saved as a photo');
+  await pasteImage();
+  await page.locator('.toast', { hasText: 'already in your notebook' }).waitFor();
+  assert.equal(await page.evaluate(() => NB.S.snap.items.length), countBefore + 1, 'the same picture isn’t added twice');
+  await page.evaluate(async (id) => { NB.apply(await nb.moveToBin(id)); NB.apply(await nb.emptyBin()); }, pasted.id); // keep the later counts as they were
+  await page.waitForFunction((n) => NB.S.snap.items.length === n, countBefore);
+  ok('pasting a picture adds it; pasting the same one again says it’s already there');
+
+  // A video card plays quietly while the pointer rests on it.
+  const vidCard = page.locator('.grid > .card', { has: page.locator('.badge') }).first();
+  await vidCard.hover();
+  await page.locator('.grid .hoverplay.on').waitFor({ timeout: 8000 });
+  assert.equal(await page.locator('.grid .hoverplay').evaluate((v) => v.muted && !v.paused), true);
+  await page.mouse.move(5, 5);
+  await page.waitForFunction(() => !document.querySelector('.grid .hoverplay'));
+  ok('video cards play quietly on hover and stop when the pointer leaves');
+
+  // Card size: Ctrl + plus makes cards bigger, Ctrl + 0 goes back; it's remembered.
+  const cardWidth = () => page.locator('.grid > .card').first().evaluate((c) => c.getBoundingClientRect().width);
+  const w0 = await cardWidth();
+  await page.locator('.page').hover();
+  await page.keyboard.press('Control+Equal');
+  await page.waitForTimeout(600);
+  assert.ok(await cardWidth() > w0 + 10, 'cards get bigger');
+  assert.ok(+(await page.evaluate(() => localStorage.getItem('nb.cardSize'))) > 250, 'remembered');
+  await page.keyboard.press('Control+0');
+  await page.waitForTimeout(600);
+  assert.ok(Math.abs(await cardWidth() - w0) < 2, 'and back');
+  ok('card size changes with Ctrl + plus / minus (Ctrl + 0 resets) and is remembered');
+
+  // Pick several and Add to board.
+  const two = await page.evaluate(() => [...document.querySelectorAll('.grid > .card:not(.stackcard)')].slice(0, 2).map((c) => c.dataset.id));
+  for (const id of two) await page.locator(`.grid .card[data-id="${id}"]`).click({ modifiers: ['Control'] });
+  await page.locator('#selbar .btn', { hasText: 'Add to board' }).click();
+  await page.locator('.ddlist.menu .ddopt', { hasText: 'Profile pictures' }).click();
+  await page.waitForFunction((ids) => ids.every((id) => NB.S.snap.items.find((i) => i.id === id).boards.includes(NB.S.snap.boards.find((b) => b.name === 'Profile pictures').id)), two);
+  assert.equal(await page.locator('#selbar').isHidden(), true);
+  ok('picking several and Add to board puts them all on it');
+
+  // Delete board asks once more.
+  const tempBoard = await page.evaluate(async () => (NB.apply(await nb.addBoard('Temporary'))).id);
+  await page.click(`.bcard[data-id="${tempBoard}"]`);
+  const del = page.locator('.context .btn.danger', { hasText: 'Delete board' });
+  await del.click();
+  assert.equal(await page.locator(`.bcard[data-id="${tempBoard}"]`).count(), 1, 'one click only asks');
+  await page.locator('.context .btn.danger', { hasText: 'Click again to delete' }).click();
+  await page.waitForFunction((id) => !NB.S.snap.boards.some((b) => b.id === id), tempBoard);
+  await page.click('.bcard[data-id="all"]');
+  ok('Delete board asks for a second click');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone

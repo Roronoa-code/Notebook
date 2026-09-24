@@ -92,7 +92,9 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .popgrid .btn:last-child { grid-column: 1 / -1; }
 
 /* recognition: filters, labels, suggestions */
-.filters { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.filters { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 6px; }
+.filters .frow + .frow { padding-left: 14px; border-left: 1px solid var(--line); }
+.filters .linkbtn { margin-left: 4px; }
 .frow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .fchip { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; transition: background .2s, color .2s, transform .35s var(--spring); }
 .fchip:hover { color: var(--ink); transform: translateY(-1px); }
@@ -174,6 +176,9 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card.droptarget { transform: scale(1.03); transition: transform .3s var(--spring); }
 .ctx-title.still { animation: none; }
 .card-ghost { display: block; }
+.media .hoverplay { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .25s; pointer-events: none; }
+.media .hoverplay.on { opacity: 1; }
+.media .badge { z-index: 2; }
 /* cropping: the frame over the whole picture; outside it is dimmed */
 .stage.cropping { padding: 22px; }
 .cropper { position: absolute; inset: 22px; z-index: 5; }
@@ -203,7 +208,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .picking .toasts { bottom: 100px; }
 
 /* grid */
-.grid { columns: 250px; column-gap: 22px; position: relative; }
+.grid { columns: var(--card, 250px); column-gap: 22px; position: relative; }
 .card { display: block; width: 100%; margin: 0 0 22px; padding: 0; border: 0; background: none; text-align: left; break-inside: avoid; }
 /* backwards (not both) and no filter: a lingering animation on a card stops the badge's glass from blurring */
 .grid.anim .card { animation: inR .65s var(--ease-out) backwards; }
@@ -269,6 +274,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .editor ul, .editor ol { padding-left: 26px; }
 .editor.tidied > * { animation: rise .5s var(--spring) backwards; }
 .side { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 6px 2px 2px 0; }
+.side > * { flex-shrink: 0; }
 .side .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .side .nav { display: flex; gap: 6px; }
 .viewing .toasts { bottom: auto; top: 24px; }

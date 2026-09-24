@@ -36,6 +36,13 @@ function migrate(data) {
   return changed;
 }
 
+// A fingerprint of a file's bytes, to notice the same picture being added twice.
+async function hashFile(file) {
+  const h = crypto.createHash('sha256');
+  await pipeline(fs.createReadStream(file), h);
+  return h.digest('hex');
+}
+
 function kindOf(file) {
   const ext = path.extname(file).toLowerCase();
   if (PHOTO_EXT.includes(ext)) return 'photo';
@@ -202,6 +209,9 @@ class Library {
   async importFiles(paths, boardId) {
     const boards = this.validBoards(boardId ? [boardId] : []);
     const added = [], skipped = [];
+    // The same picture twice (already here, or twice in this batch) is skipped. In the Bin counts too:
+    // restore it from there instead of keeping two copies.
+    const known = new Map(this.data.items.filter((i) => i.hash).map((i) => [i.hash, i]));
     for (const src of paths) {
       const name = path.basename(src);
       const kind = kindOf(src);
@@ -213,10 +223,19 @@ class Library {
         if (!st.isFile()) { skipped.push({ name, reason: 'not a file' }); continue; }
         await fsp.copyFile(src, this.p(rel), fs.constants.COPYFILE_EXCL);
         if ((await fsp.stat(this.p(rel))).size !== st.size) throw new Error('size mismatch');
-        added.push({
+        const hash = await hashFile(this.p(rel));
+        const twin = known.get(hash);
+        if (twin) {
+          await fsp.rm(this.p(rel), { force: true });
+          skipped.push({ name, reason: twin.deletedAt ? 'it’s already in your Bin' : 'it’s already in your notebook', duplicate: twin.id });
+          continue;
+        }
+        const item = {
           id, kind, title: path.basename(src, path.extname(src)), file: rel, thumb: null, w: null, h: null, duration: null,
-          originalName: name, size: st.size, importedAt: now(), updatedAt: now(), boards: [...boards], deletedAt: null
-        });
+          originalName: name, size: st.size, hash, importedAt: now(), updatedAt: now(), boards: [...boards], deletedAt: null
+        };
+        known.set(hash, item);
+        added.push(item);
       } catch (err) {
         await fsp.rm(this.p(rel), { force: true });
         skipped.push({ name, reason: err.code === 'ENOSPC' ? 'the drive is full' : "it couldn't be copied" });
@@ -234,6 +253,18 @@ class Library {
       }
     }
     return { added: added.map((i) => i.id), skipped };
+  }
+
+  // Fingerprints for items saved before duplicates were checked (or that arrived from the phone).
+  // Like thumbnails, this isn't a synced edit. Runs in the background; saves once at the end.
+  async fillHashes() {
+    let n = 0;
+    for (const it of this.data.items) {
+      if (it.kind === 'note' || it.hash || !it.file) continue;
+      try { it.hash = await hashFile(this.p(it.file)); n++; } catch { /* file not here yet (waiting for the phone) */ }
+    }
+    if (n) await this.save();
+    return n;
   }
 
   async addNote(boardId) {
