@@ -72,6 +72,19 @@ const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 
   assert.equal([...bySource.keys()].length, PINS.length, 'each chosen pin saved once (nothing else)');
   assert.equal(savedPins, PINS.length, `${savedPins}/${PINS.length} pins saved`);
   ok(`Pinterest panel: all ${PINS.length} chosen pins saved with Save to library; nothing saved while just browsing`);
+
+  // A menu opened over Pinterest isn't hidden behind it: Pinterest steps aside, then comes back.
+  const layers = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.length);
+  const withPin = await layers();
+  await page.click('#lib-btn');
+  await page.waitForFunction(() => true);
+  for (let i = 0; i < 30 && (await layers()) === withPin; i++) await page.waitForTimeout(100);
+  assert.equal(await layers(), withPin - 1, 'Pinterest steps aside for the Library menu');
+  await page.click('#lib-btn');
+  for (let i = 0; i < 30 && (await layers()) !== withPin; i++) await page.waitForTimeout(100);
+  assert.equal(await layers(), withPin, 'and comes back when it closes');
+  assert.equal(await page.locator('#pinpanel').isVisible(), true);
+  ok('menus opened over Pinterest show: Pinterest steps aside and comes back');
   await page.click('#pin-close');
   await page.locator('#pinpanel').waitFor({ state: 'hidden' });
   await app.close();

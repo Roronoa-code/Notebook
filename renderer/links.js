@@ -92,7 +92,7 @@
   const panel = $('pinpanel'), host = $('pinhost'), status = $('pinstatus');
   function setStatus(msg) { if (status) status.textContent = msg || ''; }
   const rect = () => { const r = host.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; };
-  let open = false;
+  let open = false, aside = false;
   async function openPanel() {
     open = true;
     document.body.classList.add('pinning');
@@ -124,7 +124,21 @@
   $('pin-back').addEventListener('click', () => nb.pinBack());
   $('pin-home').addEventListener('click', () => nb.pinHome());
   $('pin-save').addEventListener('click', async () => { const r = await nb.pinSave(); if (r && r.error) setStatus(r.error); });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) closePanel(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open && !aside) closePanel(); });
+
+  // Pinterest is drawn over the page, so anything opened on top of it (a menu, the Phone panel, an open
+  // item, the shortcuts sheet) would be hidden behind it. Pinterest steps aside until that closes.
+  const OVERLAY = '.popover:not([hidden]), .viewer, .phone, .ddlist, .keys';
+  let checking = false;
+  const check = () => {
+    checking = false;
+    if (!open) { aside = false; return; }
+    const covered = !!document.querySelector(OVERLAY);
+    if (covered && !aside) { aside = true; nb.pinClose(); }
+    else if (!covered && aside) { aside = false; nb.pinOpen(rect()).then(pinState); }
+  };
+  new MutationObserver(() => { if (!checking) { checking = true; requestAnimationFrame(check); } })
+    .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
 
   NB.links = { save, isLink, closePanel, isOpen: () => open };
   nb.links().then((i) => { retry = i.retry || []; renderCount(); });
