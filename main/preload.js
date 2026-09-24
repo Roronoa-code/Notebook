@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('nb', {
   pickFiles: call('items:pick'),
   importPaths: call('items:import'),
   importData: call('items:importData'),
+  reorderBoards: call('boards:reorder'),
   updateItem: call('item:update'),
   saveThumb: call('item:thumb'),
   moveToBin: call('item:bin'),

@@ -13,6 +13,8 @@ const OUT = path.join(APP, 'test-output', 'ui');
 const LIB = path.join(OUT, 'Notebook Library');
 let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
+// Waits (up to 5 s) for something saved to disk to become true.
+const until = async (test, what) => { for (let i = 0; i < 50; i++) { try { if (test()) return; } catch { /* file mid-write */ } await new Promise((r) => setTimeout(r, 100)); } assert.fail(what); };
 
 // Phone sync listens on 127.0.0.1 during the check, so Windows Firewall doesn't ask.
 const SYNC_PORT = 47851;
@@ -192,7 +194,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.locator('#on-phone').uncheck();
   await page.waitForTimeout(300);
   const topId = await page.evaluate(() => document.querySelector('.stackcard .fanitem[tabindex="0"]').dataset.id);
-  assert.equal(onDisk().find((i) => i.id === topId).phone, false, 'switched off for the phone');
+  await until(() => onDisk().find((i) => i.id === topId).phone === false, 'switched off for the phone');
   await page.locator('.side .btn', { hasText: 'Take out of stack' }).click();
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
@@ -202,7 +204,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.locator('#on-phone').check();
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
-  assert.ok(!('phone' in onDisk().find((i) => i.id === topId)), 'back on the phone');
+  await until(() => !('phone' in onDisk().find((i) => i.id === topId)), 'back on the phone');
   ok('"Show on phone" switch saves, shows on the card, and switches back; Take out of stack');
 
   // Stacks made in All show as loose cards inside a board; a stack made in the board groups there (and in All).
@@ -318,6 +320,46 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.waitForFunction((id) => !NB.S.snap.boards.some((b) => b.id === id), tempBoard);
   await page.click('.bcard[data-id="all"]');
   ok('Delete board asks for a second click');
+
+  // Boards can be dragged into a new order.
+  const boardNames = () => page.locator('.bcard[data-id]:not([data-id="all"]) .name').allInnerTexts();
+  const namesBefore = await boardNames();
+  await page.locator('.bcard', { hasText: namesBefore[namesBefore.length - 1] }).dragTo(page.locator('.bcard', { hasText: namesBefore[0] }), { targetPosition: { x: 40, y: 6 } });
+  await page.waitForFunction((first) => document.querySelector('.bcard[data-id]:not([data-id="all"]) .name').textContent !== first, namesBefore[0]);
+  const namesAfter = await boardNames();
+  assert.equal(namesAfter[0], namesBefore[namesBefore.length - 1], 'the last board moved to the top');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8')).boards.map((b) => b.name), namesAfter, 'and the order is saved');
+  ok('boards can be dragged into a new order');
+
+  // Ctrl + A picks everything, Delete bins it, Undo brings it all back. Delete also bins an open item.
+  const liveCount = await page.evaluate(() => NB.S.snap.items.filter((i) => !i.deletedAt).length);
+  await page.locator('.page').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Control+a');
+  assert.match(await page.locator('#selbar .count').innerText(), new RegExp(`${liveCount} picked`));
+  await page.keyboard.press('Delete');
+  await page.waitForFunction(() => NB.S.snap.items.every((i) => i.deletedAt));
+  await page.locator('.toast button', { hasText: 'Undo' }).last().click();
+  await page.waitForFunction((n) => NB.S.snap.items.filter((i) => !i.deletedAt).length === n, liveCount);
+  const oneId = await page.locator('.grid > .card:not(.stackcard)').first().getAttribute('data-id');
+  await page.locator(`.grid .card[data-id="${oneId}"]`).click();
+  await page.locator('.viewer').waitFor();
+  await page.keyboard.press('Delete');
+  await page.waitForFunction((id) => NB.S.snap.items.find((i) => i.id === id).deletedAt, oneId);
+  await page.evaluate(async (id) => NB.apply(await nb.restore(id)), oneId);
+  ok('Ctrl + A picks everything, Delete moves it to the Bin and Undo brings it back; Delete also bins an open item');
+
+  // The shortcuts sheet: ? opens it, Esc closes it; it's also in the Library menu.
+  await page.keyboard.press('Shift+Slash');
+  await page.locator('.keys').waitFor();
+  assert.ok((await page.locator('.keys').innerText()).includes('Drag onto a card'));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.keys'));
+  await page.click('#lib-btn');
+  await page.click('#lib-keys');
+  await page.locator('.keys').waitFor();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.keys'));
+  ok('the shortcuts sheet opens with ? or from the Library menu and closes with Esc');
   await app.close();
 
   fs.rmSync(path.join(OUT, 'samples'), { recursive: true }); // originals gone

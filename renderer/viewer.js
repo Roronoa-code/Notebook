@@ -317,6 +317,7 @@
     if (e.key === 'Escape' && document.querySelector('.ddlist:not(.out)')) return; // Esc closes the open dropdown first
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], video');
+    if (!typing && e.key === 'Delete') { const it = item(); if (it && !it.deletedAt) { e.preventDefault(); binItem(it); } }
     if (!typing && e.key === 'ArrowLeft') step(-1);
     if (!typing && e.key === 'ArrowRight') step(1);
   }

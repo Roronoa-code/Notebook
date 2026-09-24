@@ -51,6 +51,13 @@ const keep = process.argv.includes('--keep');
   for (const [btn, name] of [['#links-btn', '07-links'], ['#phone', '08-phone'], ['#lib-btn', '09-library']]) {
     if (await page.locator(btn).count()) { await page.click(btn); await shot(name); await page.keyboard.press('Escape'); await page.waitForTimeout(300); }
   }
+  await page.keyboard.press('Shift+Slash');
+  await shot('10-shortcuts');
+  await page.keyboard.press('Escape');
+  await page.locator('.grid .card').nth(0).click({ modifiers: ['Control'] });
+  await page.locator('.grid .card').nth(1).click({ modifiers: ['Control'] });
+  await shot('11-picking');
+  await page.keyboard.press('Escape');
   console.log(errors.length ? 'Page errors:\n' + errors.join('\n') : 'No page errors.');
   console.log('Screenshots in ' + path.join(OUT, 'shots'));
   if (!process.argv.includes('--stay')) await app.close();

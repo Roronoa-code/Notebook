@@ -168,6 +168,14 @@ class Library {
     return this.exclusive(() => this.write());
   }
 
+  // For many small changes in a row that can be redone if lost (previews): one save shortly after.
+  saveSoon() {
+    if (!this.pendingSave) {
+      this.pendingSave = new Promise((resolve) => setTimeout(resolve, 400)).then(() => { this.pendingSave = null; return this.save(); });
+    }
+    return this.pendingSave;
+  }
+
   async write() {
     const file = this.p(DB), tmp = this.p(DB + '.tmp');
     const fh = await fsp.open(tmp, 'w');
@@ -205,6 +213,21 @@ class Library {
   }
 
   // ---------- items ----------
+
+  // Folders dropped in are opened up: every photo and video inside (and in folders inside) is added.
+  // Anything else in them is left alone quietly. Plain files are passed straight through.
+  static async expandFolders(paths, limit = 5000) {
+    const out = [];
+    const walk = async (p, depth) => {
+      if (out.length >= limit) return;
+      let st; try { st = await fsp.stat(p); } catch { out.push(p); return; } // let importFiles report it
+      if (!st.isDirectory()) { if (depth === 0 || kindOf(p)) out.push(p); return; }
+      if (depth > 6) return;
+      for (const name of (await fsp.readdir(p)).sort()) await walk(path.join(p, name), depth + 1);
+    };
+    for (const p of paths) await walk(p, 0);
+    return out;
+  }
 
   async importFiles(paths, boardId) {
     const boards = this.validBoards(boardId ? [boardId] : []);
@@ -378,7 +401,9 @@ class Library {
     it.thumb = rel;
     const num = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
     if (meta) { it.w = num(meta.w); it.h = num(meta.h); if (it.kind === 'video') it.duration = num(meta.duration); }
-    await this.save();
+    // Previews come in quick bursts, so they're saved together. If the app closes first, the preview is
+    // simply made again next time.
+    this.saveSoon().catch((err) => console.error('saving previews', err));
   }
 
   async moveToBin(id) {
@@ -445,6 +470,15 @@ class Library {
   }
 
   // Deleting a board only removes the board: its items stay in All items and any other boards.
+  // A new order for the boards (all of them, each once). Only the order changes, so it isn't a synced edit;
+  // the phone gets the PC's order at its next sync.
+  async reorderBoards(ids) {
+    const byId = new Map(this.data.boards.map((b) => [b.id, b]));
+    if (!Array.isArray(ids) || ids.length !== byId.size || new Set(ids).size !== ids.length || !ids.every((id) => byId.has(id))) throw new FriendlyError('The boards couldn’t be moved. Try again.');
+    this.data.boards = ids.map((id) => byId.get(id));
+    await this.save();
+  }
+
   async deleteBoard(id) {
     this.board(id);
     this.data.boards = this.data.boards.filter((b) => b.id !== id);

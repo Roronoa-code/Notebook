@@ -174,5 +174,15 @@
       h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Stop picking', onclick: clear }, icon('x'))].filter(Boolean));
   }
 
-  NB.stacks = { stackCard, group, click, pickBox, mark, clear, isPicking: () => picked.size > 0 };
+  // Ctrl + A picks everything showing; Delete sends what's picked to the Bin (with Undo).
+  function pickAll() { for (const c of document.querySelectorAll('.grid > .card')) idsOf(c).forEach((id) => picked.add(id)); mark(); }
+  async function binPicked() {
+    const ids = [...picked], n = ids.length;
+    if (!n) return;
+    for (const id of ids) if (!NB.apply(await nb.moveToBin(id))) return;
+    picked.clear(); mark();
+    toast(`Moved ${n} to the Bin`, { action: { label: 'Undo', run: async () => { for (const id of ids) NB.apply(await nb.restore(id)); } } });
+  }
+
+  NB.stacks = { stackCard, group, click, pickBox, mark, clear, pickAll, binPicked, picked: () => [...picked], isPicking: () => picked.size > 0 };
 })();

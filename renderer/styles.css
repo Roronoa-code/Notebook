@@ -75,6 +75,9 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .stack > :only-child { left: 13px; transform: rotate(-4deg); }
 .stack .ph.blank { background: transparent; border: 1.5px dashed rgba(255,255,255,.18); box-shadow: none; }
 .stack .ph.note { background: #1E1E1E; color: var(--ink2); }
+.bcard.moving { opacity: .4; }
+.bcard.before { box-shadow: inset 0 3px 0 var(--accent); }
+.bcard.after { box-shadow: inset 0 -3px 0 var(--accent); }
 .bcard.dropping { border-color: rgba(157,123,255,.7); background: rgba(157,123,255,.14); transform: scale(1.03); }
 .navfoot { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 10px; }
 .navrow { height: 44px; border-radius: 14px; border: 0; background: transparent; display: flex; align-items: center; gap: 12px; padding: 0 14px; font-weight: 600; font-size: 14px; color: var(--ink2); text-align: left; transition: background .2s, color .2s; }
@@ -86,6 +89,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .iconbtn.spin:hover { transform: rotate(90deg); }
 .iconbtn:disabled { opacity: .35; pointer-events: none; }
 .popover { position: fixed; left: 312px; bottom: 16px; width: 380px; border-radius: 22px; padding: 18px; z-index: 12; display: flex; flex-direction: column; gap: 10px; animation: pop .4s var(--spring) backwards; }
+.poplinks { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .popover .path { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .popgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .popgrid .btn { justify-content: flex-start; }
@@ -176,6 +180,17 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card.droptarget { transform: scale(1.03); transition: transform .3s var(--spring); }
 .ctx-title.still { animation: none; }
 .card-ghost { display: block; }
+/* the shortcuts sheet */
+.keys-scrim { z-index: 30; animation: fade .25s both; }
+.popover.keys { left: 50%; top: 50%; bottom: auto; translate: -50% -50%; width: min(860px, 92vw); max-height: 88vh; overflow-y: auto; z-index: 31; padding: 22px 26px 26px; gap: 14px; scrollbar-width: none; }
+.keys.out, .keys-scrim.out { opacity: 0; transition: opacity .2s; }
+.keys-head { display: flex; align-items: center; justify-content: space-between; }
+.keys-head h2 { margin: 0; font: 400 56px/.9 var(--poster); text-transform: uppercase; }
+.kgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px 34px; }
+.kgrid h4 { margin: 0 0 8px; }
+.krow { display: flex; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--ink2); }
+.krow .kbd { flex: 0 0 170px; display: flex; gap: 4px; flex-wrap: wrap; }
+.kbd kbd { font: 500 12px var(--mono); padding: 3px 8px; border-radius: 7px; background: var(--surface2); border: 1px solid rgba(255,255,255,.1); color: var(--ink); }
 .media .hoverplay { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .25s; pointer-events: none; }
 .media .hoverplay.on { opacity: 1; }
 .media .badge { z-index: 2; }

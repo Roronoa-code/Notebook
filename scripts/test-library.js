@@ -69,6 +69,21 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   assert.deepEqual(lib.item(photo.id).boards, [outfits]);
   ok('rename board, duplicate names refused, deleting a board keeps its items');
 
+  const order = lib.data.boards.map((b) => b.id);
+  await lib.reorderBoards(order.slice().reverse());
+  assert.deepEqual((await Library.openOrCreate(libDir)).data.boards.map((b) => b.id), order.slice().reverse(), 'the new order is saved');
+  await assert.rejects(lib.reorderBoards(order.slice(1)), /couldn’t be moved/);
+  await assert.rejects(lib.reorderBoards([order[0], order[0], order[1]]), /couldn’t be moved/);
+  await lib.reorderBoards(order);
+  lib = await Library.openOrCreate(libDir);
+  // A dropped folder: every photo and video inside (also in folders inside), other files ignored.
+  const folder = path.join(ROOT, 'dropped folder');
+  fs.mkdirSync(path.join(folder, 'inner'), { recursive: true });
+  fs.writeFileSync(path.join(folder, 'a.jpg'), 'x'); fs.writeFileSync(path.join(folder, 'inner', 'b.mp4'), 'y'); fs.writeFileSync(path.join(folder, 'notes.txt'), 'z');
+  const found = await Library.expandFolders([folder, path.join(folder, 'notes.txt')]);
+  assert.deepEqual(found.map((f) => path.relative(folder, f)), ['a.jpg', path.join('inner', 'b.mp4'), 'notes.txt'], 'folders opened up; a file dropped on its own still goes through (and gets its reason)');
+  ok('boards can be reordered (bad orders refused); dropped folders are opened up for their photos and videos');
+
   await lib.moveToBin(photo.id);
   lib = await Library.openOrCreate(libDir);
   assert.ok(lib.item(photo.id).deletedAt);

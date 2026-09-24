@@ -81,11 +81,41 @@
       const el = h('button', { type: 'button', class: 'bcard' + (S.board === b.id ? ' on' : ''), 'aria-pressed': String(S.board === b.id), 'data-id': b.id, onclick: () => go(b.id) },
         h('div', { class: 'stack', 'aria-hidden': 'true' }, stackFor(b.id)),
         h('div', null, h('div', { class: 'name' }, b.name), h('div', { class: 'count micro' }, `${n} item${n === 1 ? '' : 's'}`)));
-      if (b.id !== 'all') dropTarget(el, b.id);
+      if (b.id !== 'all') { dropTarget(el, b.id); boardDrag(el, b.id); }
       nav.append(el);
     }
     nav.append(h('button', { type: 'button', class: 'bcard add', onclick: newBoard }, icon('plus'), 'New board'));
     requestAnimationFrame(placeHighlight);
+  }
+
+  // Drag a board up or down the list to move it. The others make room as you go.
+  const BOARD_TYPE = 'application/x-notebook-board';
+  let movingBoard = null;
+  function boardDrag(el, id) {
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => { if (e.target !== el) return; movingBoard = id; e.dataTransfer.setData(BOARD_TYPE, id); e.dataTransfer.effectAllowed = 'move'; el.classList.add('moving'); });
+    el.addEventListener('dragend', () => { movingBoard = null; el.classList.remove('moving'); document.querySelectorAll('.bcard.before, .bcard.after').forEach((x) => x.classList.remove('before', 'after')); });
+    el.addEventListener('dragover', (e) => {
+      if (!movingBoard || movingBoard === id) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+      el.classList.toggle('after', after); el.classList.toggle('before', !after);
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('before', 'after'));
+    el.addEventListener('drop', async (e) => {
+      if (!movingBoard || movingBoard === id) return;
+      e.preventDefault(); e.stopPropagation();
+      const after = el.classList.contains('after');
+      el.classList.remove('before', 'after');
+      const order = S.snap.boards.map((b) => b.id).filter((x) => x !== movingBoard);
+      order.splice(order.indexOf(id) + (after ? 1 : 0), 0, movingBoard);
+      const nav = $('boards'), was = new Map([...nav.querySelectorAll('.bcard[data-id]')].map((c) => [c.dataset.id, c.getBoundingClientRect().top]));
+      if (!NB.apply(await nb.reorderBoards(order))) return;
+      for (const c of nav.querySelectorAll('.bcard[data-id]')) {
+        const dy = (was.get(c.dataset.id) ?? c.getBoundingClientRect().top) - c.getBoundingClientRect().top;
+        if (dy) c.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.2,.9,.3,1)' });
+      }
+    });
   }
 
   function placeHighlight() {
@@ -283,14 +313,18 @@
       kept.set(key, { sig, el });
       return el;
     });
-    for (const [k, v] of kept) if (!els.includes(v.el)) kept.delete(k);
+    // Cards filtered out are kept for when they come back; only cards whose items are gone are dropped.
+    const alive = new Set(S.snap.items.map((i) => i.id));
+    for (const [k] of kept) if (!k.slice(2).split(',').every((id) => alive.has(id))) kept.delete(k);
     grid.className = 'grid' + (S.anim ? ' anim ' + S.dir : '');
     grid.replaceChildren(...els);
     S.anim = false;
     if (glide) {
       const ease = 'cubic-bezier(.2,.9,.3,1)';
+      const onScreen = (r) => r && r.bottom > -100 && r.top < innerHeight + 100;
       for (const el of els) {
         const was = before.get(el) || idsIn(el).map((id) => beforeId.get(id)).find(Boolean), now = el.getBoundingClientRect();
+        if (!onScreen(now) && !onScreen(was)) continue; // off screen either way: nothing to watch
         if (!was) { el.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: ease, delay: 80 }); continue; }
         const dx = was.left - now.left, dy = was.top - now.top;
         if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 460, easing: ease });
@@ -337,8 +371,9 @@
   function dragSource(el, ids) {
     el.draggable = true;
     el.addEventListener('dragstart', (e) => {
-      dragging = ids;
-      e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(ids));
+      const chosen = NB.stacks.picked();
+      dragging = ids.some((id) => chosen.includes(id)) ? chosen : ids; // a picked card brings the others along
+      e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(dragging));
       e.dataTransfer.effectAllowed = 'copyMove';
       el.classList.add('lifted');
       showTray();
@@ -353,7 +388,7 @@
       e.preventDefault();
       const moving = dragging;
       const res = NB.apply(await nb.stackItems([...new Set([...ids, ...moving])], currentBoardId()));
-      if (res) toast('Stacked. Drag across it to go through them.');
+      if (res) { NB.stacks.clear(); toast('Stacked. Drag across it to go through them.'); }
     });
   }
   NB.dragSource = dragSource;
@@ -421,11 +456,13 @@
     }
     pumpThumbs();
   }
+  // Previews are made three at a time; the board list is redrawn at most a few times a second meanwhile.
   const thumbQueue = [];
-  let pumping = false;
-  async function pumpThumbs() {
-    if (pumping) return;
-    pumping = true;
+  let pumping = 0, boardsSoon = 0;
+  const redrawBoardsSoon = () => { if (!boardsSoon) boardsSoon = setTimeout(() => { boardsSoon = 0; renderBoards(); }, 300); };
+  function pumpThumbs() { while (pumping < 3 && thumbQueue.length) pumpOne(); }
+  async function pumpOne() {
+    pumping++;
     while (thumbQueue.length) {
       const id = thumbQueue.shift();
       const it = S.snap.items.find((i) => i.id === id);
@@ -440,10 +477,10 @@
         S.bad.add(id);
       }
       refreshCard(id);
-      renderBoards();
+      redrawBoardsSoon();
       NB.viewer.refresh();
     }
-    pumping = false;
+    pumping--;
   }
 
   const toJpeg = (source, w, h) => new Promise((resolve, reject) => {
@@ -534,6 +571,7 @@
       closeLib();
     };
     $('bin-btn').onclick = () => go(S.board === 'bin' ? 'all' : 'bin');
+    $('lib-keys').onclick = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); shortcuts(); };
     $('search').addEventListener('input', (e) => { S.q = e.target.value; renderContext(); renderGrid(); });
     $('lib-btn').onclick = () => {
       const pop = $('lib-pop');
@@ -588,11 +626,52 @@
     });
   }
 
+  // ---------- the shortcuts sheet (press ?) ----------
+  function shortcuts() {
+    if (document.querySelector('.keys')) return;
+    const K = (...k) => h('span', { class: 'kbd' }, k.map((x) => h('kbd', null, x)));
+    const row = (keys, what) => h('div', { class: 'krow' }, keys, h('span', null, what));
+    const close = () => { sheet.classList.add('out'); scrim.classList.add('out'); setTimeout(() => { sheet.remove(); scrim.remove(); }, 200); window.removeEventListener('keydown', key, true); };
+    const key = (e) => { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); close(); } };
+    const scrim = h('div', { class: 'scrim keys-scrim', onclick: () => close() });
+    const sheet = h('section', { class: 'keys popover', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts and gestures' },
+      h('div', { class: 'keys-head' }, h('h2', { class: 'display' }, 'Shortcuts'), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', onclick: () => close() }, icon('x'))),
+      h('div', { class: 'kgrid' },
+        h('div', null, h('h4', { class: 'micro' }, 'Adding'),
+          row(K('Ctrl', 'V'), 'Paste a picture, or a TikTok / Pinterest link'),
+          row(K('Drag in'), 'Photos, videos, whole folders, or pictures from a browser'),
+          row(K('Ctrl', 'N'), 'New note')),
+        h('div', null, h('h4', { class: 'micro' }, 'The board'),
+          row(K('Ctrl', 'F'), 'Search (words, types, styles, colours)'),
+          row(K('Ctrl', '+ / −'), 'Bigger or smaller cards (or Ctrl + wheel)'),
+          row(K('Ctrl', 'A'), 'Pick everything showing'),
+          row(K('Delete'), 'Move what’s picked to the Bin'),
+          row(K('Esc'), 'Stop picking, or clear the search')),
+        h('div', null, h('h4', { class: 'micro' }, 'Cards'),
+          row(K('Drag onto a card'), 'Stack them'),
+          row(K('Drag across a stack'), 'Flick through it (or scroll sideways)'),
+          row(K('Drag onto a board'), 'Add it to that board'),
+          row(K('Ctrl', 'click'), 'Pick several'),
+          row(K('Drag a board'), 'Move it up or down the list')),
+        h('div', null, h('h4', { class: 'micro' }, 'Open item'),
+          row(K('←', '→'), 'Previous or next'),
+          row(K('Delete'), 'Move it to the Bin'),
+          row(K('Esc'), 'Close'))));
+    document.body.append(scrim, sheet);
+    window.addEventListener('keydown', key, true);
+    sheet.querySelector('.iconbtn').focus();
+  }
+  NB.shortcuts = shortcuts;
+
   // ---------- keyboard ----------
   function wireKeys() {
     window.addEventListener('keydown', (e) => {
       if (NB.viewer.isOpen() || NB.phone.isOpen() || !S.snap) return;
+      const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]');
       if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
+      else if (!typing && e.ctrlKey && e.key.toLowerCase() === 'a' && S.board !== 'bin') { e.preventDefault(); NB.stacks.pickAll(); }
+      else if (!typing && e.key === 'Delete' && NB.stacks.isPicking()) { e.preventDefault(); NB.stacks.binPicked(); }
+      else if (!typing && e.key === '?') { e.preventDefault(); shortcuts(); }
       else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
       else if (e.key === 'Escape') {
         if (NB.stacks.isPicking()) NB.stacks.clear();

@@ -27,10 +27,18 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
 
 ## Everyday use
 
-- **Add**: **Photos**, **Videos** or **Note** at the top left, drag files onto the window,
-  or paste a TikTok or Pinterest link (see below). If a board is open, new things land on it.
-- **Boards**: they're listed on the left. Use **New board**, then **Rename board** or
-  **Delete board**. Deleting a board never deletes its items.
+- **Add**: **Photos**, **Videos** or **Note** at the top left, or drag files or whole folders
+  onto the window. **Ctrl+V** pastes a picture (a screenshot, or an image copied from a
+  website), or a TikTok or Pinterest link (see below). You can also drag a picture straight out
+  of your browser. If a board is open, new things land on it. The same picture is never added
+  twice: you're told it's already there, with **Show it**.
+- **Boards**: they're listed on the left; drag one up or down to move it. Use **New board**,
+  then **Rename board** or **Delete board** (click it twice). Deleting a board never deletes its items.
+- **Card size**: Ctrl + mouse wheel over the board, or Ctrl + plus / minus (Ctrl + 0 goes back).
+  Videos play quietly on their cards while the pointer rests on them.
+- **Picking several**: Ctrl-click (or tick) cards, or Ctrl+A for everything showing. Then
+  **Stack**, **Add to board**, **Hide from phone** or **Move to Bin** (or press Delete). Dragging
+  one picked card brings the others with it.
 - **Stacks**: drag a card onto another card to stack them (drag more on to add to it), or
   Ctrl-click (or tick) several and press **Stack**. A stack shows as one card that takes the
   shape of the picture on top; drag across it (or scroll sideways, or use the arrow keys) to go
@@ -48,7 +56,9 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   heading and bullet points (no AI, all on your PC). **Undo tidy** puts it back.
 - **Bin**: **Move to Bin** keeps the item with its boards. Restore it from the Bin.
   **Empty Bin** deletes permanently and asks first.
-- **Search**: Ctrl+F. **New note**: Ctrl+N.
+- **Search**: Ctrl+F finds titles, notes, and what things are (e.g. "wallpaper", "black",
+  "streetwear"). **New note**: Ctrl+N. Press **?** (or Library → Keyboard shortcuts) for every
+  shortcut and gesture. Delete in an open item moves it to the Bin.
 
 ## Recognition (on your PC)
 

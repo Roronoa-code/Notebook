@@ -234,7 +234,8 @@ function registerHandlers() {
     writeConfig({ lastImportDir: path.dirname(res.filePaths[0]) });
     return lib.importFiles(res.filePaths, boardId);
   });
-  handle('items:import', (paths, boardId) => lib.importFiles(Array.isArray(paths) ? paths.filter((p) => typeof p === 'string') : [], boardId));
+  handle('items:import', async (paths, boardId) => lib.importFiles(await Library.expandFolders(Array.isArray(paths) ? paths.filter((p) => typeof p === 'string') : []), boardId));
+  handle('boards:reorder', (ids) => lib.reorderBoards(ids));
   // A pasted or dropped picture that isn't a file on disk (a screenshot, an image copied or dragged
   // from a browser): written to a temporary file, imported like any other, then the temporary file goes.
   handle('items:importData', async (name, bytes, boardId) => {
