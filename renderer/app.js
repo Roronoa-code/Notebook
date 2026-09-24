@@ -17,9 +17,11 @@
     const q = S.q.trim().toLowerCase();
     const g = NB.smart.suggestion();
     const list = g ? live().filter((i) => g.ids.includes(i.id)) : NB.smart.filter(itemsFor(S.board));
-    const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
-    return q ? list.filter((i) => words(i).includes(q)) : list; // title, notes, and what it is (type, style, clothing colours)
+    return q ? searchIn(list, q) : list;
   };
+  // Title, notes, and what it is (type, style, clothing colours).
+  const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
+  const searchIn = (list, q) => list.filter((i) => words(i).includes(q));
   NB.refreshGrid = () => { renderContext(); renderGrid(); };
   // Showing a suggested group (or back to the boards). `boardId`: jump to a board made from it.
   NB.showSuggestion = (g, boardId) => {
@@ -165,9 +167,9 @@
     renderContext.last = titleKey;
     box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
     if (board) {
-      box.append(h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board'));
+      const rename = h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board');
       // Deleting asks once more (a second click within a few seconds). Its items always stay in your notebook.
-      box.append(h('button', { type: 'button', class: 'btn small danger', onclick: async (e) => {
+      box.append(h('div', { class: 'ctx-actions' }, rename, h('button', { type: 'button', class: 'btn small danger', onclick: async (e) => {
         const b = e.currentTarget;
         if (!b.dataset.sure) {
           b.dataset.sure = '1'; b.textContent = 'Click again to delete';
@@ -176,7 +178,7 @@
         }
         const name = board.name;
         if (await NB.run('deleteBoard', board.id)) toast(`Deleted the board “${name}”. Its items are still in your notebook.`);
-      } }, 'Delete board'));
+      } }, 'Delete board')));
     }
     if (S.board !== 'bin') { const bar = NB.smart.filterBar(itemsFor(S.board)); if (bar) box.append(bar); }
     if (S.board === 'bin' && binned().length) {
@@ -358,7 +360,10 @@
       : NB.smart.active() ? ['Nothing matches these filters', 'Try another type, colour or style, or clear the filters.']
       : board ? ['Nothing on this board yet', `Open any item and tick “${board.name}”, or add new things while you're here and they'll land on this board.`]
       : ['Your notebook is empty', 'Add photos, videos or a note from the top left, or drag files onto this window.'];
-    empty.replaceChildren(h('h2', { class: 'display' }, title), h('p', null, text));
+    // Searching inside a board: say if there are matches elsewhere, and take you there.
+    const elsewhere = S.q.trim() && board ? searchIn(live(), S.q.trim().toLowerCase()).length : 0;
+    empty.replaceChildren(h('h2', { class: 'display' }, title), h('p', null, text),
+      elsewhere ? h('button', { type: 'button', class: 'btn', onclick: () => go('all') }, `Show ${elsewhere} in All items`) : '');
   }
 
   function refreshCard(id) {

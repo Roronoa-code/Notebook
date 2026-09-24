@@ -333,6 +333,17 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.click('.bcard[data-id="all"]');
   ok('Delete board asks for a second click');
 
+  // Searching inside a board with no matches offers the matches in All items.
+  const emptyBoard = await page.evaluate(async () => (NB.apply(await nb.addBoard('Empty for search'))).id);
+  await page.click(`.bcard[data-id="${emptyBoard}"]`);
+  await page.fill('#search', 'autumn');
+  await page.locator('#empty .btn', { hasText: /Show 1 in All items/ }).click();
+  await page.locator('.bcard[data-id="all"].on').waitFor();
+  await page.locator('.grid .card', { hasText: 'Autumn capsule' }).waitFor();
+  await page.fill('#search', '');
+  await page.evaluate(async (id) => NB.apply(await nb.deleteBoard(id)), emptyBoard);
+  ok('searching inside a board offers the matches found in All items');
+
   // Boards can be dragged into a new order.
   const boardNames = () => page.locator('.bcard[data-id]:not([data-id="all"]) .name').allInnerTexts();
   const namesBefore = await boardNames();

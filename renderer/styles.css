@@ -163,6 +163,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .context .count { margin: 0 auto 10px 0; }
 .context .count b { color: var(--ink); font-weight: 500; }
 .context .btn { margin-bottom: 6px; }
+.ctx-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .rename { height: 110px; width: min(900px, 100%); border-radius: 20px; border: 1px solid var(--accent); background: rgba(255,255,255,.04); padding: 0 18px; font: 400 88px/1 var(--poster); text-transform: uppercase; outline: none; }
 
 /* stacks: pictures fanned in the space of one card; drag across (or scroll sideways) to go through them */
