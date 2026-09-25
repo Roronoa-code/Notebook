@@ -95,8 +95,8 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
   const changed = new Map();
   const feed = new Feed({
     getLib, dir: path.join(app.getPath('userData'), 'feed'),
-    source: process.env.NOTEBOOK_FAKE_FEED ? new FakeSource() : new PinterestSource(pinterest.session),
-    embeddings: (lib) => scanner.embeddings(lib), embed: (bytes) => scanner.embed(bytes), aiHide: pinterest.aiHide, aiQuick: pinterest.aiQuick, aiKnown: pinterest.aiKnown,
+    source: process.env.NOTEBOOK_FAKE_FEED ? new FakeSource(process.env.NOTEBOOK_FAKE_FEED_FAIL || null) : new PinterestSource(pinterest.session),
+    embeddings: (lib) => scanner.embeddings(lib), embed: (bytes) => scanner.embed(bytes), aiHide: pinterest.aiHide, aiQuick: pinterest.aiQuick, aiKnown: pinterest.aiKnown, prepare: () => scanner.warmIdeas(pinterest.aiOn()),
     onChange: (key) => { clearTimeout(changed.get(key)); changed.set(key, setTimeout(() => send('feed:changed', { key }), 120)); }
   });
   // Plain answers (no library snapshot each time): { feed } or { error }.

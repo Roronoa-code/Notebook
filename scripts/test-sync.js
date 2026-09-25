@@ -45,11 +45,11 @@ const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
   // ---------- start: the first port is busy, so it moves to the next ----------
   const blocker = net.createServer().listen(BASE_PORT, HOST);
   await new Promise((r) => blocker.once('listening', r));
-  const events = { lib: [], status: 0, keepReady: [] };
+  const events = { lib: [], status: 0, keepReady: [], logs: [] };
   const settingsFile = path.join(ROOT, 'userdata', 'sync.json');
   const server = new SyncServer({
     settingsFile, host: HOST, port: BASE_PORT, discoveryPort: DISCOVERY_PORT, pcName: 'Test PC',
-    onLibraryChanged: (e) => events.lib.push(e), onStatusChanged: () => events.status++, onKeepReady: (on) => events.keepReady.push(on),
+    onLibraryChanged: (e) => events.lib.push(e), onPhoneLog: (t) => events.logs.push(t), onStatusChanged: () => events.status++, onKeepReady: (on) => events.keepReady.push(on),
     log: { error: () => {} }
   });
   await server.start(lib);
@@ -250,7 +250,32 @@ const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
   r = await api('GET', '/api/feed', { token });
   assert.ok(!r.body.feeds.all.pins.some((p) => p.id === pin.id), 'hidden from the phone is hidden everywhere');
   assert.equal((await api('POST', '/api/feed/hide', { token, json: { id: '../x' } })).status, 400);
+  const had = r.body.feeds.all.pins.length;
+  assert.equal(r.body.feeds.all.more, true, 'says when there are more');
+  r = await api('GET', '/api/feed?want=all&more=1', { token });
+  assert.ok(r.body.feeds.all.pins.length > had, `the next page when the phone asks (${had} -> ${r.body.feeds.all.pins.length})`);
+  // When Pinterest fails, the reason is given in plain words, and the pins from before stay.
+  feed.source = new FakeSource('changed');
+  await feed.load('all', 'fresh');
+  r = await api('GET', '/api/feed', { token });
+  assert.match(r.body.feeds.all.error, /Pinterest has changed how it works/);
+  assert.ok(r.body.feeds.all.pins.length > had, 'the pins from before stay');
+  feed.source = new FakeSource('offline');
+  await feed.load('all', 'fresh');
+  assert.match(feed.get('all', { load: false }).error, /Couldn’t reach Pinterest/);
+  feed.source = new FakeSource();
+  await feed.load('all', 'fresh');
+  assert.equal(feed.get('all', { load: false }).error, null, 'and it clears once Pinterest answers again');
   ok('Ideas for the phone: every feed, their pictures, save and hide (checked), paired phones only');
+
+  // ---------- the phone's error log ----------
+  assert.equal((await api('POST', '/api/log', { json: { text: 'x' } })).status, 401, 'paired phones only');
+  r = await api('POST', '/api/log', { token, json: { text: '2026-09-25T10:00:00Z [screen] TypeError: boom' } });
+  assert.equal(r.status, 200);
+  assert.deepEqual(events.logs, ['2026-09-25T10:00:00Z [screen] TypeError: boom']);
+  assert.equal((await api('POST', '/api/log', { token, json: { text: 'x'.repeat(70000) } })).status, 400, 'too long');
+  assert.equal((await api('POST', '/api/log', { token, json: { text: 5 } })).status, 400, 'not text');
+  ok('the phone’s error log is taken (paired phones only, text up to 64 KB)');
 
   // ---------- discovery ----------
   const reply = await new Promise((resolve, reject) => {

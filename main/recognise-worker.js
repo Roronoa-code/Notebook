@@ -22,6 +22,11 @@ port.on('message', async ({ data }) => {
     if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, score: process.env.NOTEBOOK_FAKE_AI === 'some' ? (data.bytes.length % 3 === 0 ? 1 : 0) : process.env.NOTEBOOK_FAKE_AI ? 1 : 0 });
     try { return port.postMessage({ id, ok: true, score: data.strict === 'quick' ? await AI.run(modelsDir, AI.QUICK, data.bytes) : await AI.score(modelsDir, data.bytes, data.strict ? AI.STRICT : undefined) }); } catch (err) { return port.postMessage({ id, ok: false, error: err.message, missing: !!err.missing }); }
   }
+  // Ideas are about to be looked for: load the quick AI detector and the picture model side by side.
+  if (cmd === 'warm') {
+    if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true });
+    try { await Promise.all([data.ai ? AI.load(modelsDir, AI.QUICK) : null, M || R.loadClip(modelsDir)]); return port.postMessage({ id, ok: true }); } catch (err) { return port.postMessage({ id, ok: false, error: err.message }); }
+  }
   // The stand-in's fingerprint for a picture's bytes: eight numbers from a hash of them (different pictures differ).
   if (cmd === 'embed' && process.env.NOTEBOOK_FAKE_RECOGNISER) { const v = [...require('crypto').createHash('sha256').update(data.bytes).digest().subarray(0, 8)].map((x) => x - 127.5), n = Math.hypot(...v); return port.postMessage({ id, ok: true, embedding: v.map((x) => x / n) }); }
   if (process.env.NOTEBOOK_FAKE_RECOGNISER && cmd === 'query') return port.postMessage({ id, ok: false, error: 'not in the stand-in' });

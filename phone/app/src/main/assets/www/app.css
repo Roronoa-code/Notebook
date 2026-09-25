@@ -232,6 +232,10 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid #F2F2F2; outli
 /* The row above every grid: tabs on the left, sort on the right (Home and boards look the same). */
 .panelbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 14px 12px 16px; }
 .boardbar { padding-top: 14px; }
+.ideacols { column-span: all; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.ideacol { min-width: 0; }
+.ideanote, .ideas-more { column-span: all; margin: 0 4px 14px; color: #9A9A9A; font-size: 13px; line-height: 1.45; }
+.ideas-more { min-height: 18px; text-align: center; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
 .idea .ideatick { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 26px; border-radius: 50%; background: #F2F2F2; color: #0A0A0A; display: flex; align-items: center; justify-content: center; }
 .ideasheet { display: flex; gap: 14px; align-items: center; }
 .ideasheet img { width: 64px; max-height: 96px; border-radius: 14px; object-fit: cover; flex-shrink: 0; background: #1C1C1C; }

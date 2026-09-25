@@ -99,11 +99,15 @@ The phone then:
 
 The PC prepares the feeds; the phone only shows them. All need the token.
 
-- `GET /api/feed` (optionally `?want=<boardId>`: a board the phone is showing, made now if it has none, waiting up to 15 seconds) returns `{ "feeds": { "all": { "at": ms, "signedIn": bool|null, "pins": [...] }, "<boardId>": {...} } }`. Each pin is `{ id, url, title, w, h, video, sig, saved }`: `url` is `https://www.pinterest.com/pin/<id>/`, `sig` is 32 hex characters naming its picture. Feeds older than a few hours are refreshed on the PC in the background for next time.
+- `GET /api/feed` (optionally `?want=<boardId or all>`: the feed the phone is showing, made now if it has none, waiting up to 15 seconds; with `&more=1` as well, the PC first fetches that feed's next page, waiting up to 20 seconds) returns `{ "feeds": { "all": { "at": ms, "signedIn": bool|null, "error": string|null, "more": bool, "pins": [...] }, "<boardId>": {...} } }`. Each pin is `{ id, url, title, w, h, video, sig, saved }`: `url` is `https://www.pinterest.com/pin/<id>/`, `sig` is 32 hex characters naming its picture. `error` is a plain-English reason the last fetch failed (the pins are then the ones from before); `more` says a next page can be asked for. The wanted feed comes whole (up to 300 pins), the others with their first 150. Feeds older than a few hours are refreshed on the PC in the background for next time.
 - `GET /api/feed/img/<sig>` streams the pin's picture (`image/jpeg`), or 404.
 - `POST /api/feed/save` with `{ "url": "<pin url>", "boardId": "<id>"|null }` makes the PC download and save the pin (onto that board); it arrives on the phone with a later sync. 400 for anything that isn't a pin address.
 - `POST /api/feed/hide` with `{ "id": "<digits>" }`: "Not for me". The pin leaves every feed and similar ones rank lower.
 - The phone keeps the last feeds and their first pictures, so it can show them away from home. Saves and hides made while the PC can't be reached wait and go with the next sync.
+
+### Error log
+
+- `POST /api/log` with `{ "text": "<lines>" }` (up to 64 KB of text; needs the token): the phone's own error log (script errors on its screens, crashes, failed syncs), sent after a sync and added to the PC's error log (`<userData>/logs/errors.log`). The phone forgets what it sent once the PC answers 200 (or 400: unreadable).
 
 ## Security notes
 

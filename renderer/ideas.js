@@ -5,12 +5,15 @@
   const { h, icon, toast } = NB;
   const $ = (id) => document.getElementById(id);
   const GAP = 22;
+  const FIRST = 30, PAGE = 24, BUFFER = 40; // cards shown at first, added per step, and pins kept ready below
   let on = false;          // showing Ideas instead of Saved
   let key = null;          // which feed is on screen ('all' or a board id)
   let data = null;         // that feed as last loaded
   const cards = new Map(); // pin id -> card
   let cols = [];
   const saving = new Set(); // pin addresses being saved
+  let shown = 0;            // how many of the feed's pins are on the page
+  let asking = false;       // a next page has been asked for
 
   const keyNow = () => NB.currentBoardId() || (NB.S.board === 'all' ? 'all' : null);
   const active = () => on && !!keyNow() && !NB.smart.suggestion();
@@ -30,6 +33,7 @@
     const line = h('div', { class: 'count micro' }, n ? h('b', null, n) : '', n ? ` idea${n === 1 ? '' : 's'}` : '', busy ? (n ? ' · finding more…' : 'Finding ideas…') : '');
     const fresh = h('button', { type: 'button', class: 'btn small', disabled: !!busy, onclick: () => { nb.feedRefresh(keyNow()).then(got); } }, icon('restore'), 'New ideas');
     const out = [line, h('div', { class: 'ctx-actions' }, fresh)];
+    if (data && data.key === keyNow() && data.error && data.pins.length) out.push(h('p', { class: 'hint ideas-hint' }, 'No new ideas just now. ' + data.error));
     if (data && data.key === 'all' && data.signedIn === false) {
       out.push(h('p', { class: 'hint ideas-hint' }, 'Sign in to Pinterest (in the Pinterest panel) and your Pinterest home feed is mixed in too. ',
         h('button', { type: 'button', class: 'linkbtn', onclick: () => $('pin-btn').click() }, 'Open Pinterest')));
@@ -52,6 +56,7 @@
   function got(res) {
     if (!res || res.error || !res.feed) { if (res && res.error) toast(res.error, { error: true }); return; }
     if (res.feed.key !== key) return;
+    if (!res.feed.busy) asking = false;
     const fresh = data && res.feed.pins.length && data.pins.length && res.feed.pins[0].id !== data.pins[0].id;
     data = res.feed;
     if (fresh) clear(true);
@@ -64,6 +69,7 @@
     const box = $('ideas');
     cards.clear();
     cols = [];
+    shown = 0;
     box.replaceChildren();
     box.className = 'ideas' + (animate ? ' anim ' + NB.S.dir : '');
   }
@@ -100,16 +106,27 @@
     ensureCols();
     const want = new Set(pins.map((p) => p.id));
     for (const [id, el] of cards) if (!want.has(id)) { el.remove(); cards.delete(id); }
+    shown = Math.min(pins.length, Math.max(shown, FIRST));
     let i = 0;
-    for (const p of pins) {
+    for (const p of pins.slice(0, shown)) {
       const had = cards.get(p.id);
       if (had) { mark(had, p); continue; }
       const el = card(p, i++);
       cards.set(p.id, el);
       shortest().append(el);
     }
-    sentinel.hidden = !data.more;
-    sentinel.textContent = data.busy ? 'Finding more…' : '';
+    sentinel.hidden = !data.more && shown >= pins.length;
+    requestAnimationFrame(ahead);
+  }
+
+  // Keeps ahead of the scroll: within a few screens of the end, more of the pins already here are put
+  // on the page, and the next page is asked for while plenty are still waiting below.
+  function ahead() {
+    if (!active() || !data || !data.pins.length || !cols.length) return;
+    const pg = $('page');
+    if (pg.scrollHeight - pg.scrollTop - pg.clientHeight < pg.clientHeight * 2.5 && shown < data.pins.length) { shown += PAGE; draw(); return; }
+    if (data.pins.length - shown < BUFFER && data.more && !asking) { asking = true; nb.feedMore(key).then(got); }
+    sentinel.textContent = asking && shown >= data.pins.length ? 'Finding more…' : '';
   }
 
   function card(p, index) {
@@ -195,14 +212,10 @@
     if (res && res.error) toast(res.error, { error: true });
   }
 
-  // Near the bottom: the next page.
+  // The end of the list: says when the next page is on its way.
   const sentinel = h('div', { class: 'ideas-more micro', 'aria-live': 'polite' });
-  new IntersectionObserver((es) => {
-    if (!es.some((e) => e.isIntersecting) || !active() || !data || !data.more || data.busy) return;
-    data.busy = true;
-    sentinel.textContent = 'Finding more…';
-    nb.feedMore(key).then(got);
-  }, { root: $('page'), rootMargin: '900px' }).observe(sentinel);
+  let frame = 0;
+  $('page').addEventListener('scroll', () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; ahead(); }); }, { passive: true });
   new ResizeObserver(() => { if (active() && cards.size) ensureCols(); }).observe($('ideas'));
 
   NB.ideas = { tabs, info, sync, active, leave: () => { on = false; }, redeal: () => { if (active() && cards.size) { cols = []; ensureCols(); } } };

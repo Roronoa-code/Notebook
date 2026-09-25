@@ -61,6 +61,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        ErrorLog.init(this);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#0A0A0A"));
         // Full screen: the page draws behind the status bar and gesture bar and keeps its buttons clear of them.
@@ -91,6 +92,14 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) { applySafeArea(); }
+        });
+        // Script errors on the screens go to the error log (and on to the PC with the next sync).
+        web.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage m) {
+                if (m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR) ErrorLog.add("screen", m.message() + " (" + m.sourceId() + ":" + m.lineNumber() + ")");
+                return false;
+            }
         });
         web.setHapticFeedbackEnabled(true);
         web.addJavascriptInterface(new Native(), "NBNative");
@@ -290,6 +299,7 @@ public class MainActivity extends Activity {
             });
             js("nbOnSync", new JSONObject().put("phase", "done").put("status", Core.sync(this).status()).toString());
         } catch (Exception e) {
+            ErrorLog.failed("sync", e);
             if (!quiet) { try { js("nbOnSync", new JSONObject().put("phase", "error").put("message", e.getMessage()).toString()); } catch (Exception ignored) { /* nothing more to show */ } }
             else pushState();
         }
@@ -349,7 +359,14 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String feed() { try { return Core.sync(MainActivity.this).feedJson(); } catch (Exception e) { return error(e); } }
         @JavascriptInterface public void feedRefresh(String want) {
             runOnUiThread(() -> withLocalNetwork(() -> feedWorker.execute(() -> {
-                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow(want == null || want.isEmpty() ? null : want)); }
+                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow(want == null || want.isEmpty() ? null : want, false)); }
+                catch (Exception e) { js("nbOnFeed", error(e)); }
+            })));
+        }
+        // The next page of a feed (the phone asks while a few screens of pins are still below).
+        @JavascriptInterface public void feedMore(String want) {
+            runOnUiThread(() -> withLocalNetwork(() -> feedWorker.execute(() -> {
+                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow(want, true)); }
                 catch (Exception e) { js("nbOnFeed", error(e)); }
             })));
         }

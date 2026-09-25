@@ -16,6 +16,16 @@ const KEEP = 300;                  // pins kept per feed
 const SAME = 0.92;                 // this alike (fingerprints) counts as the same picture: one you have, or one already shown
 const DOUBT = 0.5;                 // the quick AI detector's score from which a pin needs a second opinion
 const TYPE_WORD = { outfit: 'outfit', wallpaper: 'wallpaper', icon: 'app icon', 'profile picture': 'pfp' };
+// What went wrong, in plain words (shown on the PC and the phone).
+const WHY = {
+  offline: 'Couldn’t reach Pinterest. Check the internet connection and try again.',
+  busy: 'Pinterest asked Notebook to slow down. Try again in a few minutes.',
+  down: 'Pinterest isn’t answering properly just now. Try again later.',
+  changed: 'Pinterest has changed how it works, so Notebook can’t get ideas from it. Notebook needs an update for this.',
+  empty: 'Pinterest sent no pins back. If this keeps happening, Pinterest may have changed and Notebook needs an update.',
+  broken: 'Something went wrong while finding ideas. Try again.'
+};
+const failure = (kind, message) => Object.assign(new Error(message), { kind });
 
 const signatureOf = (url) => { const m = /\/([0-9a-f]{32})\.(?:jpe?g|png|webp|gif)/i.exec(String(url || '')); return m ? m[1].toLowerCase() : null; };
 const pinIdOf = (url) => { const m = /pinterest\.[a-z.]+\/pin\/(\d+)/i.exec(String(url || '')); return m ? m[1] : null; };
@@ -48,10 +58,13 @@ class PinterestSource {
   constructor(getSession) { this.ses = getSession; }
   async call(resource, sourceUrl, options) {
     const u = `${BASE}/resource/${resource}/get/?source_url=${encodeURIComponent(sourceUrl)}&data=${encodeURIComponent(JSON.stringify({ options, context: {} }))}`;
-    const res = await this.ses().fetch(u, { credentials: 'include', signal: AbortSignal.timeout(20000), headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json', 'X-Pinterest-PWS-Handler': 'www/index.js' } });
+    let res;
+    try { res = await this.ses().fetch(u, { credentials: 'include', signal: AbortSignal.timeout(20000), headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json', 'X-Pinterest-PWS-Handler': 'www/index.js' } }); } catch (err) { throw failure('offline', err.message); }
     if (res.status === 401) return { pins: [], bookmark: null, signedOut: true };
-    if (!res.ok) throw new Error(`Pinterest answered ${res.status}`);
-    const r = (await res.json()).resource_response || {};
+    if (!res.ok) throw failure(res.status === 429 ? 'busy' : res.status >= 500 ? 'down' : 'changed', `Pinterest answered ${res.status}`);
+    let r;
+    try { r = (await res.json()).resource_response; } catch (err) { throw failure('changed', 'not JSON: ' + err.message); }
+    if (!r || typeof r !== 'object') throw failure('changed', 'no resource_response');
     return { pins: pinsIn(r.data).map(pinFrom).filter(Boolean), bookmark: r.bookmark && r.bookmark !== '-end-' ? r.bookmark : null };
   }
   page(s) {
@@ -67,8 +80,10 @@ class PinterestSource {
 
 // A stand-in for the checks (NOTEBOOK_FAKE_FEED=1): made-up pins with plain coloured pictures, no internet.
 class FakeSource {
+  constructor(fail = null) { this.fail = fail; } // 'offline', 'changed'…: every page fails that way
   async page(s) {
     await new Promise((r) => setTimeout(r, 150));
+    if (this.fail) throw failure(this.fail, 'stand-in failure');
     const start = s.bookmark ? Number(s.bookmark) : 0;
     const pins = Array.from({ length: 12 }, (_, i) => {
       const n = 100000 + (s.kind === 'home' ? 0 : s.kind === 'related' ? 5000 : 9000) + (s.arg || '').length * 100 + start + i;
@@ -143,8 +158,8 @@ class Feed {
   // getLib(); embeddings(lib) -> { itemId: vec }; embed(bytes) -> vec|null; aiHide(url, bytes) -> bool (full
   // check); aiQuick(bytes) -> quick detector's score|null; aiKnown(url) -> true/false if already decided, else null;
   // source: PinterestSource or FakeSource; dir: where feeds and pictures are kept; onChange(key).
-  constructor({ getLib, embeddings, embed, aiHide, aiQuick = async () => 0, aiKnown = () => null, source, dir, onChange = () => {}, log = console }) {
-    Object.assign(this, { getLib, embeddings, embed, aiHide, aiQuick, aiKnown, source, dir, onChange, log });
+  constructor({ getLib, embeddings, embed, aiHide, aiQuick = async () => 0, aiKnown = () => null, prepare = async () => {}, source, dir, onChange = () => {}, log = console }) {
+    Object.assign(this, { getLib, embeddings, embed, aiHide, aiQuick, aiKnown, prepare, source, dir, onChange, log });
     this.file = path.join(dir, 'feeds.json');
     this.imgDir = path.join(dir, 'img');
     this.state = { v: 1, feeds: {}, hidden: [], hiddenVecs: [] };
@@ -196,8 +211,11 @@ class Feed {
         if (!sources.length) sources = [{ kind: 'search', arg: 'aesthetic mood board' }];
       }
       if (!sources.length) return;
+      this.prepare().catch(() => {}); // the models load while Pinterest answers
       const pages = await Promise.all(sources.map((s) => this.source.page(s).then((p) => ({ s, p }), (err) => ({ s, err }))));
-      if (pages.every((x) => x.err)) { f.error = 'Couldn’t reach Pinterest just now. Check the internet connection and try again.'; this.log.error('feed', pages[0].err); return; }
+      for (const x of pages) if (x.err) this.log.error('feed', `${x.s.kind} ${x.err.message}`);
+      if (pages.every((x) => x.err)) { f.error = WHY[pages[0].err.kind] || WHY.offline; return; }
+      if (pages.every((x) => !x.p.pins.length) && sources.length > 1) { f.error = WHY.empty; return; }
       const home = pages.find((x) => x.s.kind === 'home');
       if (home && home.p) f.signedIn = !home.p.signedOut;
       const next = pages.map(({ s, p }) => ({ ...s, bookmark: p ? p.bookmark : null }));
@@ -233,10 +251,18 @@ class Feed {
       f.pins = (mode === 'more' ? [...f.pins, ...early] : early).slice(0, KEEP);
       f.error = null;
       if (mode === 'fresh') f.at = Date.now();
-      this.onChange(key);
-      await pool(doubtful, 3, async (c) => { if (await this.aiHide(c.small, c.bytes)) c.drop = true; });
-      f.pins = [...f.pins, ...ranked(doubtful, shownOf(f.pins))].slice(0, KEEP);
       f.sources = next;
+      // Doubtful pins get their second opinion without holding up the next page; the ones that pass go below.
+      if (doubtful.length) {
+        f.checking = (f.checking || 0) + 1;
+        pool(doubtful, 3, async (c) => { if (await this.aiHide(c.small, c.bytes)) c.drop = true; })
+          .then(() => { const have = new Set(f.pins.map((p) => p.id)); f.pins = [...f.pins, ...ranked(doubtful.filter((c) => !have.has(c.id)), shownOf(f.pins))].slice(0, KEEP); })
+          .catch((err) => this.log.error('feed', err))
+          .finally(() => { f.checking--; this.onChange(key); this.save().catch((err) => this.log.error('feed', err)); });
+      }
+    } catch (err) {
+      f.error = WHY.broken;
+      throw err;
     } finally {
       f.busy = false;
       await this.save();
@@ -284,25 +310,36 @@ class Feed {
   }
 
   // Every feed for the phone (All and each board), stale ones refreshed in the background for next time.
-  // `want`: a board the phone is looking at (loaded now if it has none yet).
-  async forPhone(want) {
+  // `want`: the feed the phone is looking at ('all' or a board): loaded now if it has none yet, and with
+  // `more`, its next page (waiting up to 20 seconds). That feed is sent whole; the others' first 150 pins.
+  async forPhone(want, more = false) {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     if (want && this.validKey(want)) {
       const had = this.feed(want).pins.length;
-      this.get(want);
-      if (!had) await Promise.race([this.queue, new Promise((r) => setTimeout(r, 15000))]); // a first set, if it's quick
+      if (more && had && this.feed(want).sources.some((s) => s.bookmark)) await Promise.race([this.load(want, 'more'), wait(20000)]);
+      else { this.get(want); if (!had) await Promise.race([this.queue, wait(15000)]); } // a first set, if it's quick
     }
     const lib = this.getLib();
     const keys = ['all', ...(lib ? lib.data.boards.filter((b) => b.phone !== false).map((b) => b.id) : [])];
     const feeds = {};
-    for (const k of keys) { const f = this.get(k, { load: false }); if (f) feeds[k] = { at: f.at, signedIn: f.signedIn, pins: f.pins.slice(0, 150) }; }
+    for (const k of keys) { const f = this.get(k, { load: false }); if (f) feeds[k] = { at: f.at, signedIn: f.signedIn, error: f.error, more: f.more, pins: f.pins.slice(0, k === want ? KEEP : 150) }; }
     this.warm();
     return { feeds };
   }
 
-  async save() {
+  // One save at a time (they share a temporary file).
+  save() {
+    const run = () => this.write();
+    this.saving = (this.saving || Promise.resolve()).then(run, run);
+    return this.saving;
+  }
+
+  async write() {
     const { feeds, hidden, hiddenVecs } = this.state;
-    const keep = Object.fromEntries(Object.entries(feeds).filter(([k]) => this.validKey(k)).map(([k, f]) => [k, { ...f, busy: false }]));
-    this.state.feeds = keep;
+    // The feeds themselves stay the same objects (a load still running keeps adding to them); only the
+    // written copy leaves out the busy flag, and feeds of deleted boards go.
+    for (const k of Object.keys(feeds)) if (!this.validKey(k)) delete feeds[k];
+    const keep = Object.fromEntries(Object.entries(feeds).map(([k, { busy, checking, ...f }]) => [k, f]));
     await fsp.mkdir(this.dir, { recursive: true });
     await fsp.writeFile(this.file + '.tmp', JSON.stringify({ v: 1, feeds: keep, hidden, hiddenVecs }));
     await fsp.rename(this.file + '.tmp', this.file);

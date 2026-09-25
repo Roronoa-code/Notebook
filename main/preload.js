@@ -3,6 +3,10 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
+// The page's own script errors go to Notebook's error log (main/errlog.js).
+window.addEventListener('error', (e) => ipcRenderer.send('log:error', `${e.message} (${e.filename}:${e.lineno}:${e.colno})`));
+window.addEventListener('unhandledrejection', (e) => ipcRenderer.send('log:error', 'unhandled: ' + (e.reason && (e.reason.stack || e.reason.message) || String(e.reason))));
+
 contextBridge.exposeInMainWorld('nb', {
   state: call('lib:state'),
   useLibrary: call('lib:use'),

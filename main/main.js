@@ -9,6 +9,7 @@ const { SyncServer } = require('./sync-server');
 const { setupFeatures } = require('./features');
 const { setupAutoBackup } = require('./autobackup');
 const { rawPreview, isRaw } = require('./raw');
+const errlog = require('./errlog');
 let features = null, autoBackup = null;
 
 // The page and the library files are both served from nb://notebook/ so the page can
@@ -56,6 +57,7 @@ let reportedRecovery = false;
 // Lets the automated check (scripts/test-ui.js) use its own settings instead of yours.
 const TEST_MODE = !!process.env.NOTEBOOK_USER_DATA;
 if (TEST_MODE) app.setPath('userData', process.env.NOTEBOOK_USER_DATA);
+errlog.install({ app, ipcMain, dir: path.join(app.getPath('userData'), 'logs') });
 // Started with Windows ("Keep Notebook ready for your phone"): no window, just sync and the tray icon.
 const BACKGROUND = process.argv.includes('--background');
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
@@ -69,6 +71,7 @@ const sync = new SyncServer({
   settingsFile: path.join(app.getPath('userData'), 'sync.json'),
   host: process.env.NOTEBOOK_SYNC_HOST || undefined, // the checks use 127.0.0.1 so Windows Firewall doesn't ask
   port: Number(process.env.NOTEBOOK_SYNC_PORT) || undefined,
+  onPhoneLog: (text) => errlog.write('phone', 'sent with a sync:\n' + text.trimEnd()),
   onLibraryChanged: ({ arrived }) => {
     send('lib:changed', { snap: lib && lib.data ? snapshot() : null, arrived });
     if (features) features.kick();

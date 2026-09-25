@@ -17,6 +17,7 @@ public class SyncJob extends JobService {
                     if (r != null) r.run();
                 }
             } catch (Exception e) {
+                ErrorLog.failed("background sync", e);
                 retry = false; // PC off or away from home: try again at the next slot
             }
             jobFinished(params, retry);

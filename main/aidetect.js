@@ -26,14 +26,19 @@ const VERSION = 2;   // bump when the scoring changes, so remembered answers are
 const STRICT = { sure: 0.5, quickAlone: 0.8 };
 
 const sessions = {};
-async function load(modelsDir, M) {
+// Loaded once, even when several pictures ask at the same moment (each would otherwise load its own copy).
+function load(modelsDir, M) {
   if (sessions[M.file] !== undefined) return sessions[M.file];
-  const ort = require('onnxruntime-node');
-  const file = path.join(modelsDir, M.file);
-  if (!fs.existsSync(file)) { sessions[M.file] = null; return null; }
-  for (const ep of ['dml', 'cpu']) {
-    try { sessions[M.file] = { ort, s: await ort.InferenceSession.create(file, { executionProviders: [ep] }) }; return sessions[M.file]; } catch (e) { if (ep === 'cpu') throw e; }
-  }
+  sessions[M.file] = (async () => {
+    const ort = require('onnxruntime-node');
+    const file = path.join(modelsDir, M.file);
+    if (!fs.existsSync(file)) return null;
+    for (const ep of ['dml', 'cpu']) {
+      try { return { ort, s: await ort.InferenceSession.create(file, { executionProviders: [ep] }) }; } catch (e) { if (ep === 'cpu') throw e; }
+    }
+  })();
+  sessions[M.file].catch(() => { delete sessions[M.file]; });
+  return sessions[M.file];
 }
 
 async function run(modelsDir, M, bytes) {
@@ -65,4 +70,4 @@ async function score(modelsDir, bytes, strict) {
   return Math.min(quick, strong);
 }
 
-module.exports = { score, HIDE_AT, VERSION, STRICT, QUICK, STRONG, run };
+module.exports = { score, HIDE_AT, VERSION, STRICT, QUICK, STRONG, run, load };

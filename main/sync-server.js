@@ -100,6 +100,7 @@ class SyncServer {
     this.discoveryPort = opts.discoveryPort || DISCOVERY_PORT;
     this.pcName = opts.pcName || os.hostname();
     this.onLibraryChanged = opts.onLibraryChanged || (() => {});
+    this.onPhoneLog = opts.onPhoneLog || (() => {});
     this.onStatusChanged = opts.onStatusChanged || (() => {});
     this.onKeepReady = opts.onKeepReady || (() => {});
     this.log = opts.log || console;
@@ -297,6 +298,13 @@ class SyncServer {
       }
       if (route === '/api/sync' && req.method === 'POST') return await this.sync(req, res, device);
       if (route.startsWith('/api/feed')) return await this.ideas(req, res, route);
+      // The phone's error log, handed over with a sync (written into the PC's error log).
+      if (route === '/api/log' && req.method === 'POST') {
+        const body = await readJson(req, 80 * 1024);
+        if (typeof body.text !== 'string' || body.text.length > 64 * 1024) throw new SyncError('That log isn’t readable.', 400);
+        this.onPhoneLog(body.text);
+        return send(res, 200, { ok: true });
+      }
       const media = /^\/api\/media\/([^/]+)$/.exec(route);
       if (media && ID_RE.test(media[1])) {
         if (req.method === 'GET') return await this.download(res, media[1]);
@@ -332,7 +340,7 @@ class SyncServer {
   async ideas(req, res, route) {
     const feed = this.feed;
     if (!feed) return send(res, 404, { error: 'Ideas aren’t available on this PC.' });
-    if (route === '/api/feed' && req.method === 'GET') return send(res, 200, await feed.forPhone(new URL(req.url, 'http://x').searchParams.get('want')));
+    if (route === '/api/feed' && req.method === 'GET') { const q = new URL(req.url, 'http://x').searchParams; return send(res, 200, await feed.forPhone(q.get('want'), q.get('more') === '1')); }
     const img = /^\/api\/feed\/img\/([0-9a-f]{32})$/.exec(route);
     if (img && req.method === 'GET') {
       const file = await feed.image(img[1]);

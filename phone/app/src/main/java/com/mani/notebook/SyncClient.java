@@ -174,7 +174,10 @@ public class SyncClient {
             }
             p.edit().putString("lastSync", Library.now()).apply();
             // Ideas: pins saved or hidden while away go to the PC, then the latest feeds come back.
-            try { sendFeedQueue(b, token); refreshFeed(b, token); } catch (Exception ignored) { /* ideas never stop a sync */ }
+            try { sendFeedQueue(b, token); refreshFeed(b, token); } catch (Exception e) { ErrorLog.failed("ideas", e); /* ideas never stop a sync */ }
+            // The phone's error log goes to the PC's.
+            try { String log = ErrorLog.take(); if (!log.isEmpty()) { request("POST", b + "/api/log", new JSONObject().put("text", log).toString(), token, 15000); ErrorLog.sent(); } }
+            catch (HttpError e) { if (e.status == 400) ErrorLog.sent(); /* unreadable: let it go */ } catch (Exception ignored) { /* next time */ }
             if (cb != null) cb.update("done", n + missing.size(), n + missing.size());
         } finally {
             Core.syncLock.unlock();
@@ -236,18 +239,19 @@ public class SyncClient {
     }
 
     // Fetches the feeds now (the Ideas screen asks when they're old). Returns the new feed JSON.
-    // `want`: a board whose ideas the phone is showing (the PC makes them now if it has none yet).
-    String refreshFeedNow(String want) throws Exception {
+    // `want`: the feed the phone is showing ("all" or a board; the PC makes it now if it has none yet).
+    // `more`: the PC fetches that feed's next page first.
+    String refreshFeedNow(String want, boolean more) throws Exception {
         if (!paired()) throw new IOException("Pair with your PC first, then ideas arrive from it.");
         String b = base(), token = p.getString("token", null);
         sendFeedQueue(b, token);
-        refreshFeed(b, token, want);
+        refreshFeed(b, token, want, more);
         return feedJson();
     }
 
-    private void refreshFeed(String b, String token) throws Exception { refreshFeed(b, token, null); }
-    private void refreshFeed(String b, String token, String want) throws Exception {
-        String q = want != null && want.matches("[A-Za-z0-9-]{1,64}") ? "?want=" + want : "";
+    private void refreshFeed(String b, String token) throws Exception { refreshFeed(b, token, null, false); }
+    private void refreshFeed(String b, String token, String want, boolean more) throws Exception {
+        String q = want != null && want.matches("[A-Za-z0-9-]{1,64}") ? "?want=" + want + (more ? "&more=1" : "") : "";
         JSONObject o = new JSONObject(request("GET", b + "/api/feed" + q, null, token, 30000));
         o.put("fetchedAt", Library.now());
         writeFeed(o);

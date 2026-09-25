@@ -16,6 +16,7 @@ final class Core {
     static volatile Runnable onLibraryChanged; // the open screen listens here to refresh after a background sync
 
     static synchronized Library library(Context ctx) throws Exception {
+        ErrorLog.init(ctx);
         if (lib == null) lib = new Library(new File(ctx.getFilesDir(), "library"));
         return lib;
     }

@@ -156,7 +156,7 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
     if (!pin) { const e = new Error(); e.friendly = 'Open a pin first, then press Save to library.'; throw e; }
     return save(pin);
   });
-  return { pinOf, aiHide, aiQuick, aiKnown, session: () => session.fromPartition(PARTITION) };
+  return { pinOf, aiHide, aiQuick, aiKnown, aiOn: () => !!ai.hide, session: () => session.fromPartition(PARTITION) };
 }
 
 module.exports = { setupPinterest, pinOf };

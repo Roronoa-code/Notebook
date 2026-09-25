@@ -16,17 +16,45 @@ const { chromium } = require('playwright-core');
     await page.waitForTimeout(600);
     const calls = () => page.evaluate(() => window.NB_MOCK_CALLS);
 
-    // For you on Home: the third tab, pins with their pictures, none of them liftable or stackable.
+    // Paired with a PC (the next pages of ideas come from it).
+    await page.evaluate(() => { const st = JSON.parse(NBNative.state()); st.sync = { paired: true, pcName: 'Test PC', lastSync: new Date().toISOString() }; window.nbOnState(JSON.stringify(st)); });
+
+    // For you on Home: the third tab, pins with their pictures in two steady columns.
     await page.locator('#tab-ideas').click();
-    await page.waitForTimeout(500);
-    assert.equal(await page.locator('#homegrid .card.idea').count(), 5, 'the PC’s picks for All');
+    await page.locator('#homegrid .ideacols').waitFor();
+    assert.ok(await page.locator('#homegrid .card.idea').count() >= 5, 'the PC’s picks for All');
+    assert.equal(await page.locator('#homegrid .ideacol').count(), 2, 'two columns');
     await page.waitForFunction(() => { const i = document.querySelector('#homegrid .card.idea img'); return i && i.complete && i.naturalWidth > 0; });
-    assert.equal(await page.locator('#homegrid .card.idea .badge').count(), 1, 'a video pin is marked');
+    assert.ok(await page.locator('#homegrid .card.idea .badge').count() >= 1, 'a video pin is marked');
     const slid = await page.locator('#homeseg').evaluate((s) => getComputedStyle(s, '::before').transform);
     assert.notEqual(slid, 'none', 'the tab highlight slides to For you');
 
+    // Only five pins, so there's no end to scroll to: the next page is asked for straight away, and keeps
+    // coming while the end is near. New pins join the bottom; the ones already there don't move.
+    await page.waitForFunction(() => window.NB_MOCK_CALLS.some((c) => c[0] === 'feedMore' && c[1] === 'all'));
+    await page.waitForFunction(() => document.querySelectorAll('#homegrid .card.idea').length >= 17);
+    const place = () => page.evaluate(() => [...document.querySelectorAll('#homegrid .card.idea')].map((c) => { c.dataset.kept = '1'; const r = c.getBoundingClientRect(); return c.dataset.v + '@' + Math.round(r.left) + ',' + Math.round(r.top); }).sort());
+    const lift = page.locator('#lift');
+    const before = await place();
+    const asked = (await calls()).filter((c) => c[0] === 'feedMore').length;
+    await lift.evaluate((l) => { l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll')); });
+    await page.waitForFunction((n) => window.NB_MOCK_CALLS.filter((c) => c[0] === 'feedMore').length > n, asked);
+    await page.waitForTimeout(500);
+    await lift.evaluate((l) => { l.scrollTop = 0; });
+    await page.waitForTimeout(300);
+    const added = await page.locator('#homegrid .card.idea:not([data-kept])').count();
+    const after = await place();
+    assert.deepEqual(after.filter((x) => before.some((b) => b.split('@')[0] === x.split('@')[0])), before, 'cards already there stay put');
+    assert.ok(added > 0, 'new ones added below');
+    const n = await page.locator('#homegrid .card.idea').count();
+    await lift.evaluate((l) => { l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll')); });
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator('#homegrid .card.idea').count(), n, 'nothing more once the PC has no more');
+
     // Tap a pin: Save to your notebook.
-    await page.locator('#homegrid .card.idea').first().click();
+    const pinCard = (id) => page.locator(`#homegrid .card.idea[data-v="${id}"]`);
+    await lift.evaluate((l) => { l.scrollTop = 0; });
+    await pinCard('900001').click();
     await page.locator('#formsheet [data-a="ideaSave"]').waitFor();
     assert.match(await page.locator('#formsheet [data-a="ideaSave"]').innerText(), /Save to your notebook/);
     await page.locator('#formsheet [data-a="ideaSave"]').click();
@@ -36,12 +64,12 @@ const { chromium } = require('playwright-core');
     assert.ok(await page.locator('#formsheet').isHidden(), 'the sheet closes');
 
     // Not for me: it goes; Open in Pinterest hands the link to the app.
-    await page.locator('#homegrid .card.idea').nth(1).click();
+    await pinCard('900002').click();
     await page.locator('#formsheet [data-a="ideaHide"]').click();
     await page.waitForTimeout(500);
-    assert.equal(await page.locator('#homegrid .card.idea').count(), 4);
+    assert.equal(await pinCard('900002').count(), 0);
     assert.ok((await calls()).some((c) => c[0] === 'feedHide' && c[1] === '900002'));
-    await page.locator('#homegrid .card.idea').nth(1).click();
+    await pinCard('900003').click();
     await page.locator('#formsheet [data-a="ideaOpen"]').click();
     await page.waitForTimeout(300);
     assert.ok((await calls()).some((c) => c[0] === 'openPin' && c[1] === 'https://www.pinterest.com/pin/900003/'));
@@ -69,6 +97,6 @@ const { chromium } = require('playwright-core');
     assert.ok(await page.locator('#boardgrid .card:not(.idea)').count() > 0, 'Saved shows the board’s items again');
 
     assert.deepEqual(errors, []);
-    console.log('Phone ideas passed: For you on Home, Ideas on a board, Save (to All or the board), Not for me, Open in Pinterest.');
+    console.log('Phone ideas passed: For you on Home (two steady columns, next pages before the end), Ideas on a board, Save (to All or the board), Not for me, Open in Pinterest.');
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exitCode = 1; });

@@ -51,6 +51,9 @@ class Scanner {
     return res.ok ? res.score : null;
   }
 
+  // Ideas are about to be looked for: the models they need start loading now, together.
+  warmIdeas(ai) { return this.ask({ cmd: 'warm', ai: !!ai }).then((r) => r.ok); }
+
   // A picture's fingerprint from its bytes (same kind as the library's), or null if recognition isn't available.
   async embed(bytes) {
     const res = await this.ask({ cmd: 'embed', bytes });

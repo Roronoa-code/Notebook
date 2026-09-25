@@ -153,14 +153,19 @@ things you already have.
 - **Save** (on a pin): saves it to the board you're on, like pasting its link.
 - **×** (Not for me): the pin goes, and ones like it come up less.
 - Click a pin for a close-up inside Notebook (← → for the next one): **Save**, **Open in
-  Pinterest** or **Not for me**. Scroll down for more; **New ideas** fetches a fresh set.
+  Pinterest** or **Not for me**. Keep scrolling: the next pins are fetched while there are still
+  a few screens of them below, so you shouldn't reach the end and wait. **New ideas** fetches a
+  fresh set. If Pinterest can't be reached (or has changed), a line says why and the pins from
+  before stay.
 - Ideas are stricter about AI than the Pinterest panel: anything the detectors think might be
   AI-made is left out (there are plenty of other pins to show instead).
 - For you and the boards you've looked at this week are kept ready in the background (a minute
   after Notebook opens, then hourly), so they usually show straight away. A board's first ever
-  Ideas take a few seconds; the very first after starting the PC can take up to about 15.
+  Ideas take a few seconds; the very first after starting the PC can take up to about 15 (the
+  picture models are read from the D: drive, a USB hard drive).
 - On your phone, **For you** is the third tab on Home, and each board has **Saved | Ideas**. Tap
-  a pin for **Save**, **Open in Pinterest** or **Not for me**. The phone gets them from your PC
+  a pin for **Save**, **Open in Pinterest** or **Not for me**. Scrolling down asks your PC for
+  more while you're at home. The phone gets them from your PC
   when it syncs, so it shows the last ones it got when you're out; a pin saved from the phone
   is downloaded by the PC and arrives with the next sync.
 - Pinterest is only asked when you look at Ideas (or when they've gone stale for the phone), one
@@ -168,6 +173,10 @@ things you already have.
   site does; Pinterest can change it at any time, and it isn't something to sell in an app.
 
 ## Keeping it safe
+
+- **Error log**: when something goes wrong (on the PC, or on the phone, which hands its own over
+  when it syncs) it's written to the file `errors.log` in the folder `%APPDATA%\Notebook\logs` (paste that into File Explorer's address bar). Nothing is
+  sent anywhere; it's there so problems can be found and fixed without you having to spot them.
 
 - **Back up every week** (Library menu): switch it on and choose a folder, ideally on another
   drive. The first copy is made straight away, then a new one whenever Notebook starts and the
