@@ -76,6 +76,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   // Correcting a label: it saves, survives a restart and a re-scan
   const coat = onDisk().items.find((i) => i.originalName === 'outfit coat.jpg');
   await page.locator(`.grid .card[data-id="${coat.id}"]`).click();
+  await page.locator('.side .lsum').click(); // the one-line summary opens the dropdowns
   await page.locator('.recog .dd[aria-label="What this is"]').click();
   await page.locator('.ddlist .ddopt', { hasText: /^Wallpaper$/ }).click();
   await page.waitForFunction((id) => NB.S.snap.items.find((i) => i.id === id).labels, coat.id);
@@ -91,6 +92,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   assert.equal(after.labels.main, 'wallpaper', 'the correction survives a restart and a re-scan');
   assert.equal(after.ai.type.main, 'outfit', 'the re-scan only refreshed what the PC saw');
   await page.locator(`.grid .card[data-id="${coat.id}"]`).click();
+  await page.locator('.side .lsum').click();
   assert.equal(await page.locator('.recog .dd[aria-label="What this is"]').innerText(), 'Wallpaper');
   await page.locator('.recog .linkbtn', { hasText: 'Use what the PC saw' }).click();
   await page.waitForFunction((id) => !NB.S.snap.items.find((i) => i.id === id).labels, coat.id);

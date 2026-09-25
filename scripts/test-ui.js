@@ -113,7 +113,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
 
   await page.locator('.side .chip.tog', { hasText: 'Wallpapers' }).click();
   await page.locator('.side .chip.tog.on', { hasText: 'Wallpapers' }).waitFor();
-  await page.locator('.side .btn.danger').click();
+  await page.locator('.side .iconbtn[aria-label^="Move to Bin"]').click();
   await page.locator('.toast button', { hasText: 'Undo' }).click();
   await page.waitForFunction(() => document.getElementById('bin-count').textContent === '0');
   await page.locator('.bcard', { hasText: 'Wallpapers' }).click();
@@ -207,7 +207,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.waitForTimeout(300);
   const topId = await page.evaluate(() => document.querySelector('.stackcard .fanitem[tabindex="0"]').dataset.id);
   await until(() => onDisk().find((i) => i.id === topId).phone === false, 'switched off for the phone');
-  await page.locator('.side .btn', { hasText: 'Take out of stack' }).click();
+  await page.locator('.side [aria-label="Take out of stack"]').click();
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
   assert.equal(await page.locator('.grid .stackcard').count(), 0, 'a stack of one goes back to loose cards');
@@ -242,7 +242,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const cardShape = async () => page.locator(`.grid .card[data-id="${cropId}"] .media`).evaluate((m) => m.getBoundingClientRect().height / m.getBoundingClientRect().width);
   const shapeBefore = await cardShape();
   await photoCard.click();
-  await page.locator('.side .btn', { hasText: 'Crop' }).click();
+  await page.locator('.side [aria-label="Crop"]').click();
   const frame = page.locator('.cropbox');
   await frame.waitFor();
   const fb = await frame.boundingBox();
@@ -264,7 +264,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const want = shapeBefore * (crop.h / crop.w);
   assert.ok(Math.abs(shapeAfter - want) < 0.03, `the card takes the cropped shape (${shapeAfter.toFixed(3)} vs ${want.toFixed(3)})`);
   await page.locator(`.grid .card[data-id="${cropId}"]`).click();
-  await page.locator('.side .btn', { hasText: 'Change crop' }).click();
+  await page.locator('.side [aria-label="Change crop"]').click();
   await page.locator('.side .linkbtn', { hasText: 'Show the whole picture' }).click();
   await page.locator('.side .btn', { hasText: 'Save crop' }).click();
   await page.waitForFunction((id) => !NB.S.snap.items.find((i) => i.id === id).crop, cropId);

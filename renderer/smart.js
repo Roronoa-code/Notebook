@@ -66,6 +66,19 @@
   }
 
   // ---------- labels on an open item ----------
+  // One line: what it is (and for outfits, style and colours), with Edit to open the dropdowns.
+  function labelsSummary(it, open, onToggle) {
+    const L = labelsOf(it);
+    if (!L.scanned) return h('p', { class: 'hint recog' }, 'Recognising this on your PC…');
+    const up = (s) => cap(s).replace(/^Y2k$/, 'Y2K');
+    const outfit = L.types.includes('outfit');
+    const what = [L.types.map(up).join(' + '), outfit && L.styles.length ? L.styles.map(up).join(', ') : ''].filter(Boolean).join(' · ');
+    return h('button', { type: 'button', class: 'lsum', 'aria-expanded': String(!!open), title: 'What your PC recognised. Edit to correct it.', onclick: onToggle },
+      h('span', { class: 'lsum-text' }, what || 'Not sure what this is'),
+      outfit ? h('span', { class: 'lsum-dots', 'aria-hidden': 'true' }, L.colours.slice(0, 3).map((c) => h('span', { class: 'swatch', style: { background: c.hex } }))) : null,
+      h('span', { class: 'lsum-edit' }, open ? 'Close' : 'Edit'));
+  }
+
   function labelsPanel(it) {
     if (it.kind === 'note' || it.deletedAt) return null;
     const L = labelsOf(it);
@@ -132,6 +145,6 @@
 
   nb.onAiProgress((s) => { const was = status.state; status = s; renderStatus(); if (was === 'scanning' && s.state === 'idle') loadSuggestions(); });
   const hideSuggestion = () => { if (showing) { showing = null; renderSuggestions(); } };
-  NB.smart = { hideSuggestion, filter, filterBar, labelsPanel, labelsOf, loadSuggestions, suggestionBar, suggestion, active, clear: () => { F.type = F.colour = F.style = null; } };
+  NB.smart = { hideSuggestion, filter, filterBar, labelsPanel, labelsSummary, labelsOf, loadSuggestions, suggestionBar, suggestion, active, clear: () => { F.type = F.colour = F.style = null; } };
   nb.aiStatus().then((r) => { if (r && r.status) { status = r.status; renderStatus(); } });
 })();

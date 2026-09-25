@@ -46,7 +46,7 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   shows as separate cards there, and every stack is grouped in **All items**. Open one and
   choose **Take out of stack** to split it up. The pick bar can also **Hide from phone** or
   **Move to Bin**.
-- **Crop**: open a photo or video and press **Crop**, drag the frame (or its corners), then
+- **Crop**: open a photo or video and press the crop icon at the top, drag the frame (or its corners), then
   **Save crop**. Only the part you chose shows, here and on your phone. The original file
   stays whole: **Change crop** → **Show the whole picture** brings it all back.
 - **Open anything**: click it. Photos open full size (click to zoom), and notes open in the
@@ -70,12 +70,17 @@ Notebook looks at every photo and video (by its preview) in the background and w
   and can have extra ones (a street photo can be an outfit and a profile picture).
 - **For outfits**: the colours of the clothes (only the clothes, never the background) and
   the top two styles from **your style list**.
+- **A proper name**: pictures called things like "Pinterest pin", "IMG_2031" or a long post
+  title get a short name from what's in them ("Black hoodie and cargo pants", "Blurry red
+  sky"). A name you type yourself, here or on your phone, is never changed. The old title
+  still works in search (point at the date under the title to see it).
 
 It runs on your graphics card and stays smooth while you use the app. A small line at the
 bottom left says "Recognising 3 of 40…" while it works.
 
 - **Filters**: the chips under the board name filter by type, clothing colour and style.
-- **Correcting it**: open anything and use **What it is** and **Style** to fix a label. Your
+- **Correcting it**: open anything, click the line that says what it is (e.g. "Outfit ·
+  Streetwear"), and use the dropdowns to fix a label. Your
   corrections are kept forever: a re-scan never changes them. **Use what the PC saw** undoes a correction.
 - **Your styles**: the **Styles** chip lets you add your own styles or remove ones you never
   use. Outfits are looked at again for the new list.

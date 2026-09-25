@@ -187,7 +187,7 @@
 
   // A short note on a photo or video: why it was saved, sizes, where it's from…
   function captionBox(it) {
-    const box = h('textarea', { class: 'caption', 'aria-label': 'Note about this item', maxlength: '5000', placeholder: 'Why did you save this? e.g. chest 27in, want it in black' });
+    const box = h('textarea', { class: 'caption', 'aria-label': 'Note about this item', maxlength: '5000', placeholder: 'Add a note…' });
     box.value = it.caption || '';
     let timer = null;
     const save = async () => {
@@ -203,29 +203,31 @@
 
   // "Show on phone": on unless switched off here. The PC is the hub, so only the PC decides.
   function phoneSwitch(it) {
-    const box = h('input', { type: 'checkbox', id: 'on-phone', checked: it.phone !== false });
+    const box = h('input', { type: 'checkbox', id: 'on-phone', class: 'switch', role: 'switch', checked: it.phone !== false });
     box.addEventListener('change', async () => {
       const res = await nb.setOnPhone([it.id], box.checked);
       if (res.error) { toast(res.error, { error: true }); box.checked = !box.checked; return; }
       NB.S.snap = res.snap;
       toast(box.checked ? 'It will show on your phone after the next sync' : 'It will leave your phone at the next sync. It stays here.');
     });
-    return h('label', { class: 'keep', for: 'on-phone' }, box, h('span', null, h('span', { class: 'dname' }, 'Show on phone'),
-      h('span', { class: 'hint' }, 'Switch off to keep this on your PC only. Your phone removes its copy when it next syncs.')));
+    return h('label', { class: 'row-switch', for: 'on-phone', title: 'Off keeps this on your PC only; your phone removes its copy at the next sync.' }, h('span', null, 'Show on phone'), box);
   }
 
+
+  // One short line; the rest (file size, original name) when you point at it.
   function metaText(it) {
     const bits = [];
     if (it.deletedAt) bits.push('In the Bin');
-    if (it.kind === 'note') bits.push(`Note · last edited ${NB.date(it.updatedAt)}`);
+    if (it.kind === 'note') bits.push(`Note · edited ${NB.date(it.updatedAt)}`);
     else {
       bits.push(it.kind === 'video' ? 'Video' : 'Photo');
       if (it.w && it.h) bits.push(`${Math.round(it.w)} × ${Math.round(it.h)}`);
       if (it.duration) bits.push(NB.duration(it.duration));
-      bits.push(NB.bytes(it.size), `added ${NB.date(it.importedAt)}`, `original: ${it.originalName}`);
+      bits.push(NB.date(it.importedAt));
     }
     return bits.join(' · ');
   }
+  const detailText = (it) => (it.kind === 'note' ? '' : [NB.bytes(it.size), `original: ${it.originalName}`, it.sourceTitle && it.sourceTitle !== it.title ? `was called: ${it.sourceTitle}` : '', it.source || ''].filter(Boolean).join('\n'));
 
   // Cropping: the whole picture with a frame to drag; the side panel holds Save / Cancel.
   function startCrop() {
@@ -251,11 +253,14 @@
         h('button', { type: 'button', class: 'btn primary', onclick: () => V.crop.save() }, icon('check'), 'Save crop')));
   }
 
+  // The side of an open item: just what you use. Actions are small icons at the top (each says what it
+  // does when you point at it); what the PC recognised is one line, with Edit for the details.
   function side(it) {
     if (V.cropping) return cropSide();
     const list = NB.visibleItems();
     const idx = list.findIndex((i) => i.id === it.id);
-    const navBtn = (dir) => h('button', { type: 'button', class: 'iconbtn', 'aria-label': dir < 0 ? 'Previous item' : 'Next item', disabled: idx < 0 || !list[idx + dir], onclick: () => step(dir) }, icon(dir < 0 ? 'left' : 'right'));
+    const navBtn = (dir) => h('button', { type: 'button', class: 'iconbtn', 'aria-label': dir < 0 ? 'Previous item' : 'Next item', title: dir < 0 ? 'Previous (←)' : 'Next (→)', disabled: idx < 0 || !list[idx + dir], onclick: () => step(dir) }, icon(dir < 0 ? 'left' : 'right'));
+    const tool = (name, label, onclick, extra) => h('button', { type: 'button', class: 'iconbtn' + (extra ? ' ' + extra : ''), 'aria-label': label, title: label, onclick }, icon(name));
     let title;
     if (it.kind === 'note') {
       title = h('h2', { class: 'title-input note-title', style: { margin: '0' } }, it.title);
@@ -270,32 +275,30 @@
       title.addEventListener('change', save);
       title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); title.blur(); } });
     }
-    const actions = it.deletedAt
-      ? h('button', { type: 'button', class: 'btn accent', onclick: () => restoreItem(it) }, icon('restore'), 'Restore with its boards')
-      : h('button', { type: 'button', class: 'btn danger', onclick: () => binItem(it) }, icon('bin'), 'Move to Bin');
+    const live = !it.deletedAt, media = it.kind !== 'note';
+    const tools = h('div', { class: 'tools' },
+      live && media && it.w && it.h ? tool('crop', it.crop ? 'Change crop' : 'Crop', startCrop, it.crop ? 'lit' : '') : null,
+      media ? tool('folder', 'Show file in folder', () => nb.revealItem(it.id)) : null,
+      live && it.stack ? tool('stack', 'Take out of stack', async () => { if (NB.apply(await nb.unstackItem(it.id))) { toast('Taken out of the stack'); refreshSide(); } }) : null,
+      live ? tool('bin', 'Move to Bin (Delete)', () => binItem(it), 'danger') : null,
+      h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', title: 'Close (Esc)', onclick: close }, icon('x')));
+    const labels = live && media ? NB.smart.labelsSummary(it, V.labelsOpen, () => { V.labelsOpen = !V.labelsOpen; refreshSide(true); }) : null;
     return h('div', { class: 'side' },
-      h('div', { class: 'top' }, h('div', { class: 'nav' }, navBtn(-1), navBtn(1)), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', onclick: close }, icon('x'))),
+      h('div', { class: 'top' }, h('div', { class: 'nav' }, navBtn(-1), navBtn(1)), tools),
       title,
-      h('p', { class: 'meta micro' }, metaText(it)),
-      it.kind !== 'note' ? [h('h4', { class: 'micro' }, 'Note'), captionBox(it)] : null,
-      NB.smart.labelsPanel(it),
-      h('h4', { class: 'micro' }, 'Boards'),
+      h('p', { class: 'meta micro', title: detailText(it) }, metaText(it)),
+      it.deletedAt ? h('button', { type: 'button', class: 'btn accent', onclick: () => restoreItem(it) }, icon('restore'), 'Restore with its boards') : null,
+      media ? captionBox(it) : null,
       h('div', { class: 'tags' }, boardChips(it)),
-      h('p', { class: 'hint' }, 'One item can be on several boards. Taking it off a board never deletes it.'),
-      it.deletedAt ? null : phoneSwitch(it),
-      it.stack && !it.deletedAt ? h('button', { type: 'button', class: 'btn small', onclick: async () => {
-        const res = NB.apply(await nb.unstackItem(it.id));
-        if (res) { toast('Taken out of the stack'); refreshSide(); }
-      } }, icon('stack'), 'Take out of stack') : null,
-      !it.deletedAt && it.kind !== 'note' && it.w && it.h ? h('button', { type: 'button', class: 'btn small', onclick: startCrop }, icon('crop'), it.crop ? 'Change crop' : 'Crop') : null,
-      it.kind !== 'note' ? h('button', { type: 'button', class: 'linkbtn', onclick: () => nb.revealItem(it.id) }, 'Show file in folder') : null,
-      h('div', { class: 'actions' }, actions, h('span', { style: { flex: '1' } }), h('button', { type: 'button', class: 'btn primary', onclick: close }, 'Done')));
+      labels,
+      labels && V.labelsOpen ? NB.smart.labelsPanel(it) : null,
+      live ? phoneSwitch(it) : null);
   }
 
-  function refreshSide() {
+  function refreshSide(force) {
     const it = item();
     const old = V.shell && V.shell.querySelector('.side');
-    if (old && old.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return; // don't interrupt typing
+    if (!force && old && old.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return; // don't interrupt typing
     if (it && old) old.replaceWith(side(it));
   }
 

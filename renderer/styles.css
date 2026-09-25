@@ -349,6 +349,21 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .devices li:last-child { border-bottom: 1px solid var(--line); }
 .dname { font-weight: 700; color: var(--ink); display: block; }
+/* the open item's side: icon tools, a one-line summary of the labels, a small switch */
+.side .top .tools { display: flex; gap: 6px; }
+.iconbtn.danger:hover { color: var(--danger); }
+.iconbtn.lit { color: var(--accent); }
+.lsum { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.035); color: var(--ink2); font-size: 14px; font-weight: 600; text-align: left; transition: background .2s; }
+.lsum:hover { background: var(--hover); }
+.lsum-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lsum-dots { display: flex; gap: 4px; }
+.lsum-dots .swatch { width: 12px; height: 12px; }
+.lsum-edit { font-size: 12px; color: var(--muted); }
+.row-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px; font-size: 14px; font-weight: 600; color: var(--ink2); cursor: pointer; }
+.switch { appearance: none; width: 42px; height: 24px; margin: 0; border-radius: 999px; background: var(--surface2); border: 1px solid rgba(255,255,255,.14); position: relative; cursor: pointer; transition: background .25s, border-color .25s; flex-shrink: 0; }
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #b8b8b8; transition: transform .3s var(--spring), background .25s; }
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::after { transform: translateX(18px); background: var(--on-accent); }
 .keep { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.035); cursor: pointer; }
 .keep input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
 .keep .hint { display: block; margin-top: 2px; }
