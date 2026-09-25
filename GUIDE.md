@@ -111,7 +111,13 @@ bottom left says "Recognising 3 of 40…" while it works.
 there yourself (it remembers you, separately from your normal browser). Open any pin and
 press **Save to library**, or right-click a pin and choose **Save to Notebook**. Nothing is
 saved unless you choose it. Promoted (sponsored) pins are taken out before they show. It opens
-where you left it, and menus you open over it aren't hidden behind it. Pinterest
+where you left it, and menus you open over it aren't hidden behind it.
+
+**Hide AI pins** (the switch in the Pinterest toolbar, on by default): every pin picture you see
+is checked once on your PC by an AI-picture detector, and pins it's very sure are AI-made are
+quietly hidden (the toolbar counts them). Nothing is sent anywhere for this. It's set to be
+careful, so it almost never hides a real photo, but some AI pictures will still get through.
+Pinterest's own "See fewer AI Pins" setting (in your Pinterest settings) helps too. Pinterest
 sees what you browse there, just as it does in a browser.
 
 ## Keeping it safe
