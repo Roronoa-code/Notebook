@@ -83,7 +83,8 @@ const DROP_HEADERS = /^(content-length|content-encoding|transfer-encoding)$/i;
 // Filters every Pinterest data answer the panel (and any worker it starts) receives. Returns a count
 // of removed pins for checks. If the browser's interception isn't available, the panel still works.
 // more(pin): true for any other pin to take out (e.g. one already found to be AI-made).
-function attachAdFilter(wc, more = null) {
+// prepare(text): optional, awaited before filtering (e.g. to check new pin pictures first).
+function attachAdFilter(wc, more = null, prepare = null) {
   const stats = { removed: 0, answers: 0 };
   const dbg = wc.debugger;
   try { dbg.attach('1.3'); } catch { return stats; }
@@ -107,6 +108,7 @@ function attachAdFilter(wc, more = null) {
       if (!status || status !== 200 || !(json || html)) { await send('Fetch.continueRequest', { requestId }, session); return; }
       const res = await send('Fetch.getResponseBody', { requestId }, session);
       const raw = res.base64Encoded ? Buffer.from(res.body, 'base64').toString('utf8') : res.body;
+      if (prepare) await prepare(raw).catch(() => {});
       const out = html ? filterHtml(raw, more) : filterText(raw, more);
       stats.answers++; stats.removed += out.removed;
       if (!out.removed) { await send('Fetch.continueRequest', { requestId }, session); return; }

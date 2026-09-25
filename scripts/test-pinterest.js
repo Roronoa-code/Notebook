@@ -109,8 +109,9 @@ const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 
   await page3.locator('.bcard').first().waitFor();
   await page3.click('#pin-btn');
   await page3.locator('#pin-ai-text', { hasText: /AI pins? hidden/ }).waitFor({ timeout: 90000 });
-  const hiddenOnPage = await app3.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => /pinterest/.test(w.getURL())).executeJavaScript('document.querySelectorAll("[data-nb-ai]").length'));
-  assert.ok(hiddenOnPage > 0, 'pins judged AI-made are hidden on the page');
+  // Mostly taken out before the page gets them (so no gaps); any caught later are hidden on the page.
+  const hiddenOnPage = +(await page3.locator('#pin-ai-text').innerText()).match(/\d+/)[0];
+  assert.ok(hiddenOnPage > 0, 'pins judged AI-made are kept off the page');
   const aiFile = path.join(OUT, 'userdata', 'pinterest-ai.json');
   for (let i = 0; i < 50 && !fs.existsSync(aiFile); i++) await page3.waitForTimeout(100); // saved a couple of seconds later
   const saved = JSON.parse(fs.readFileSync(aiFile, 'utf8'));

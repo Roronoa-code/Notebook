@@ -27,14 +27,20 @@ const signatureOf = (url) => { const m = /\/([0-9a-f]{32})\.(?:jpe?g|png|webp|gi
 function setupPinterest({ getWin, handle, send, save, aiScore }) {
   let ai = { hide: true, scores: {} };
   try { ai = { ...ai, ...JSON.parse(fs.readFileSync(aiFile(), 'utf8')) }; } catch { /* first time */ }
-  let aiSaveTimer = null, hiddenNow = 0, queue = Promise.resolve();
+  let aiSaveTimer = null, queue = Promise.resolve(), countTimer = null;
+  const hiddenSigs = new Set(); // AI-made pictures kept off the page this time (for the toolbar count)
+  const counted = (sig) => { if (!hiddenSigs.has(sig)) { hiddenSigs.add(sig); clearTimeout(countTimer); countTimer = setTimeout(() => send('pin:ai', { hidden: hiddenSigs.size }), 300); } return true; };
   const saveAi = () => { clearTimeout(aiSaveTimer); aiSaveTimer = setTimeout(() => {
     const keys = Object.keys(ai.scores); if (keys.length > 20000) for (const k of keys.slice(0, keys.length - 20000)) delete ai.scores[k];
     fs.promises.writeFile(aiFile(), JSON.stringify(ai)).catch(() => {});
   }, 2000); };
   const isAiSig = (sig) => ai.hide && sig && ai.scores[sig] >= HIDE_AT;
   // A pin in Pinterest's data whose picture is already known to be AI-made.
-  const knownAiPin = (o) => ai.hide && (isAiSig(o.image_signature) || (o.images && typeof o.images === 'object' && Object.values(o.images).some((im) => im && isAiSig(signatureOf(im.url)))));
+  const knownAiPin = (o) => {
+    if (!ai.hide) return false;
+    const sig = isAiSig(o.image_signature) ? o.image_signature : o.images && typeof o.images === 'object' ? Object.values(o.images).map((im) => im && signatureOf(im.url)).find(isAiSig) : null;
+    return sig ? counted(sig) : false;
+  };
   async function checkPicture(url) {
     const sig = signatureOf(url);
     if (!sig) return { hide: false };
@@ -53,11 +59,30 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
       await queue;
     }
     const hide = isAiSig(sig);
-    if (hide) { hiddenNow++; send('pin:ai', { hidden: hiddenNow }); }
+    if (hide) counted(sig);
     return { hide };
   }
+  // Before Pinterest's page gets a page of pins, check the pictures it hasn't seen yet, so AI-made pins
+  // can be taken out of the data (no gaps in the layout). A few seconds at most; anything not checked
+  // by then goes through and is caught on the page instead.
+  const PIC = /https:\/\/i\.pinimg\.com\/(?:\d+x|originals)\/(?:[0-9a-f]{2}\/){3}([0-9a-f]{32})\.(?:jpe?g|png|webp)/gi;
+  async function precheck(raw) {
+    if (!ai.hide || !view) return;
+    const todo = new Map();
+    for (const m of raw.matchAll(PIC)) { const sig = m[1].toLowerCase(); if (!(sig in ai.scores) && todo.size < 40) todo.set(sig, m[0].replace(/\/(?:\d+x|originals)\//, '/236x/')); }
+    if (!todo.size) return;
+    const deadline = Date.now() + 4000;
+    const get = (u) => view.webContents.session.fetch(u, { signal: AbortSignal.timeout(4000) }).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+    const pictures = await Promise.all([...todo].map(async ([sig, u]) => [sig, await get(u)]));
+    for (const [sig, bytes] of pictures) {
+      if (!bytes || Date.now() > deadline) continue;
+      const score = await aiScore(Buffer.from(bytes));
+      if (score != null) ai.scores[sig] = Math.round(score * 1000) / 1000;
+    }
+    saveAi();
+  }
   ipcMain.handle('pin:ai', (e, url) => (view && e.sender === view.webContents && /^https:\/\/i\.pinimg\.com\//.test(String(url)) ? checkPicture(String(url)) : { hide: false }));
-  handle('pin:aiSetting', (on) => { if (typeof on === 'boolean') { ai.hide = on; saveAi(); if (view) view.webContents.reload(); } return { hide: ai.hide, hidden: hiddenNow }; });
+  handle('pin:aiSetting', (on) => { if (typeof on === 'boolean') { ai.hide = on; saveAi(); if (view) view.webContents.reload(); } return { hide: ai.hide, hidden: hiddenSigs.size }; });
 
   let view = null, loading = false;
   // While another page is loading, there's nothing to save yet (so Save can never save the pin you just left).
@@ -68,7 +93,7 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
     view = new WebContentsView({ webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'pinterest-preload.js') } });
     view.setBackgroundColor('#0A0A0A');
     const wc = view.webContents;
-    attachAdFilter(wc, knownAiPin); // promoted pins (and pins already found to be AI-made) are taken out before the page sees them
+    attachAdFilter(wc, knownAiPin, precheck); // promoted pins and AI-made pins are taken out before the page sees them
     wc.setWindowOpenHandler(({ url }) => {
       let host = ''; try { host = new URL(url).hostname; } catch { /* ignore */ }
       if (SIGN_IN.test(host)) return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, parent: getWin(), webPreferences: { partition: PARTITION, sandbox: true } } };

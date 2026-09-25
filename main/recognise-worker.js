@@ -21,7 +21,7 @@ port.on('message', async ({ data }) => {
   const { id, cmd, file, styles, modelsDir, hint } = data;
   // "Is this picture AI-made?" (the Pinterest panel). Only the small detector is loaded for this.
   if (cmd === 'aicheck') {
-    if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, score: process.env.NOTEBOOK_FAKE_AI ? 1 : 0 });
+    if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, score: process.env.NOTEBOOK_FAKE_AI === 'some' ? (data.bytes.length % 3 === 0 ? 1 : 0) : process.env.NOTEBOOK_FAKE_AI ? 1 : 0 });
     try { return port.postMessage({ id, ok: true, score: await AI.score(modelsDir, data.bytes) }); } catch (err) { return port.postMessage({ id, ok: false, error: err.message, missing: !!err.missing }); }
   }
   if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, device: 'stand-in', result: cmd === 'hello' ? null : fake(hint, styles) });
