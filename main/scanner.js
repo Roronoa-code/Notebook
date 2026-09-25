@@ -5,11 +5,11 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { DEFAULT_STYLES, TYPES_VERSION } = require('./recognise');
-const { nameFrom } = require('./naming');
 const { isRaw } = require('./raw');
 // The picture recognition looks at: a video's (or RAW photo's) preview, otherwise the file itself.
 const pictureOf = (it) => (it.kind === 'video' || isRaw(it.file) ? it.thumb : it.file);
 
+const IDLE_MS = Number(process.env.NOTEBOOK_IDLE_MS) || 60 * 1000; // close the recognition process after this long idle
 const VERSION = 3; // bump to re-scan everything after a recogniser change (corrections still stay)
 
 class Scanner {
@@ -22,14 +22,27 @@ class Scanner {
 
   set(s) { this.state = { ...this.state, ...s }; this.onProgress(this.state); }
 
+  // The recognition process holds its models in memory (several GB of graphics memory), so it's only
+  // kept while there's work: after a minute with nothing to do it's closed, and started again on demand.
   ask(msg) {
+    clearTimeout(this.idleTimer);
     if (!this.worker) {
-      this.worker = this.fork(path.join(__dirname, 'recognise-worker.js'));
-      this.worker.on('message', (m) => { const p = this.pending.get(m.id); if (p) { this.pending.delete(m.id); p(m); } });
-      this.worker.on('exit', () => { this.worker = null; for (const p of this.pending.values()) p({ ok: false, error: 'The recognition process stopped.' }); this.pending.clear(); });
+      const w = this.worker = this.fork(path.join(__dirname, 'recognise-worker.js'));
+      w.on('message', (m) => { const p = this.pending.get(m.id); if (p) { this.pending.delete(m.id); p(m); } this.idleSoon(); });
+      w.on('exit', () => {
+        if (this.worker !== w) return; // an old one closing after a new one started
+        this.worker = null;
+        for (const p of this.pending.values()) p({ ok: false, error: 'The recognition process stopped.' });
+        this.pending.clear();
+      });
     }
     const id = ++this.seq;
     return new Promise((resolve) => { this.pending.set(id, resolve); this.worker.postMessage({ ...msg, id, modelsDir: this.modelsDir }); });
+  }
+
+  idleSoon() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => { if (!this.pending.size && !this.running && this.worker) { const w = this.worker; this.worker = null; w.kill(); } }, IDLE_MS);
   }
 
   // How likely a picture is to be AI-made (0 to 1), from its bytes; null if the detector isn't available.
@@ -42,6 +55,19 @@ class Scanner {
   async embed(bytes) {
     const res = await this.ask({ cmd: 'embed', bytes });
     return res.ok ? res.embedding : null;
+  }
+
+  // Which pictures show `text` (e.g. "PC"): ids, best first. Compared with every picture's fingerprint;
+  // a picture counts when it's close to the best match and clearly related at all.
+  async searchPictures(lib, text) {
+    const res = await this.ask({ cmd: 'query', text: String(text).slice(0, 80) });
+    if (!res.ok) return [];
+    const emb = await this.embeddings(lib), q = res.embedding;
+    const scored = lib.data.items.filter((it) => !it.deletedAt && emb[it.id] && emb[it.id].length === q.length)
+      .map((it) => ({ id: it.id, s: emb[it.id].reduce((t, x, i) => t + x * q[i], 0) })).sort((a, b) => b.s - a.s);
+    if (!scored.length) return [];
+    const line = Math.max(0.2, scored[0].s - 0.045);
+    return scored.filter((x) => x.s >= line).map((x) => x.id);
   }
 
   embPath() { return path.join(this.lib.root, 'ai', 'embeddings.json'); }
@@ -88,10 +114,7 @@ class Scanner {
             lib.setAi(it.id, { v: VERSION, failed: true, at: new Date().toISOString() });
           } else {
             const r = res.result;
-            lib.setAi(it.id, { v: VERSION, tv: TYPES_VERSION, type: { main: r.type.main, extra: r.type.extra, conf: +(r.type.scores[r.type.main] || 0).toFixed(3) }, colours: r.colours || [], styles: r.styles, styleScores: r.styleScores ? Object.fromEntries(Object.entries(r.styleScores).map(([k, v]) => [k, +v.toFixed(3)])) : undefined, stylesFor: r.styles ? styles.join('|') : undefined, caption: r.caption || undefined, at: new Date().toISOString() });
-            // A proper name from the caption (only for placeholder titles; never one you typed).
-            const L = it.labels || {};
-            if (r.caption) lib.applyName(it.id, nameFrom({ caption: r.caption, type: L.main || r.type.main, colours: r.colours, styles: L.styles || r.styles }));
+            lib.setAi(it.id, { v: VERSION, tv: TYPES_VERSION, type: { main: r.type.main, extra: r.type.extra, conf: +(r.type.scores[r.type.main] || 0).toFixed(3) }, colours: r.colours || [], styles: r.styles, styleScores: r.styleScores ? Object.fromEntries(Object.entries(r.styleScores).map(([k, v]) => [k, +v.toFixed(3)])) : undefined, stylesFor: r.styles ? styles.join('|') : undefined, at: new Date().toISOString() });
             this.emb[it.id] = r.embedding;
           }
           this.set({ done: i + 1, device: res.device });
@@ -102,7 +125,7 @@ class Scanner {
     } catch (err) {
       this.log.error('scanner', err);
       this.set({ state: 'error', error: err.message });
-    } finally { this.running = false; }
+    } finally { this.running = false; this.idleSoon(); }
   }
 
   // After the list of types changed: what each picture is, worked out again from its fingerprint (no re-scan).

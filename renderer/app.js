@@ -11,7 +11,6 @@
   const boardById = (id) => S.snap.boards.find((b) => b.id === id);
   const currentBoardId = () => (boardById(S.board) ? S.board : null);
   NB.currentBoardId = currentBoardId;
-  const textOf = (html) => { const d = document.createElement('div'); d.innerHTML = NB.sanitize(html); return d.textContent || ''; };
   const itemsFor = (id) => (id === 'bin' ? binned() : id === 'all' ? live() : live().filter((i) => i.boards.includes(id)));
   NB.visibleItems = () => {
     const q = S.q.trim().toLowerCase();
@@ -19,9 +18,7 @@
     const list = g ? live().filter((i) => g.ids.includes(i.id)) : NB.smart.filter(itemsFor(S.board));
     return NB.sort.apply(q ? searchIn(list, q) : list, S.board);
   };
-  // Title, notes, and what it is (type, style, clothing colours).
-  const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.sourceTitle || '', i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
-  const searchIn = (list, q) => list.filter((i) => words(i).includes(q));
+  const searchIn = (list, q) => NB.search.filter(list, q); // words and what's in the pictures (search.js)
   NB.refreshGrid = () => { renderContext(); renderGrid(); };
   NB.refreshContext = () => renderContext();
   // Showing a suggested group (or back to the boards). `boardId`: jump to a board made from it.
@@ -348,17 +345,16 @@
       for (const el of els) {
         const was = before.get(el) || idsIn(el).map((id) => beforeId.get(id)).find(Boolean), now = el.getBoundingClientRect();
         if (!onScreen(now) && !onScreen(was)) continue; // off screen either way: nothing to watch
-        if (!was) { el.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: ease, delay: 80 }); continue; }
+        if (!was) { el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out', delay: 60, fill: 'backwards' }); continue; } // arrives: a plain fade, no size change
         const dx = was.left - now.left, dy = was.top - now.top;
         if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 460, easing: ease });
       }
-      // Cards that left fade where they were (or shrink into the stack they joined).
+      // Cards that left simply go (a fading copy would sit under whatever arrives in their place),
+      // except a card joining a stack, which shrinks into it.
       for (const [el, r] of before) {
         if (els.includes(el) || r.bottom < 0 || r.top > innerHeight) continue;
         const into = els.find((x) => idsIn(el).some((id) => idsIn(x).includes(id)));
-        if (into && (el.classList.contains('stackcard') || !into.classList.contains('stackcard'))) continue; // just redrawn: it glides as the new card
-        // A copy fades (the card itself is kept, ready for when a filter brings it back),
-        // under the cards that stay, which glide over it.
+        if (!into || !into.classList.contains('stackcard') || el.classList.contains('stackcard')) continue;
         const ghost = el.cloneNode(true);
         ghost.className = 'card-ghost'; // looks like the card, but isn't one (never counted, never clicked)
         ghost.setAttribute('aria-hidden', 'true');
@@ -366,9 +362,9 @@
         const g = grid.getBoundingClientRect();
         Object.assign(ghost.style, { position: 'absolute', left: r.left - g.left + 'px', top: r.top - g.top + 'px', width: r.width + 'px', margin: 0, pointerEvents: 'none', animation: 'none' });
         grid.prepend(ghost);
-        const to = into ? into.getBoundingClientRect() : null;
-        const end = to ? `translate(${to.left + to.width / 2 - (r.left + r.width / 2)}px, ${to.top + 40 - r.top}px) scale(.5)` : 'scale(.92)';
-        const fade = ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 220, easing: 'ease-in', fill: 'forwards' });
+        const to = into.getBoundingClientRect();
+        const end = `translate(${to.left + to.width / 2 - (r.left + r.width / 2)}px, ${to.top + 40 - r.top}px) scale(.5)`;
+        const fade = ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: 340, easing: 'ease-in', fill: 'forwards' });
         // Gone when the fade ends, and for certain soon after (a fade the browser holds back must never leave copies behind).
         const bye = () => ghost.remove();
         fade.onfinish = bye; fade.oncancel = bye; setTimeout(bye, 700);
@@ -404,6 +400,7 @@
     S.board = id; S.anim = true; S.renaming = false;
     NB.stacks.clear();
     NB.smart.hideSuggestion();
+    NB.smart.clear(); // each board starts unfiltered
     if (NB.links && NB.links.isOpen()) NB.links.closePanel(); // choosing a board leaves Pinterest
     render();
     $('page').scrollTo({ top: 0, behavior: 'smooth' });
@@ -496,7 +493,10 @@
     };
     $('bin-btn').onclick = () => go(S.board === 'bin' ? 'all' : 'bin');
     $('lib-keys').onclick = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); NB.shortcuts(); };
-    $('search').addEventListener('input', (e) => { S.q = e.target.value; NB.ideas.leave(); renderContext(); renderGrid(); }); // searching shows your own things
+    $('search').addEventListener('input', (e) => {
+      S.q = e.target.value; NB.ideas.leave(); renderContext(); renderGrid(); // searching shows your own things
+      NB.search.changed(S.q, () => { renderContext(); renderGrid(); });
+    });
     $('lib-btn').onclick = () => {
       const pop = $('lib-pop');
       pop.hidden = !pop.hidden;

@@ -13,7 +13,7 @@ const OUT = path.join(APP, 'test-output', 'features');
 const LIB = path.join(OUT, 'Notebook Library');
 let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
-const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: '47861', NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_FAKE_CAPTIONS: '1', NOTEBOOK_FAKE_FEED: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
+const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: '47861', NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_FAKE_NAMES: '1', NOTEBOOK_FAKE_FEED: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
 const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8'));
 
 async function launch() {
@@ -51,7 +51,9 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   assert.deepEqual(onDisk().items.map((i) => i.ai.type.main).sort(), ['icon', 'outfit', 'outfit', 'profile picture', 'wallpaper']);
   ok('new photos are recognised in the background and saved (type, colours, styles)');
 
-  // Names: a placeholder title (a camera file name) gets a proper name from the caption; a real one stays.
+  // Names: a placeholder title (a camera file name) gets a proper name from the naming model; a real one stays.
+  await page.waitForFunction(() => NB.S.snap.items.some((i) => i.originalName === 'IMG_2031 outfit shirt.jpg' && i.title !== 'IMG_2031 outfit shirt'), null, { timeout: 20000 });
+  for (let i = 0; i < 40 && onDisk().items.find((x) => x.originalName === 'IMG_2031 outfit shirt.jpg').title === 'IMG_2031 outfit shirt'; i++) await page.waitForTimeout(100);
   const named = onDisk().items.find((i) => i.originalName === 'IMG_2031 outfit shirt.jpg');
   assert.equal(named.title, 'Black coat and jeans', 'the camera file name became a proper name');
   assert.equal(named.sourceTitle, 'IMG_2031 outfit shirt');
@@ -73,7 +75,12 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   assert.equal(await page.locator('.grid > .card').count(), 2);
   await page.locator('.filters .linkbtn', { hasText: 'Clear filters' }).click();
   assert.equal(await page.locator('.grid > .card').count(), 5);
-  ok('filters by type and clothing colour show the right items without rebuilding the page; Clear filters shows everything');
+  await page.locator('.filters .fchip', { hasText: 'Outfits' }).click();
+  await page.locator('.bcard[data-id]:not([data-id="all"])').first().click();
+  await page.locator('.bcard[data-id="all"]').click();
+  assert.equal(await page.locator('.filters .fchip.on').count(), 0, 'switching boards clears the filters');
+  assert.equal(await page.locator('.grid > .card').count(), 5);
+  ok('filters by type and clothing colour show the right items without rebuilding the page; Clear filters and switching boards show everything');
 
   // Sorting: by name; by date taken, with a heading per month (these samples carry no date: "No date").
   await page.locator('.sortbox .dd').click();

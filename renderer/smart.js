@@ -191,6 +191,6 @@
 
   nb.onAiProgress((s) => { const was = status.state; status = s; renderStatus(); if (was === 'scanning' && s.state === 'idle') loadSuggestions(); });
   const hideSuggestion = () => { if (showing) { showing = null; renderSuggestions(); } };
-  NB.smart = { sourceOf, hideSuggestion, filter, filterBar, labelsPanel, labelsSummary, labelsOf, loadSuggestions, suggestionBar, suggestion, active, clear: () => { F.type = F.colour = F.style = null; } };
+  NB.smart = { sourceOf, hideSuggestion, filter, filterBar, labelsPanel, labelsSummary, labelsOf, loadSuggestions, suggestionBar, suggestion, active, clear: () => { F.type = F.colour = F.style = F.from = null; } };
   nb.aiStatus().then((r) => { if (r && r.status) { status = r.status; renderStatus(); } });
 })();

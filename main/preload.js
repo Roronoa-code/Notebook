@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('nb', {
   pinGo: call('pin:go'),
   onPinState: (fn) => ipcRenderer.on('pin:state', (_e, s) => fn(s)),
   // Ideas (the Pinterest-style feed)
+  searchPictures: call('search:pictures'),
   feed: call('feed:get'),
   feedRefresh: call('feed:refresh'),
   feedMore: call('feed:more'),

@@ -6,6 +6,7 @@ const fsp = fs.promises;
 const path = require('path');
 const { utilityProcess, ipcMain } = require('electron');
 const { Scanner } = require('./scanner');
+const { Namer } = require('./namer');
 const { TYPES, DEFAULT_STYLES } = require('./recognise');
 const { suggestions } = require('./suggest');
 const { Downloader } = require('./downloader');
@@ -31,8 +32,14 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
     onProgress: (s) => send('ai:progress', s),
     onChanged: () => { const lib = getLib(); if (lib) send('lib:changed', { snap: snapshot(), arrived: [] }); }
   });
+  // Proper names for placeholder titles, after recognition (its own low-priority process, closed when done).
+  const namer = new Namer({
+    modelsDir: path.join(tools, 'models'),
+    fork: (file) => utilityProcess.fork(file, [], { serviceName: 'Notebook naming', stdio: 'ignore' }),
+    onChanged: () => { const lib = getLib(); if (lib) send('lib:changed', { snap: snapshot(), arrived: [] }); }
+  });
   // Something changed in the library: look for new pictures a moment later (cheap when there's nothing new).
-  const kick = () => { clearTimeout(kickTimer); kickTimer = setTimeout(() => { const lib = getLib(); if (lib) scanner.start(lib); }, 800); };
+  const kick = () => { clearTimeout(kickTimer); kickTimer = setTimeout(() => { const lib = getLib(); if (lib) scanner.start(lib).then(() => namer.run(lib)); }, 800); };
 
   const memoryFile = () => path.join(getLib().root, 'ai', 'suggestions.json');
   const readMemory = async () => { try { return JSON.parse(await fsp.readFile(memoryFile(), 'utf8')); } catch { return { dismissed: [], names: {} }; } };
@@ -43,6 +50,10 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
   handle('ai:labels', (id, changes) => getLib().setLabels(String(id), changes || {}, Object.keys(TYPES), getLib().styles(DEFAULT_STYLES)));
   handle('ai:setStyles', async (list) => { const styles = await getLib().setStyles(list); kick(); return { styles }; });
   handle('ai:rescan', async () => { scanner.rescan(getLib()); });
+  // Search by what's in the pictures (plain answer, no library snapshot).
+  ipcMain.handle('search:pictures', async (_e, text) => {
+    try { const lib = getLib(); return { ids: lib ? await scanner.searchPictures(lib, String(text || '')) : [] }; } catch (err) { console.error('search', err); return { ids: [] }; }
+  });
   handle('suggest:list', async () => ({ suggestions: await current() }));
   handle('suggest:dismiss', async (sig) => { const m = await readMemory(); m.dismissed = [...new Set([...(m.dismissed || []), String(sig)])]; await writeMemory(m); return { suggestions: await current() }; });
   handle('suggest:rename', async (sig, name) => { const m = await readMemory(); m.names = { ...(m.names || {}), [String(sig)]: String(name).trim().slice(0, 40) }; await writeMemory(m); return { suggestions: await current() }; });

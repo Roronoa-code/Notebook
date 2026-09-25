@@ -96,21 +96,40 @@ function loadClip(modelsDir, { allowDownload = false } = {}) {
   return clipLoaded;
 }
 
+// The words model (to compare text with pictures: search), loaded once; the full set reuses it.
+let textLoaded = null;
+function loadText(modelsDir) {
+  if (textLoaded) return textLoaded;
+  textLoaded = (async () => {
+    const C = await loadClip(modelsDir);
+    const txt = await T.CLIPTextModelWithProjection.from_pretrained(CLIP, { device: C.device, dtype: 'fp32' });
+    const tokenizer = await T.AutoTokenizer.from_pretrained(CLIP);
+    return async (texts) => {
+      const inputs = tokenizer(texts, { padding: true, truncation: true });
+      const { text_embeds } = await txt(inputs);
+      const d = text_embeds.dims[1];
+      return texts.map((_, i) => norm(Array.from(text_embeds.data.slice(i * d, (i + 1) * d))));
+    };
+  })();
+  textLoaded.catch(() => { textLoaded = null; });
+  return textLoaded;
+}
+
+// Search words as one direction to compare with pictures (a few phrasings, averaged).
+async function embedQuery(modelsDir, q) {
+  const embed = await loadText(modelsDir);
+  const vs = await embed([`a photo of ${q}`, q, `${q}, a picture`]);
+  return norm(vs[0].map((_, d) => vs.reduce((s, v) => s + v[d], 0) / vs.length));
+}
+
 // Loads the models (once). `modelsDir` is where they were downloaded (e.g. D:\Notebook Tools\models).
 async function load(modelsDir, { allowDownload = false } = {}) {
   if (loaded) return loaded;
   loaded = (async () => {
     const C = await loadClip(modelsDir, { allowDownload });
     const vis = { m: C.vis, device: C.device }, processor = C.processor;
-    const txt = await T.CLIPTextModelWithProjection.from_pretrained(CLIP, { device: vis.device, dtype: 'fp32' });
-    const tokenizer = await T.AutoTokenizer.from_pretrained(CLIP);
     const seg = await tryDevices((device) => T.pipeline('image-segmentation', 'Xenova/segformer_b2_clothes', { device }));
-    const embedText = async (texts) => {
-      const inputs = tokenizer(texts, { padding: true, truncation: true });
-      const { text_embeds } = await txt(inputs);
-      const d = text_embeds.dims[1];
-      return texts.map((_, i) => norm(Array.from(text_embeds.data.slice(i * d, (i + 1) * d))));
-    };
+    const embedText = await loadText(modelsDir);
     // One averaged text direction per label (a few phrasings each is more reliable than one).
     const labelVectors = async (prompts) => {
       const out = {};
@@ -120,13 +139,7 @@ async function load(modelsDir, { allowDownload = false } = {}) {
       }
       return out;
     };
-    // The captioning model (a sentence about the picture, for its name). Optional: without it, nothing is renamed.
-    let cap = null;
-    try {
-      const CAP = 'onnx-community/Florence-2-base-ft';
-      cap = { model: await T.Florence2ForConditionalGeneration.from_pretrained(CAP, { device: vis.device, dtype: 'fp32' }), processor: await T.AutoProcessor.from_pretrained(CAP) };
-    } catch { /* not downloaded: pictures keep their titles */ }
-    return { vis: vis.m, processor, seg: seg.m, cap, embedText, labelVectors, device: vis.device, typeVecs: await labelVectors(TYPES), styleVecs: {} };
+    return { vis: vis.m, processor, seg: seg.m, embedText, labelVectors, device: vis.device, typeVecs: await labelVectors(TYPES), styleVecs: {} };
   })();
   return loaded;
 }
@@ -166,11 +179,6 @@ async function analyse(M, file, styles = DEFAULT_STYLES) {
   const emb = await embedImage(M, image);
   const type = typeOf(M, emb), { main, extra } = type;
   const out = { type, embedding: emb.map((x) => +x.toFixed(4)) };
-  if (M.cap) {
-    const inputs = await M.cap.processor(image, M.cap.processor.construct_prompts('<CAPTION>'));
-    const ids = await M.cap.model.generate({ ...inputs, max_new_tokens: 40 });
-    out.caption = String(M.cap.processor.post_process_generation(M.cap.processor.batch_decode(ids, { skip_special_tokens: false })[0], '<CAPTION>', image.size)['<CAPTION>'] || '').trim();
-  }
   const rgbOf = (img) => { const px = []; const c = img.channels; for (let i = 0; i < img.width * img.height; i++) px.push([img.data[i * c], img.data[i * c + 1], img.data[i * c + 2]]); return px; };
   if (main === 'outfit' || extra.includes('outfit')) {
     // Colours from the clothes only: the clothes-finding model marks clothing pixels; everything else is ignored.
@@ -206,4 +214,4 @@ async function analyse(M, file, styles = DEFAULT_STYLES) {
   return out;
 }
 
-module.exports = { load, loadClip, analyse, embedBytes, typeOf, TYPES_VERSION, palette, lab, TYPES, DEFAULT_STYLES, NAMED };
+module.exports = { load, loadClip, embedQuery, analyse, embedBytes, typeOf, TYPES_VERSION, palette, lab, TYPES, DEFAULT_STYLES, NAMED };

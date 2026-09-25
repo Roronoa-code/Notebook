@@ -64,8 +64,10 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   heading and bullet points (no AI, all on your PC). **Undo tidy** puts it back.
 - **Bin**: **Move to Bin** keeps the item with its boards. Restore it from the Bin.
   **Empty Bin** deletes permanently and asks first.
-- **Search**: Ctrl+F finds titles, notes, and what things are (e.g. "wallpaper", "black",
-  "streetwear"). **New note**: Ctrl+N. Press **?** (or Library → Keyboard shortcuts) for every
+- **Search**: Ctrl+F finds titles, notes, what things are (e.g. "wallpaper", "black",
+  "streetwear") and what's in the pictures themselves: "PC" finds photos of your PC even if
+  nobody named them that. Start with "my" ("my PC") for only your own photos and videos, not
+  ones saved from Pinterest or TikTok. Switching boards clears the filters. **New note**: Ctrl+N. Press **?** (or Library → Keyboard shortcuts) for every
   shortcut and gesture. Delete in an open item moves it to the Bin.
 
 ## Recognition (on your PC)
@@ -78,11 +80,14 @@ Notebook looks at every photo and video (by its preview) in the background and w
 - **For outfits**: the colours of the clothes (only the clothes, never the background) and
   the top two styles from **your style list**.
 - **A proper name**: pictures called things like "Pinterest pin", "IMG_2031" or a long post
-  title get a short name from what's in them ("Black hoodie and cargo pants", "Blurry red
-  sky"). A name you type yourself, here or on your phone, is never changed. The old title
+  title get a short name from what's in them ("Red PC gaming rig", "X-ray flower"), made by a
+  small picture-and-language model (Qwen3-VL 2B) on your processor, one picture at a time at low
+  priority, which closes when it's done (about 6 seconds a picture). A name you type yourself,
+  here or on your phone, is never changed. The old title
   still works in search (point at the date under the title to see it).
 
-It runs on your graphics card and stays smooth while you use the app. A small line at the
+It runs on your graphics card and stays smooth while you use the app. It lets go of its
+memory (several GB) a minute after it has nothing to do, and starts again when needed. A small line at the
 bottom left says "Recognising 3 of 40…" while it works.
 
 - **Filters**: the chips under the board name filter by where it came from (**My photos**,
