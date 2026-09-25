@@ -125,6 +125,7 @@ function mergeInto(data, remote, nowMs = Date.now()) {
   // and w/h/duration (filled in from whichever side has them).
   const items = new Map(data.items.map((i) => [i.id, i]));
   const order = data.items.slice();
+  const hidden = new Set(data.boards.filter((b) => b.phone === false).map((b) => b.id));
   for (const ri of remote.items) {
     const li = items.get(ri.id);
     if (!li) {
@@ -137,6 +138,9 @@ function mergeInto(data, remote, nowMs = Date.now()) {
       const keep = { thumb: li.thumb, w: li.w, h: li.h, duration: li.duration };
       const next = { ...ri };
       if (li.phone === false) next.phone = false; // the PC's "show on phone" survives a newer phone edit
+      // Boards switched off for the phone aren't on the phone, so a phone edit can't have taken the item off them.
+      const off = (li.boards || []).filter((id) => hidden.has(id) && !(next.boards || []).includes(id));
+      if (off.length) next.boards = [...(next.boards || []), ...off];
       if (li.ai) next.ai = li.ai; else delete next.ai; // what the PC recognised stays the PC's own, like its thumbnails
       if (li.hash) next.hash = li.hash; // and so does its file fingerprint
       if ('thumb' in keep && keep.thumb !== undefined) next.thumb = keep.thumb; else delete next.thumb;

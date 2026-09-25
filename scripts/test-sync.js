@@ -185,6 +185,44 @@ const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
   assert.ok(r.body.items.some((i) => i.id === pId), 'back on: sent again');
   ok('items switched off for the phone are left out of the sync answer, and come back when switched on');
 
+  // ---------- a board switched off for the phone, then on again: nothing is lost on either side ----------
+  // The phone keeps what the PC last sent, and edits it the way the phone app does (it only keeps boards it knows).
+  const hid = await lib.addBoard('Only on PC'), shown = await lib.addBoard('Everywhere'), other = await lib.addBoard('Later');
+  const fresh = [crypto.randomBytes(4000), crypto.randomBytes(5000)].map((b, i) => { const f = path.join(ROOT, 'fake', `board${i}.jpg`); fs.writeFileSync(f, b); return f; });
+  const [onlyHid, both] = (await lib.importFiles(fresh)).added;
+  await lib.updateItem(onlyHid, { boards: [hid] });
+  await lib.updateItem(both, { boards: [hid, shown] });
+  const phoneOf = (answer) => ({ deviceId: 'phone-1', boards: answer.boards, items: answer.items, tombstones: answer.tombstones });
+  const phoneEdit = (state, id, changes) => {
+    const known = new Set(state.boards.map((b) => b.id));
+    const it = state.items.find((i) => i.id === id);
+    Object.assign(it, changes, changes.boards ? { boards: changes.boards.filter((b) => known.has(b)) } : {}, { updatedAt: iso(1000) });
+  };
+  let ph = phoneOf((await api('POST', '/api/sync', { token, json: nothing })).body);
+  assert.ok(ph.items.some((i) => i.id === onlyHid) && ph.boards.some((b) => b.id === hid), 'the phone has the board and its things');
+  phoneEdit(ph, onlyHid, { title: 'Named on the phone' }); // made on the phone before it heard the board went off
+  await lib.setBoardOnPhone(hid, false);
+  r = await api('POST', '/api/sync', { token, json: ph });
+  assert.equal(r.status, 200);
+  assert.ok(!r.body.items.some((i) => i.id === onlyHid) && !r.body.boards.some((b) => b.id === hid), 'the phone lets go of the board and what is only on it');
+  assert.equal(lib.item(onlyHid).title, 'Named on the phone', 'the phone\'s edit still reaches the PC');
+  assert.ok(fs.existsSync(path.join(lib.root, lib.item(onlyHid).file)), 'its file stays on the PC');
+  assert.equal(lib.board(hid).phone, false, 'the board stays off');
+  ph = phoneOf(r.body);
+  assert.deepEqual(ph.items.find((i) => i.id === both).boards.sort(), [hid, shown].sort());
+  phoneEdit(ph, both, { boards: [...ph.items.find((i) => i.id === both).boards, other] }); // added to "Later" on the phone
+  r = await api('POST', '/api/sync', { token, json: ph });
+  assert.deepEqual(lib.item(both).boards.sort(), [hid, shown, other].sort(), 'a board the phone can\'t see isn\'t taken off by a phone edit');
+  ph = phoneOf(r.body);
+  await lib.setBoardOnPhone(hid, true);
+  r = await api('POST', '/api/sync', { token, json: ph });
+  assert.ok(r.body.boards.some((b) => b.id === hid), 'the board comes back');
+  const back = r.body.items.find((i) => i.id === onlyHid);
+  assert.equal(back && back.title, 'Named on the phone', 'with the phone\'s edit');
+  assert.equal((await api('GET', '/api/media/' + onlyHid, { token })).status, 200, 'and its picture');
+  assert.ok(lib.data.boards.some((b) => b.id === hid) && !lib.data.tombstones.boards.some((t) => t.id === hid), 'the board was never deleted');
+  ok('a board switched off and on again: the phone lets go and gets everything back, its edits kept, hidden boards never taken off');
+
   // ---------- Ideas for the phone (the real feed, with made-up pins instead of Pinterest) ----------
   const { Feed, FakeSource } = require('../main/feed');
   const saves = [];
