@@ -2,7 +2,7 @@
 // open item with dropdowns to correct them, the style list, the "Recognising…" line and Suggested groups.
 (() => {
   const { h, icon, toast } = NB;
-  const F = { type: null, colour: null, style: null }; // active filters
+  const F = { type: null, colour: null, style: null, from: null }; // active filters
   const TYPE_NAMES = { outfit: 'Outfits', wallpaper: 'Wallpapers', icon: 'Icons', 'profile picture': 'Profile pictures', other: 'Other' };
   const FAMILY = { 'light grey': 'grey', denim: 'blue', 'light blue': 'blue', khaki: 'beige', cream: 'white', tan: 'brown', mustard: 'yellow', lilac: 'purple', burgundy: 'red', olive: 'green', teal: 'green' };
   const family = (c) => FAMILY[c] || c;
@@ -10,36 +10,47 @@
   const snap = () => NB.S.snap;
 
   // What an item is: the user's corrections win over what the PC recognised.
+  // Colours you set yourself replace what was recognised. Recognised ones only count when they cover
+  // a fair part of the picture (a sliver of navy in a dark photo isn't "navy").
+  const HEX = { black: '#141416', white: '#F0F0EE', grey: '#808080', navy: '#1C2448', blue: '#2C5ABE', green: '#28823C', beige: '#DCCDAF', brown: '#6E4628', red: '#C81E28', pink: '#F096B4', purple: '#6E3CA0', yellow: '#F0D228', orange: '#F0821E' };
+  const COLOURS = Object.keys(HEX);
   function labelsOf(it) {
     const ai = it.ai || {}, l = it.labels || {};
     const main = l.main || (ai.type && ai.type.main) || null;
     const extra = l.extra || (ai.type && ai.type.extra) || [];
-    return { main, types: main ? [main, ...extra.filter((t) => t !== main)] : extra, styles: l.styles || ai.styles || [], colours: ai.colours || [], corrected: !!it.labels, scanned: !!(ai.type || ai.failed) };
+    const seen = (ai.colours || []).filter((c, i) => i === 0 || c.share >= 0.2);
+    const colours = Array.isArray(l.colours) ? l.colours.map((name) => ({ name, hex: HEX[name] || '#808080', share: 1 })) : seen;
+    return { main, types: main ? [main, ...extra.filter((t) => t !== main)] : extra, styles: l.styles || ai.styles || [], colours, corrected: !!it.labels, scanned: !!(ai.type || ai.failed) };
   }
+  // Where something came from: saved from a Pinterest or TikTok link, or your own (added from the PC or phone).
+  const sourceOf = (it) => (/tiktok\.com/i.test(it.source || '') ? 'tiktok' : /pinterest\.|pin\.it/i.test(it.source || '') ? 'pinterest' : 'mine');
+  const FROM = { mine: 'My photos', pinterest: 'Pinterest', tiktok: 'TikTok' };
 
   // ---------- filters ----------
   function filter(list) {
     return list.filter((it) => {
-      if (!F.type && !F.colour && !F.style) return true;
+      if (!F.type && !F.colour && !F.style && !F.from) return true;
       const L = labelsOf(it);
-      return (!F.type || L.types.includes(F.type)) && (!F.colour || L.colours.some((c) => family(c.name) === F.colour)) && (!F.style || L.styles.includes(F.style));
+      return (!F.type || L.types.includes(F.type)) && (!F.colour || L.colours.some((c) => family(c.name) === F.colour)) && (!F.style || L.styles.includes(F.style)) && (!F.from || sourceOf(it) === F.from);
     });
   }
-  const active = () => !!(F.type || F.colour || F.style);
+  const active = () => !!(F.type || F.colour || F.style || F.from);
 
   function filterBar(list) {
     const types = snap().types || [];
-    if (!types.length || !list.some((it) => it.ai)) return null;
+    const froms = Object.keys(FROM).filter((k) => list.some((it) => sourceOf(it) === k));
+    if ((!types.length || !list.some((it) => it.ai)) && froms.length < 2) return null;
     const L = list.map(labelsOf);
     const colours = [...new Map(L.flatMap((x) => x.colours).map((c) => [family(c.name), c.hex])).entries()];
     const styles = (snap().styles || []).filter((s) => L.some((x) => x.styles.includes(s)));
     const chip = (label, on, onclick, extra) => h('button', { type: 'button', class: 'fchip' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick }, extra || null, label);
     const set = (k, v) => { F[k] = F[k] === v ? null : v; NB.refreshGrid(); };
     return h('div', { class: 'filters', role: 'toolbar', 'aria-label': 'Filters' },
+      froms.length > 1 ? h('div', { class: 'frow' }, froms.map((k) => chip(FROM[k], F.from === k, () => set('from', k)))) : null,
       h('div', { class: 'frow' }, types.filter((t) => L.some((x) => x.types.includes(t))).map((t) => chip(TYPE_NAMES[t] || cap(t), F.type === t, () => set('type', t)))),
       colours.length ? h('div', { class: 'frow' }, colours.slice(0, 12).map(([name, hex]) => chip(cap(name), F.colour === name, () => set('colour', name), h('span', { class: 'swatch', style: { background: hex } })))) : null,
       h('div', { class: 'frow' }, styles.map((s) => chip(cap(s), F.style === s, () => set('style', s))), h('button', { type: 'button', class: 'fchip ghost', onclick: stylesEditor }, icon('note'), 'Styles')),
-      active() ? h('button', { type: 'button', class: 'linkbtn', onclick: () => { F.type = F.colour = F.style = null; NB.refreshGrid(); } }, 'Clear filters') : null);
+      active() ? h('button', { type: 'button', class: 'linkbtn', onclick: () => { F.type = F.colour = F.style = F.from = null; NB.refreshGrid(); } }, 'Clear filters') : null);
   }
 
   // ---------- your style list ----------
@@ -79,6 +90,17 @@
       h('span', { class: 'lsum-edit' }, open ? 'Close' : 'Edit'));
   }
 
+  // Colours: tap one to take it off, or add one from the list. Your choice replaces what the PC saw.
+  function coloursEditor(it, L, isOutfit, save) {
+    const mine = L.colours.map((c) => family(c.name)).filter((c, i, a) => a.indexOf(c) === i);
+    const setTo = (next) => save({ colours: next });
+    const add = NB.dropdown({ label: 'Add a colour', value: '', options: [{ value: '', label: 'Add a colour' }, ...COLOURS.filter((c) => !mine.includes(c)).map((c) => ({ value: c, label: cap(c) }))], onChange: (v) => { if (v) setTo([...mine, v]); } });
+    return [h('h4', { class: 'micro' }, isOutfit ? 'Colours of the clothes' : 'Colours'),
+      h('div', { class: 'tags' }, mine.map((c) => h('button', { type: 'button', class: 'colourtag rm', 'aria-label': `Take ${c} off`, title: 'Take this colour off', onclick: () => setTo(mine.filter((x) => x !== c)) },
+        h('span', { class: 'swatch', style: { background: HEX[c] || '#808080' } }), cap(c), icon('x'))), add),
+      Array.isArray((it.labels || {}).colours) ? h('button', { type: 'button', class: 'linkbtn', onclick: () => save({ colours: null }) }, 'Use the colours the PC saw') : null];
+  }
+
   function labelsPanel(it) {
     if (it.kind === 'note' || it.deletedAt) return null;
     const L = labelsOf(it);
@@ -99,7 +121,7 @@
       h('h4', { class: 'micro' }, 'What it is'),
       h('div', { class: 'recrow' }, main, L.corrected ? h('button', { type: 'button', class: 'linkbtn', onclick: () => save({ main: null, extra: null, styles: null }) }, 'Use what the PC saw') : null),
       h('div', { class: 'tags' }, extras),
-      isOutfit && L.colours.length ? [h('h4', { class: 'micro' }, 'Colours of the clothes'), h('div', { class: 'tags' }, L.colours.map((c) => h('span', { class: 'colourtag' }, h('span', { class: 'swatch', style: { background: c.hex } }), cap(c.name))))] : null,
+      coloursEditor(it, L, isOutfit, save),
       isOutfit ? [h('h4', { class: 'micro' }, 'Style'), h('div', { class: 'recrow' }, styleSel(0), styleSel(1))] : null);
   }
 
@@ -118,19 +140,34 @@
   }
   // Suggested is folded away until you open it (remembered), so the boards keep the room.
   let unfolded = (() => { try { return localStorage.getItem('nb.suggested') === 'open'; } catch { return false; } })();
+  // The heading and the rows stay put; opening and closing only slides the rows' height (CSS), so the
+  // boards above move smoothly instead of jumping.
+  let sug = null, rowsKey = '';
   function renderSuggestions() {
     const box = document.getElementById('suggested');
     if (!box) return;
     box.hidden = !list.length;
+    if (!sug) {
+      const head = h('button', { type: 'button', class: 'sughead', onclick: () => {
+        unfolded = !(unfolded || !!showing);
+        try { localStorage.setItem('nb.suggested', unfolded ? 'open' : 'shut'); } catch { /* remembering is a nicety */ }
+        if (!unfolded && showing) { showing = null; NB.showSuggestion(null); }
+        renderSuggestions();
+      } }, icon('right'), h('span', { class: 'micro navlabel' }, 'Suggested'), h('span', { class: 'n' }));
+      const rows = h('div', { class: 'suginner' });
+      sug = { head, rows, body: h('div', { class: 'sugbody' }, rows) };
+      box.replaceChildren(head, sug.body);
+    }
     const open = unfolded || !!showing;
-    const head = h('button', { type: 'button', class: 'sughead', 'aria-expanded': String(open), onclick: () => {
-      unfolded = !open;
-      try { localStorage.setItem('nb.suggested', unfolded ? 'open' : 'shut'); } catch { /* remembering is a nicety */ }
-      if (!unfolded && showing) { showing = null; NB.showSuggestion(null); }
-      renderSuggestions();
-    } }, icon('right'), h('span', { class: 'micro navlabel' }, 'Suggested'), h('span', { class: 'n' }, list.length));
-    box.replaceChildren(head, ...(open ? list : []).map((g) => h('button', {
-      type: 'button', class: 'navrow sug' + (showing === g.sig ? ' on' : ''), 'aria-pressed': String(showing === g.sig), onclick: () => show(g.sig)
+    sug.head.setAttribute('aria-expanded', String(open));
+    sug.head.querySelector('.n').textContent = list.length;
+    box.classList.toggle('open', open);
+    sug.body.inert = !open;
+    const key = list.map((g) => [g.sig, g.name, g.ids.length, showing === g.sig].join(':')).join('|');
+    if (key === rowsKey) return;
+    rowsKey = key;
+    sug.rows.replaceChildren(...list.map((g, i) => h('button', {
+      type: 'button', class: 'navrow sug' + (showing === g.sig ? ' on' : ''), 'aria-pressed': String(showing === g.sig), style: { '--i': i }, onclick: () => show(g.sig)
     }, icon(g.kind === 'set' ? 'photo' : 'stack'), h('span', { class: 'sugname' }, g.name), h('span', { class: 'n' }, g.ids.length))));
   }
   const suggestion = () => list.find((g) => g.sig === showing);
@@ -154,6 +191,6 @@
 
   nb.onAiProgress((s) => { const was = status.state; status = s; renderStatus(); if (was === 'scanning' && s.state === 'idle') loadSuggestions(); });
   const hideSuggestion = () => { if (showing) { showing = null; renderSuggestions(); } };
-  NB.smart = { hideSuggestion, filter, filterBar, labelsPanel, labelsSummary, labelsOf, loadSuggestions, suggestionBar, suggestion, active, clear: () => { F.type = F.colour = F.style = null; } };
+  NB.smart = { sourceOf, hideSuggestion, filter, filterBar, labelsPanel, labelsSummary, labelsOf, loadSuggestions, suggestionBar, suggestion, active, clear: () => { F.type = F.colour = F.style = null; } };
   nb.aiStatus().then((r) => { if (r && r.status) { status = r.status; renderStatus(); } });
 })();

@@ -10,13 +10,13 @@ if (!window.NBNative) {
   const db = {
     boards,
     items: [
-      it('photo', 'img/outfit1.jpg', 'Plaid overshirt', [0, 4], 600, 800, { caption: 'chest 27in, want it in black' }),
+      it('photo', 'img/outfit1.jpg', 'Plaid overshirt', [0, 4], 600, 800, { caption: 'chest 27in, want it in black', takenAt: '2025-02-18T20:59:34.000Z' }),
       it('video', 'img/wall1.jpg', 'Aurora live wallpaper', [1, 5], 600, 1066, { duration: 18 }),
       { id: id(), kind: 'note', title: 'Autumn capsule', html: '<h2>Autumn capsule</h2><ul><li>Need brown loafers</li><li>Cream knit (the chunky one)</li></ul>', boards: [boards[0].id], importedAt: now(), updatedAt: now(), deletedAt: null },
       it('photo', 'img/pfp1.jpg', 'Golden hour pfp', [3], 600, 750),
       it('photo', 'img/wall2.jpg', 'Mountain dusk', [1], 600, 800),
       it('photo', 'img/icons1.jpg', 'Pastel icons', [2], 600, 600),
-      it('photo', 'img/outfit2.jpg', 'Sage cardigan fit', [0, 3], 600, 750),
+      it('photo', 'img/outfit2.jpg', 'Sage cardigan fit', [0, 3], 600, 750, { takenAt: '2025-06-20T21:55:34.000Z' }),
       it('video', 'img/video1.jpg', 'Try-on haul', [0], 600, 1066, { duration: 72 })
     ],
     tombstones: { items: [], boards: [] },

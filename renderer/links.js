@@ -93,13 +93,13 @@
   function setStatus(msg) { if (status) status.textContent = msg || ''; }
   const rect = () => { const r = host.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; };
   let open = false, aside = false;
-  async function openPanel() {
+  async function openPanel(url) {
     open = true;
     document.body.classList.add('pinning');
     panel.hidden = false;
     $('pin-btn').classList.add('on');
     $('pin-btn').setAttribute('aria-pressed', 'true');
-    requestAnimationFrame(async () => { const s = await nb.pinOpen(rect()); pinState(s); });
+    requestAnimationFrame(async () => { const s = await nb.pinOpen(rect(), url); pinState(s); });
   }
   async function closePanel() {
     if (!open) return;
@@ -134,7 +134,7 @@
 
   // Pinterest is drawn over the page, so anything opened on top of it (a menu, the Phone panel, an open
   // item, the shortcuts sheet) would be hidden behind it. Pinterest steps aside until that closes.
-  const OVERLAY = '.popover:not([hidden]), .viewer, .phone, .ddlist, .keys';
+  const OVERLAY = '.popover:not([hidden]), .viewer, .phone, .ddlist, .keys, .ideaview';
   let checking = false;
   const check = () => {
     checking = false;
@@ -148,8 +148,8 @@
 
   // Opens a pin in the Pinterest panel (from Ideas).
   async function openAt(url) {
-    if (!open) { await openPanel(); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); }
-    pinState(await nb.pinGo(url));
+    if (!open) openPanel(url);
+    else pinState(await nb.pinGo(url));
   }
   NB.links = { save, isLink, closePanel, openAt, isOpen: () => open };
   nb.links().then((i) => { retry = i.retry || []; renderCount(); });

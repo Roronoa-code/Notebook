@@ -14,11 +14,9 @@
   const get = (board) => { try { const v = localStorage.getItem(key(board)); return OPTIONS.some((o) => o.value === v) ? v : 'added'; } catch { return 'added'; } };
   const set = (board, v) => { try { localStorage.setItem(key(board), v); } catch { /* remembering is a nicety */ } };
   const time = (iso) => (iso ? Date.parse(iso) : NaN);
-  const byTaken = (dir) => (a, b) => {
-    const x = time(a.takenAt), y = time(b.takenAt);
-    if (Number.isNaN(x) !== Number.isNaN(y)) return Number.isNaN(x) ? 1 : -1; // undated at the end
-    return (Number.isNaN(x) ? 0 : dir * (y - x)) || (time(b.importedAt) - time(a.importedAt));
-  };
+  // When it was taken, or for things with no such date (saved pins, screenshots), the day it was saved.
+  const dated = (it) => time(it.takenAt || it.importedAt);
+  const byTaken = (dir) => (a, b) => (dir * (dated(b) - dated(a))) || 0;
 
   function apply(list, board) {
     const how = get(board);
@@ -37,7 +35,7 @@
 
   // The cards with a month heading before each new month (only when sorted by date taken).
   const headings = new Map(); // label -> element, kept so they glide rather than flash
-  const monthOf = (x) => { const it = Array.isArray(x) ? x[0] : x; const t = time(it.takenAt); return Number.isNaN(t) ? 'No date' : new Date(t).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }); };
+  const monthOf = (x) => { const it = Array.isArray(x) ? x[0] : x; const t = dated(it); return Number.isNaN(t) ? 'No date' : new Date(t).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }); };
   function withHeadings(groups, els, board) {
     if (!get(board).startsWith('taken') || NB.smart.suggestion()) return els;
     const out = [];

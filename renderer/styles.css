@@ -97,6 +97,9 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 
 /* recognition: filters, labels, suggestions */
 .sortbox { margin: 0 0 6px; }
+.colourtag.rm { cursor: pointer; border: 0; font: inherit; color: inherit; }
+.colourtag.rm svg { width: 12px; height: 12px; opacity: .6; }
+.colourtag.rm:hover svg { opacity: 1; }
 .sortbox .dd { height: 36px; font-size: 14px; }
 .dategroup { column-span: all; margin: 26px 2px 16px; font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink2); display: flex; align-items: center; gap: 14px; }
 .dategroup:first-child { margin-top: 0; }
@@ -134,6 +137,11 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .sughead .n { margin-left: auto; font: 500 11px var(--mono); color: var(--muted); }
 .sughead svg { width: 14px; height: 14px; color: var(--muted); transition: transform .3s var(--spring); }
 .sughead[aria-expanded="true"] svg { transform: rotate(90deg); }
+.sugbody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .46s cubic-bezier(.2,.8,.2,1); }
+.suggested.open .sugbody { grid-template-rows: 1fr; }
+.suginner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+.sugbody .navrow { opacity: 0; transform: translateY(-8px); transition: opacity .16s, transform .3s cubic-bezier(.2,.8,.2,1), background .2s; }
+.suggested.open .sugbody .navrow { opacity: 1; transform: none; transition: opacity .28s calc(60ms + var(--i) * 35ms), transform .42s cubic-bezier(.2,.8,.2,1) calc(60ms + var(--i) * 35ms), background .2s; }
 .sughead:hover .navlabel, .sughead:focus-visible .navlabel { color: var(--ink); }
 .navrow.sug .sugname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sugbar { flex-basis: 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
@@ -429,3 +437,14 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .ph-card { break-inside: avoid; margin: 0 0 22px; border-radius: 20px; background: var(--surface); animation: breathe 1.6s ease-in-out infinite alternate backwards; }
 @keyframes breathe { from { opacity: .45; } to { opacity: 1; } }
 .ideas > .empty { flex-basis: 100%; }
+.ideaview { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; }
+.ideaview.out { opacity: 0; transition: opacity .18s; }
+.iv-back { position: absolute; inset: 0; background: rgba(0,0,0,.74); animation: fade .25s both; }
+.iv-panel { position: relative; display: flex; gap: 26px; max-width: min(1120px, 92vw); max-height: 88vh; padding: 18px; border-radius: 28px; background: var(--surface); border: 1px solid var(--line); animation: pop .42s var(--ease-out) both; }
+.iv-pic { position: relative; min-width: 0; }
+.iv-pic img { display: block; width: auto; height: auto; max-height: calc(88vh - 36px); max-width: min(660px, 58vw); border-radius: 18px; object-fit: contain; background: var(--surface2); }
+.iv-pic .badge { left: auto; right: 12px; top: auto; bottom: 12px; }
+.iv-side { width: 290px; display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 34px 6px 6px 0; }
+.iv-side h3 { margin: 0 0 8px; font-size: 22px; line-height: 1.2; overflow-wrap: anywhere; }
+.ideaview .idea-save { position: static; opacity: 1; transform: none; height: 44px; }
+.iv-close { position: absolute; top: 14px; right: 14px; }

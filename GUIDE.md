@@ -37,7 +37,8 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
 - **Sort**: the menu next to the item count: **Newest added**, **Oldest added**, **Date taken**
   (newest or oldest first, split into months) or **Name**. Each board remembers its own. The
   date taken comes from the photo itself (what your phone or camera recorded), or from a dated
-  file name like `20260306_210639.jpg`. Things with no date go under **No date** at the end.
+  file name like `20260306_210639.jpg`; things with neither (saved pins, screenshots) use the day
+  you saved them. Your phone has the same menu (the small pill at the top of Home and of each board).
 - **Card size**: Ctrl + mouse wheel over the board, or Ctrl + plus / minus (Ctrl + 0 goes back).
   Videos play quietly on their cards while the pointer rests on them.
 - **Picking several**: Ctrl-click (or tick) cards, or Ctrl+A for everything showing. Then
@@ -84,10 +85,14 @@ Notebook looks at every photo and video (by its preview) in the background and w
 It runs on your graphics card and stays smooth while you use the app. A small line at the
 bottom left says "Recognising 3 of 40…" while it works.
 
-- **Filters**: the chips under the board name filter by type, clothing colour and style.
+- **Filters**: the chips under the board name filter by where it came from (**My photos**,
+  **Pinterest**, **TikTok**), type, colour and style. An open item also says "Saved from Pinterest"
+  or "Taken 6 Mar 2026".
 - **Correcting it**: open anything, click the line that says what it is (e.g. "Outfit ·
   Streetwear"), and use the dropdowns to fix a label. Your
   corrections are kept forever: a re-scan never changes them. **Use what the PC saw** undoes a correction.
+  Colours work the same way: under **Colours**, click one to take it off or **Add a colour**.
+  (The PC's own colours only count when they cover a fair part of the picture.)
 - **Your styles**: the **Styles** chip lets you add your own styles or remove ones you never
   use. Outfits are looked at again for the new list.
 - **Suggested** (left, under the boards, folded away until you click it): groups of outfits
@@ -139,8 +144,13 @@ things you already have.
 
 - **Save** (on a pin): saves it to the board you're on, like pasting its link.
 - **×** (Not for me): the pin goes, and ones like it come up less.
-- Click a pin to open it in the Pinterest panel. Scroll down for more; **New ideas** fetches a
-  fresh set. Ideas refresh by themselves when they're a few hours old.
+- Click a pin for a close-up inside Notebook (← → for the next one): **Save**, **Open in
+  Pinterest** or **Not for me**. Scroll down for more; **New ideas** fetches a fresh set.
+- Ideas are stricter about AI than the Pinterest panel: anything the detectors think might be
+  AI-made is left out (there are plenty of other pins to show instead).
+- For you and the boards you've looked at this week are kept ready in the background (a minute
+  after Notebook opens, then hourly), so they usually show straight away. A board's first ever
+  Ideas take a few seconds; the very first after starting the PC can take up to about 15.
 - On your phone, **For you** is the third tab on Home, and each board has **Saved | Ideas**. Tap
   a pin for **Save**, **Open in Pinterest** or **Not for me**. The phone gets them from your PC
   when it syncs, so it shows the last ones it got when you're out; a pin saved from the phone

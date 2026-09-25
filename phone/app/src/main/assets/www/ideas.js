@@ -5,16 +5,20 @@ window.NBIdeas = function NBIdeas({ N, S, $, esc, toast, paired, boardName, rere
   const FEED = window.NB_FEED ?? '/feed/';
   const read = () => { try { const d = JSON.parse(N.feed()); return d && d.feeds ? d : { feeds: {} }; } catch (e) { return { feeds: {} }; } };
   let data = read(), asked = 0, wanted = false;
+  const askedFor = {};
   const pins = (key) => ((data.feeds[key] || {}).pins || []);
   const pinById = (id) => { for (const f of Object.values(data.feeds)) { const p = (f.pins || []).find((x) => x.id === id); if (p) return p; } return null; };
 
   // Older than half an hour (or never fetched): ask the PC for the latest, quietly.
-  function freshen() {
-    if (!paired() || Date.now() - asked < 60000) return;
+  function freshen(key, empty) {
+    if (!paired()) return;
+    // A board with no ideas yet: ask the PC to make them now (once a minute at most).
+    if (empty && key !== 'all' && Date.now() - (askedFor[key] || 0) > 60000) { askedFor[key] = Date.now(); N.feedRefresh(key); return; }
+    if (Date.now() - asked < 60000) return;
     const at = Date.parse(data.fetchedAt || '') || 0;
     if (Date.now() - at < 30 * 60000) return;
     asked = Date.now();
-    N.feedRefresh();
+    N.feedRefresh('');
   }
   window.nbOnFeed = (json) => {
     const d = JSON.parse(json);
@@ -33,8 +37,8 @@ window.NBIdeas = function NBIdeas({ N, S, $, esc, toast, paired, boardName, rere
 
   // The grid's contents for a feed ('all' or a board id).
   function gridHTML(key) {
-    freshen();
     const list = pins(key);
+    freshen(key, !list.length);
     if (list.length) return list.map(card).join('');
     const why = !paired() ? 'Pair with your PC and ideas from Pinterest arrive here, picked to match your boards.'
       : key === 'all' ? 'No ideas yet. They come from Notebook on your PC with the next sync.' : 'No ideas for this board yet. Open it on your PC, or sync again in a bit.';
@@ -71,7 +75,7 @@ window.NBIdeas = function NBIdeas({ N, S, $, esc, toast, paired, boardName, rere
   // A picture that can't be had (away from home and not kept yet): that pin is left out.
   document.addEventListener('error', (e) => { const c = e.target.closest && e.target.closest('.card.idea'); if (c && e.target.tagName === 'IMG') c.remove(); }, true);
   const openPin = () => { if (open) N.openPin(open.url); };
-  const now = () => { if (!paired()) return; wanted = true; asked = Date.now(); toast('Asking your PC for ideas…'); N.feedRefresh(); };
+  const now = () => { if (!paired()) return; wanted = true; asked = Date.now(); toast('Asking your PC for ideas…'); N.feedRefresh(S.screen === 'board' ? S.board : ''); };
 
   return { gridHTML, sheetHTML, save, hide, openPin, now };
 };

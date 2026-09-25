@@ -332,7 +332,7 @@ class SyncServer {
   async ideas(req, res, route) {
     const feed = this.feed;
     if (!feed) return send(res, 404, { error: 'Ideas aren’t available on this PC.' });
-    if (route === '/api/feed' && req.method === 'GET') return send(res, 200, feed.forPhone());
+    if (route === '/api/feed' && req.method === 'GET') return send(res, 200, await feed.forPhone(new URL(req.url, 'http://x').searchParams.get('want')));
     const img = /^\/api\/feed\/img\/([0-9a-f]{32})$/.exec(route);
     if (img && req.method === 'GET') {
       const file = await feed.image(img[1]);

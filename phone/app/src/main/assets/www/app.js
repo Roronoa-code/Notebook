@@ -114,14 +114,18 @@
       <span class="stackct" aria-hidden="true">${top + 1}/${len}</span></div>`;
   }
   // Inside a board (`board`), only stacks made in that board group; the rest show as loose cards.
-  function gridHTML(list, empty, board) {
-    const done = new Set(), out = [];
+  // Sorted by date taken (`sortKey`): a heading before each new month.
+  function gridHTML(list, empty, board, sortKey) {
+    const done = new Set(), out = [], months = SO.byMonth(sortKey);
+    let month = null;
+    const heading = (it) => { if (!months) return; const m = SO.monthOf(it); if (m !== month) { month = m; out.push(`<h3 class="dategroup">${esc(m)}</h3>`); } };
     for (const it of list) {
       if (it.stack && !it.deletedAt && (!board || it.stackIn === board)) {
         if (done.has(it.stack)) continue;
         const members = list.filter((x) => x.stack === it.stack);
-        if (members.length > 1) { done.add(it.stack); out.push(stackCard(members, out.length)); continue; }
+        if (members.length > 1) { done.add(it.stack); heading(it); out.push(stackCard(members, out.length)); continue; }
       }
+      heading(it);
       out.push(card(it, out.length));
     }
     return out.join('') || `<p class="empty">${empty}</p>`;
@@ -138,7 +142,7 @@
   }
   const homeList = () => (S.tab === 'notes' ? live().filter((x) => x.kind === 'note') : live());
   // Home's grid: Recent, Notes, or For you (ideas from Pinterest, picked by the PC).
-  const homeGrid = () => (S.tab === 'ideas' ? I.gridHTML('all') : gridHTML(homeList(), S.tab === 'notes' ? 'No notes yet. Tap + and choose New note.' : 'Nothing here yet. Tap + to add photos, videos or a note.'));
+  const homeGrid = () => (S.tab === 'ideas' ? I.gridHTML('all') : gridHTML(SO.apply(homeList(), 'all'), S.tab === 'notes' ? 'No notes yet. Tap + and choose New note.' : 'Nothing here yet. Tap + to add photos, videos or a note.', null, 'all'));
 
   function pillsHTML() {
     return wheel().map((b, k) => {
@@ -169,6 +173,7 @@
       </div>
       <div class="lift" id="lift">
         <button type="button" class="grip" data-a="lift" aria-label="Lift items up"></button>
+        <div class="sortslot" id="homesort">${S.tab === 'ideas' ? '' : SO.pillHTML('all')}</div>
         <div class="grid anim" id="homegrid">${homeGrid()}</div>
       </div>
       <div class="topglass" id="topglass"></div>
@@ -178,7 +183,7 @@
     </div>`;
   }
 
-  const boardGrid = (id) => (S.btab === 'ideas' ? I.gridHTML(id) : gridHTML(onBoard(id), 'Nothing on this board yet. Open an item and tap this board, or tap + while you\'re here.', id));
+  const boardGrid = (id) => (S.btab === 'ideas' ? I.gridHTML(id) : gridHTML(SO.apply(onBoard(id), id), 'Nothing on this board yet. Open an item and tap this board, or tap + while you\'re here.', id, id));
   function boardHTML() {
     const b = boards().find((x) => x.id === S.board);
     if (!b) return null;
@@ -192,7 +197,7 @@
         <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:calc(var(--st) + 10px);right:16px">${svg(P.edit, 18)}</button>
         <div style="position:absolute;left:22px;right:22px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
       </div>
-      <div class="boardseg"><div class="seg glass"><button type="button" class="${S.btab === 'ideas' ? '' : 'on'}" data-a="btab" data-v="saved" id="btab-saved">Saved</button><button type="button" class="${S.btab === 'ideas' ? 'on' : ''}" data-a="btab" data-v="ideas" id="btab-ideas">Ideas</button></div></div>
+      <div class="boardseg"><div class="seg glass"><button type="button" class="${S.btab === 'ideas' ? '' : 'on'}" data-a="btab" data-v="saved" id="btab-saved">Saved</button><button type="button" class="${S.btab === 'ideas' ? 'on' : ''}" data-a="btab" data-v="ideas" id="btab-ideas">Ideas</button></div><span id="boardsort" style="margin-left:auto">${S.btab === 'ideas' ? '' : SO.pillHTML(b.id)}</span></div>
       <div class="grid anim" id="boardgrid">${boardGrid(b.id)}</div>
     </div>`;
   }
@@ -360,6 +365,7 @@
     S, app, tick, $, url, updateChrome: () => updateChrome(), home: () => homeEl, current: () => currentEl,
     actions: () => A, db: () => DB, turnStack
   });
+  const SO = NBSort({ N, esc });
   const I = NBIdeas({ N, S, $, esc, toast, paired: () => !!(DB.sync || {}).paired, boardName: () => (S.screen === 'board' ? (boards().find((b) => b.id === S.board) || {}).name : ''), rerender: () => { dataVer++; refresh(); } });
   const { animateSwap, setLift, wireHome, wireGrid, wireDismiss, markSelection, toggleSelect, endSelect } = M;
   const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML, search: searchHTML, bin: binHTML };
@@ -501,41 +507,8 @@
     NBMedia.wire(root);
   }
 
-  // ---------- small forms (new board, rename, type pairing code) ----------
-  function openForm(kind) {
-    S.sheet = kind; S.add = false; S.cover = false;
-    const f = $('#formsheet');
-    const b = boards().find((x) => x.id === S.board);
-    if (kind === 'newBoard') {
-      f.innerHTML = `<span class="lbl">New board</span><input class="field" id="f1" maxlength="40" placeholder="Board name" autocomplete="off"><div class="formrow"><button type="button" class="btn" data-a="closeForm">Cancel</button><button type="button" class="btn white" data-a="saveForm">Create</button></div>`;
-    } else if (kind === 'editBoard' && b) {
-      f.innerHTML = `<span class="lbl">Board</span><input class="field" id="f1" maxlength="40" value="${esc(b.name)}" autocomplete="off"><div class="formrow"><button type="button" class="btn danger" data-a="deleteBoard">Delete board</button><span style="flex:1"></span><button type="button" class="btn white" data-a="saveForm">Save</button></div><div class="hint">Deleting a board keeps everything on it.</div>`;
-    } else if (kind === 'binItem' && byId(S.binItem)) {
-      const it = byId(S.binItem);
-      f.innerHTML = `<span class="lbl">In the Bin</span><div style="font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(it.title)}</div><div class="formrow"><button type="button" class="btn danger" data-a="deleteForever">Delete forever</button><span style="flex:1"></span><button type="button" class="btn white" data-a="restoreItem">Put back</button></div>`;
-    } else if (kind === 'manual') {
-      f.innerHTML = `<span class="lbl">Pair by typing</span><input class="field" id="f1" inputmode="decimal" placeholder="PC address, e.g. 192.168.0.12" autocomplete="off"><input class="field" id="f2" placeholder="Pairing code" autocapitalize="characters" autocomplete="off"><div class="hint">Both are shown in Notebook on your PC under Phone.</div><div class="formrow"><button type="button" class="btn" data-a="closeForm">Cancel</button><button type="button" class="btn white" data-a="saveForm">Pair</button></div>`;
-    }
-    updateChrome();
-    setTimeout(() => { const i = $('#f1'); if (i) { i.focus(); i.select(); } }, 250);
-  }
-  function closeForm() { S.sheet = null; updateChrome(); }
-  function saveForm() {
-    const v1 = ($('#f1') || {}).value || '', v2 = ($('#f2') || {}).value || '';
-    if (S.sheet === 'newBoard') {
-      const r = call('addBoard', v1);
-      if (!r) return;
-      closeForm();
-      const k = wheel().findIndex((x) => x.id === r.id);
-      if (k >= 0) settle(Math.round(S.pos + circ(k, S.pos)));
-      toast(`Made “${v1.trim()}”`);
-    } else if (S.sheet === 'editBoard') {
-      if (call('renameBoard', S.board, v1)) closeForm();
-    } else if (S.sheet === 'manual') {
-      if (!v1.trim() || !v2.trim()) { toast('Type both the PC address and the code.'); return; }
-      closeForm(); showSyncMsg('Pairing…'); N.pairManual(v1, v2);
-    }
-  }
+  // ---------- small forms (new board, rename, type pairing code): forms.js ----------
+  const { openForm, closeForm, saveForm } = NBForms({ S, $, N, esc, boards, byId, call, toast, wheel, settle, circ, showSyncMsg, updateChrome: () => updateChrome() });
 
   // ---------- actions ----------
   const TABS = { home: 0, board: 0, search: 1, sync: 2, bin: 2 };
@@ -574,6 +547,7 @@
       S.tab = v;
       for (const t of order) homeEl.querySelector('#tab-' + t).classList.toggle('on', v === t);
       const grid = homeEl.querySelector('#homegrid');
+      homeEl.querySelector('#homesort').innerHTML = v === 'ideas' ? '' : SO.pillHTML('all');
       const swap = () => {
         grid.classList.remove('anim'); grid.innerHTML = homeGrid();
         grid.animate([{ opacity: 0, transform: `translateX(${-dir * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.75,.25,1)' });
@@ -586,6 +560,7 @@
       if ((S.btab || 'saved') === v || S.screen !== 'board') return;
       S.btab = v;
       $('#btab-saved').classList.toggle('on', v === 'saved'); $('#btab-ideas').classList.toggle('on', v === 'ideas');
+      $('#boardsort').innerHTML = v === 'ideas' ? '' : SO.pillHTML(S.board);
       const g = $('#boardgrid');
       g.classList.remove('anim'); g.innerHTML = boardGrid(S.board);
       g.animate([{ opacity: 0, transform: `translateX(${v === 'ideas' ? 28 : -28}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.75,.25,1)' });
@@ -595,6 +570,19 @@
     ideaHide: () => { closeForm(); I.hide(); },
     ideaOpen: () => { I.openPin(); closeForm(); },
     ideasNow: () => I.now(),
+    // Sort: a small sheet of choices; the cards glide to their new places.
+    sortOpen: () => { S.sheet = 'sort'; S.add = false; S.cover = false; $('#formsheet').innerHTML = SO.sheetHTML(S.screen === 'board' ? S.board : 'all'); updateChrome(); tick(); },
+    sortPick: (v) => {
+      const onBoardScreen = S.screen === 'board', key = onBoardScreen ? S.board : 'all';
+      closeForm();
+      if (SO.get(key) === v) return;
+      SO.set(key, v);
+      const grid = onBoardScreen ? $('#boardgrid') : homeEl && homeEl.querySelector('#homegrid');
+      if (!grid) return;
+      grid.classList.remove('anim');
+      M.flipGrid(grid, () => { grid.innerHTML = onBoardScreen ? boardGrid(key) : homeGrid(); });
+      (onBoardScreen ? $('#boardsort') : homeEl.querySelector('#homesort')).innerHTML = SO.pillHTML(key);
+    },
     addGallery: () => { S.add = false; updateChrome(); N.pick(currentBoard()); },
     addCamera: () => { S.add = false; updateChrome(); N.camera(currentBoard()); },
     addNote: () => { const r = call('addNote', currentBoard()); if (r) go('item', { item: r.id, prev: S.screen }); },

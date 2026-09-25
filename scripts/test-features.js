@@ -83,14 +83,15 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.locator('.sortbox .dd').click();
   await page.locator('.ddlist:not(.out) .ddopt', { hasText: 'Date taken, newest' }).click();
   await page.locator('.grid > .dategroup').first().waitFor();
-  assert.equal(await page.locator('.grid > .dategroup').last().innerText(), 'NO DATE');
+  const thisMonth = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
+  assert.equal(await page.locator('.grid > .dategroup').last().innerText(), thisMonth, 'no date inside the picture: the day it was added');
   await page.reload();
   await page.locator('.grid > .dategroup').first().waitFor();
   assert.match(await page.locator('.sortbox .dd').innerText(), /Date taken, newest/, 'remembered');
   await page.locator('.sortbox .dd').click();
   await page.locator('.ddlist:not(.out) .ddopt', { hasText: 'Newest added' }).click();
   assert.equal(await page.locator('.grid > .dategroup').count(), 0);
-  ok('sort by name or date taken (a heading for each month), remembered per board');
+  ok('sort by name or date taken (a heading for each month; the day it was added when the picture has no date), remembered per board');
 
   // Correcting a label: it saves, survives a restart and a re-scan
   const coat = onDisk().items.find((i) => i.originalName === 'outfit coat.jpg');
@@ -113,6 +114,17 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.locator(`.grid .card[data-id="${coat.id}"]`).click();
   await page.locator('.side .lsum').click();
   assert.equal(await page.locator('.recog .dd[aria-label="What this is"]').innerText(), 'Wallpaper');
+  // Colours: take one off, add one, then go back to what the PC saw.
+  const colourTags = page.locator('.recog .colourtag.rm');
+  const firstColour = (await colourTags.first().innerText()).trim().toLowerCase();
+  await colourTags.first().click();
+  await page.waitForFunction(([id, c]) => { const l = NB.S.snap.items.find((i) => i.id === id).labels; return l && Array.isArray(l.colours) && !l.colours.includes(c); }, [coat.id, firstColour]);
+  await page.locator('.recog .dd[aria-label="Add a colour"]').click();
+  await page.locator('.ddlist:not(.out) .ddopt', { hasText: /^Orange$/ }).click();
+  await page.waitForFunction((id) => (NB.S.snap.items.find((i) => i.id === id).labels.colours || []).includes('orange'), coat.id);
+  assert.ok(onDisk().items.find((i) => i.id === coat.id).labels.colours.includes('orange'), 'saved');
+  await page.locator('.recog .linkbtn', { hasText: 'Use the colours the PC saw' }).click();
+  await page.waitForFunction((id) => !Array.isArray((NB.S.snap.items.find((i) => i.id === id).labels || {}).colours), coat.id);
   await page.locator('.recog .linkbtn', { hasText: 'Use what the PC saw' }).click();
   await page.waitForFunction((id) => !NB.S.snap.items.find((i) => i.id === id).labels, coat.id);
   await page.keyboard.press('Escape');
@@ -133,9 +145,14 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
 
   // Suggested groups and matching sets
   await page.locator('#suggested .sughead').waitFor({ timeout: 10000 });
-  assert.equal(await page.locator('#suggested .navrow').count(), 0, 'Suggested starts folded away');
+  assert.equal(await page.locator('#suggested.open').count(), 0, 'Suggested starts folded away');
+  assert.equal(await page.locator('#suggested .sugbody').evaluate((b) => Math.round(b.getBoundingClientRect().height)), 0);
   await page.locator('#suggested .sughead').click();
   await page.locator('#suggested .navrow').first().waitFor({ timeout: 10000 });
+  const mid = await page.locator('#suggested .sugbody').evaluate(async (b) => { await new Promise((r) => setTimeout(r, 120)); return b.getBoundingClientRect().height; });
+  await page.waitForTimeout(600);
+  const full = await page.locator('#suggested .sugbody').evaluate((b) => b.getBoundingClientRect().height);
+  assert.ok(mid > 0 && mid < full, `it slides open (${Math.round(mid)} of ${Math.round(full)}px part way), not all at once`);
   const names = await page.locator('#suggested .sugname').allInnerTexts();
   assert.ok(names.some((n) => /set/i.test(n)), 'a matching set: ' + names.join(', '));
   const itemsBefore = JSON.stringify(onDisk().items.map((i) => [i.id, i.boards, i.deletedAt]));
@@ -182,6 +199,17 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   const feedFile = JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'feed', 'feeds.json'), 'utf8'));
   assert.ok(feedFile.hidden.includes(gone), 'remembered after a restart');
   ok('Not for me hides a pin for good');
+
+  // Clicking a pin: a close-up inside Notebook, a sharper picture follows, ← → for the next, Esc closes.
+  await page.locator('#ideas .idea .idea-open').first().click();
+  await page.locator('.ideaview .idea-save').waitFor();
+  const firstPin = await page.locator('.ideaview').getAttribute('data-pin');
+  await page.waitForFunction(() => { const i = document.querySelector('.ideaview img'); return i && /-big\.jpg$/.test(i.src); });
+  await page.keyboard.press('ArrowRight');
+  assert.notEqual(await page.locator('.ideaview').getAttribute('data-pin'), firstPin, 'the next idea');
+  await page.keyboard.press('Escape');
+  await page.locator('.ideaview').waitFor({ state: 'detached' });
+  ok('clicking a pin opens a close-up straight away (sharper picture, next with →, Esc closes)');
 
   // Save: with no downloader tools in the test, it says so and the button goes back to Save.
   const card = page.locator('#ideas .idea').first();

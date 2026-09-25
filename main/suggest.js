@@ -12,7 +12,9 @@ function labelsOf(it) {
   const ai = it.ai || {}, l = it.labels || {};
   const main = l.main || (ai.type && ai.type.main) || null;
   const extra = l.extra || (ai.type && ai.type.extra) || [];
-  return { main, types: main ? [main, ...extra.filter((t) => t !== main)] : extra, styles: l.styles || ai.styles || [], colours: ai.colours || [] };
+  const HEX = { black: '#141416', white: '#F0F0EE', grey: '#808080', navy: '#1C2448', blue: '#2C5ABE', green: '#28823C', beige: '#DCCDAF', brown: '#6E4628', red: '#C81E28', pink: '#F096B4', purple: '#6E3CA0', yellow: '#F0D228', orange: '#F0821E' };
+  const colours = Array.isArray(l.colours) ? l.colours.map((name) => ({ name, hex: HEX[name] || '#808080', share: 1 / l.colours.length })) : ai.colours || [];
+  return { main, types: main ? [main, ...extra.filter((t) => t !== main)] : extra, styles: l.styles || ai.styles || [], colours };
 }
 
 const cos = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };

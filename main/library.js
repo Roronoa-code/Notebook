@@ -16,6 +16,8 @@ const DB = 'library.json';
 const MAX_UPLOAD = 2 * 1024 ** 3;
 const PHOTO_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.dng']; // .dng: camera RAW, shown by its preview (raw.js)
 const VIDEO_EXT = ['.mp4', '.m4v', '.webm', '.mov'];
+// Colours you can set on an item yourself (the colour families the filters use).
+const COLOUR_NAMES = ['black', 'white', 'grey', 'navy', 'blue', 'green', 'beige', 'brown', 'red', 'pink', 'purple', 'yellow', 'orange'];
 const DEFAULT_BOARDS = ['Outfits', 'Wallpapers', 'Icons', 'Profile pictures'];
 
 const now = () => new Date().toISOString();
@@ -333,6 +335,10 @@ class Library {
     if ('extra' in changes) {
       if (changes.extra === null) delete next.extra;
       else next.extra = [...new Set((Array.isArray(changes.extra) ? changes.extra : []).filter((t) => types.includes(t)))];
+    }
+    if ('colours' in changes) {
+      if (changes.colours === null) delete next.colours;
+      else next.colours = [...new Set((Array.isArray(changes.colours) ? changes.colours : []).map(String).filter((c) => COLOUR_NAMES.includes(c)))].slice(0, 4);
     }
     if ('styles' in changes) {
       if (changes.styles === null) delete next.styles;

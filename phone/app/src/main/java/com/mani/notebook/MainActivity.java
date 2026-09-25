@@ -346,9 +346,9 @@ public class MainActivity extends Activity {
 
         // Ideas: the feeds the PC prepared, fetching new ones, saving or hiding a pin, opening it in Pinterest.
         @JavascriptInterface public String feed() { try { return Core.sync(MainActivity.this).feedJson(); } catch (Exception e) { return error(e); } }
-        @JavascriptInterface public void feedRefresh() {
+        @JavascriptInterface public void feedRefresh(String want) {
             runOnUiThread(() -> withLocalNetwork(() -> feedWorker.execute(() -> {
-                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow()); }
+                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow(want == null || want.isEmpty() ? null : want)); }
                 catch (Exception e) { js("nbOnFeed", error(e)); }
             })));
         }

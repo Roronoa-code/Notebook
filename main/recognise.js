@@ -76,20 +76,33 @@ function palette(pixels, k = 4, minShare = 0.12) {
     .filter((g) => g.share >= minShare).sort((a, b) => b.share - a.share).slice(0, 3);
 }
 
-// Loads the models (once). `modelsDir` is where they were downloaded (e.g. D:\Notebook Tools\models).
-async function load(modelsDir, { allowDownload = false } = {}) {
-  if (loaded) return loaded;
-  loaded = (async () => {
+const CLIP = 'Xenova/clip-vit-large-patch14';
+// The graphics card (DirectML) when it works, otherwise the processor.
+const tryDevices = async (make) => { let last; for (const device of ['dml', 'cpu']) { try { return { m: await make(device), device }; } catch (e) { last = e; } } throw last; };
+
+// Just the picture fingerprint model (what Ideas needs), loaded once; the full set below reuses it.
+let clipLoaded = null;
+function loadClip(modelsDir, { allowDownload = false } = {}) {
+  if (clipLoaded) return clipLoaded;
+  clipLoaded = (async () => {
     T = await import('@huggingface/transformers');
     T.env.cacheDir = modelsDir;
     T.env.localModelPath = modelsDir;
     T.env.allowRemoteModels = allowDownload; // offline by default: nothing is fetched once the models are here
-    const CLIP = 'Xenova/clip-vit-large-patch14';
-    // The graphics card (DirectML) when it works, otherwise the processor.
-    const tryDevices = async (make) => { let last; for (const device of ['dml', 'cpu']) { try { return { m: await make(device), device }; } catch (e) { last = e; } } throw last; };
     const vis = await tryDevices((device) => T.CLIPVisionModelWithProjection.from_pretrained(CLIP, { device, dtype: 'fp32' }));
+    return { vis: vis.m, device: vis.device, processor: await T.AutoProcessor.from_pretrained(CLIP) };
+  })();
+  clipLoaded.catch(() => { clipLoaded = null; });
+  return clipLoaded;
+}
+
+// Loads the models (once). `modelsDir` is where they were downloaded (e.g. D:\Notebook Tools\models).
+async function load(modelsDir, { allowDownload = false } = {}) {
+  if (loaded) return loaded;
+  loaded = (async () => {
+    const C = await loadClip(modelsDir, { allowDownload });
+    const vis = { m: C.vis, device: C.device }, processor = C.processor;
     const txt = await T.CLIPTextModelWithProjection.from_pretrained(CLIP, { device: vis.device, dtype: 'fp32' });
-    const processor = await T.AutoProcessor.from_pretrained(CLIP);
     const tokenizer = await T.AutoTokenizer.from_pretrained(CLIP);
     const seg = await tryDevices((device) => T.pipeline('image-segmentation', 'Xenova/segformer_b2_clothes', { device }));
     const embedText = async (texts) => {
@@ -193,4 +206,4 @@ async function analyse(M, file, styles = DEFAULT_STYLES) {
   return out;
 }
 
-module.exports = { load, analyse, embedBytes, typeOf, TYPES_VERSION, palette, lab, TYPES, DEFAULT_STYLES, NAMED };
+module.exports = { load, loadClip, analyse, embedBytes, typeOf, TYPES_VERSION, palette, lab, TYPES, DEFAULT_STYLES, NAMED };

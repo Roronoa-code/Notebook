@@ -153,7 +153,16 @@ const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 
   assert.ok(got.boards.includes(boardId), 'saved onto the board it was found for');
   await page4.waitForFunction(() => document.querySelector('#ideas .idea .idea-save').dataset.state === 'saved');
   await page4.screenshot({ path: path.join(OUT, 'ideas-board.png') });
-  await app4.close();
   ok('a board’s Ideas come from its own pins and searches; Save puts the pin on that board and shows Saved');
+
+  // Where things came from: Pinterest and TikTok saves can be picked out.
+  await page4.locator('.segbtn', { hasText: 'Saved' }).click();
+  await page4.locator('.bcard[data-id="all"]').click();
+  await page4.locator('.filters .fchip', { hasText: 'TikTok' }).click();
+  assert.equal(await page4.locator('#grid > .card').count(), 1, 'the one TikTok video');
+  await page4.locator('.filters .fchip', { hasText: 'TikTok' }).click();
+  assert.ok(await page4.locator('.filters .fchip', { hasText: 'Pinterest' }).count(), 'a Pinterest filter too');
+  await app4.close();
+  ok('saved pins and videos can be told apart from your own photos (Pinterest / TikTok / My photos filter)');
   console.log(`\nAll ${passed} checks passed. Screenshot: ${OUT}`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

@@ -69,7 +69,12 @@ const sync = new SyncServer({
   settingsFile: path.join(app.getPath('userData'), 'sync.json'),
   host: process.env.NOTEBOOK_SYNC_HOST || undefined, // the checks use 127.0.0.1 so Windows Firewall doesn't ask
   port: Number(process.env.NOTEBOOK_SYNC_PORT) || undefined,
-  onLibraryChanged: ({ arrived }) => { send('lib:changed', { snap: lib && lib.data ? snapshot() : null, arrived }); if (features) features.kick(); },
+  onLibraryChanged: ({ arrived }) => {
+    send('lib:changed', { snap: lib && lib.data ? snapshot() : null, arrived });
+    if (features) features.kick();
+    // Photos and videos just sent by the phone: when were they taken?
+    if (arrived.length && lib) lib.fillDates().then((n) => { if (n) send('lib:changed', { snap: snapshot(), arrived: [] }); }).catch((err) => console.error('dates', err));
+  },
   onStatusChanged: () => send('sync:changed'),
   onKeepReady: (on) => applyKeepReady(on)
 });
@@ -372,8 +377,8 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   protocol.handle('nb', async (request) => {
     // Pictures for Ideas: fetched from Pinterest by this PC the first time they're shown, then kept.
-    const idea = /^nb:\/\/notebook\/feed\/([0-9a-f]{32})\.jpg$/.exec(request.url);
-    if (idea) { const file = features && await features.feed.image(idea[1]); return file ? serveFile(file, request) : new Response('Not found', { status: 404 }); }
+    const idea = /^nb:\/\/notebook\/feed\/([0-9a-f]{32})(-big)?\.jpg$/.exec(request.url);
+    if (idea) { const file = features && await features.feed.image(idea[1], !!idea[2]); return file ? serveFile(file, request) : new Response('Not found', { status: 404 }); }
     const file = resolveUrl(request.url);
     return file ? serveFile(file, request) : new Response('Not found', { status: 404 });
   });

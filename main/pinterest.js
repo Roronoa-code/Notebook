@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { WebContentsView, Menu, shell, app, ipcMain, session } = require('electron');
 const { attachAdFilter } = require('./adfilter');
-const { HIDE_AT, VERSION: AI_VERSION } = require('./aidetect');
+const { HIDE_AT, STRICT, VERSION: AI_VERSION } = require('./aidetect');
 
 const HOME = 'https://www.pinterest.com/';
 const PARTITION = 'persist:pinterest';
@@ -27,7 +27,7 @@ const signatureOf = (url) => { const m = /\/([0-9a-f]{32})\.(?:jpe?g|png|webp|gi
 function setupPinterest({ getWin, handle, send, save, aiScore }) {
   let ai = { hide: true, scores: {} };
   try { ai = { ...ai, ...JSON.parse(fs.readFileSync(aiFile(), 'utf8')) }; } catch { /* first time */ }
-  if (ai.v !== AI_VERSION) { ai.scores = {}; ai.v = AI_VERSION; } // answers from an older detector are worked out again
+  if (ai.v !== AI_VERSION) { ai.scores = {}; ai.strict = {}; ai.v = AI_VERSION; } // answers from an older detector are worked out again
   let aiSaveTimer = null, queue = Promise.resolve(), countTimer = null;
   const hiddenSigs = new Set(); // AI-made pictures kept off the page this time (for the toolbar count)
   const counted = (sig) => { if (!hiddenSigs.has(sig)) { hiddenSigs.add(sig); clearTimeout(countTimer); countTimer = setTimeout(() => send('pin:ai', { hidden: hiddenSigs.size }), 300); } return true; };
@@ -82,18 +82,25 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
     }
     saveAi();
   }
-  // The same check for a picture already downloaded (the Ideas feed): true if it should be left out.
+  // The stricter check for Ideas, on a picture already downloaded: true if it should be left out.
+  // (Its own answers, kept with the others; a pin found AI-made here is also hidden in the panel.)
   async function aiHide(url, bytes) {
     const sig = signatureOf(url);
     if (!ai.hide || !sig) return false;
-    if (!(sig in ai.scores)) {
-      const score = await aiScore(Buffer.from(bytes));
+    ai.strict = ai.strict || {};
+    if (!(sig in ai.strict)) {
+      const score = await aiScore(Buffer.from(bytes), true);
       if (score == null) return false;
-      ai.scores[sig] = Math.round(score * 1000) / 1000;
+      ai.strict[sig] = Math.round(score * 1000) / 1000;
+      if (score >= HIDE_AT) ai.scores[sig] = ai.strict[sig];
+      const keys = Object.keys(ai.strict); if (keys.length > 20000) for (const k of keys.slice(0, keys.length - 20000)) delete ai.strict[k];
       saveAi();
     }
-    return isAiSig(sig);
+    return ai.strict[sig] >= STRICT.sure;
   }
+  // For Ideas: the quick detector alone (a first sort), and whether a picture is already decided.
+  const aiQuick = (bytes) => (ai.hide ? aiScore(Buffer.from(bytes), 'quick') : Promise.resolve(0));
+  const aiKnown = (url) => { const sig = signatureOf(url); if (!ai.hide) return false; if (!sig || !ai.strict || !(sig in ai.strict)) return null; return ai.strict[sig] >= STRICT.sure; };
   ipcMain.handle('pin:ai', (e, url) => (view && e.sender === view.webContents && /^https:\/\/i\.pinimg\.com\//.test(String(url)) ? checkPicture(String(url)) : { hide: false }));
   handle('pin:aiSetting', (on) => { if (typeof on === 'boolean') { ai.hide = on; saveAi(); if (view) view.webContents.reload(); } return { hide: ai.hide, hidden: hiddenSigs.size }; });
 
@@ -102,7 +109,7 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
   const state = () => ({ url: view ? view.webContents.getURL() : null, pin: view && !loading ? pinOf(view.webContents.getURL()) : null, canBack: !!(view && view.webContents.navigationHistory.canGoBack()) });
   const tell = () => send('pin:state', state());
 
-  function make() {
+  function make(start) {
     view = new WebContentsView({ webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'pinterest-preload.js') } });
     view.setBackgroundColor('#0A0A0A');
     const wc = view.webContents;
@@ -125,12 +132,15 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
       if (!pin) return;
       Menu.buildFromTemplate([{ label: 'Save to Notebook', click: () => save(pin) }]).popup({ window: getWin() });
     });
-    wc.loadURL(lastPage());
+    wc.loadURL(start || lastPage());
   }
 
-  handle('pin:open', (bounds) => {
+  // `url`: open straight on that pin (from Ideas), rather than where you left it and then the pin.
+  handle('pin:open', (bounds, url) => {
     const win = getWin();
-    if (!view) make();
+    const pin = url ? pinOf(url) : null;
+    if (!view) make(pin);
+    else if (pin && pinOf(view.webContents.getURL()) !== pin) view.webContents.loadURL(pin);
     win.contentView.addChildView(view);
     if (bounds) view.setBounds(bounds);
     return state();
@@ -146,7 +156,7 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
     if (!pin) { const e = new Error(); e.friendly = 'Open a pin first, then press Save to library.'; throw e; }
     return save(pin);
   });
-  return { pinOf, aiHide, session: () => session.fromPartition(PARTITION) };
+  return { pinOf, aiHide, aiQuick, aiKnown, session: () => session.fromPartition(PARTITION) };
 }
 
 module.exports = { setupPinterest, pinOf };

@@ -22,6 +22,8 @@ const STRONG = { // SigLIP2 + DINOv2, MIT (Bombek1/ai-image-detector-siglip-dino
 const SURE = 0.9;   // each detector must be at least this sure
 const HIDE_AT = 0.9; // the combined score (below) hides a pin from here
 const VERSION = 2;   // bump when the scoring changes, so remembered answers are worked out again
+// Ideas can afford to be stricter: a real pin wrongly left out just makes room for another one.
+const STRICT = { sure: 0.5, quickAlone: 0.8 };
 
 const sessions = {};
 async function load(modelsDir, M) {
@@ -51,14 +53,16 @@ async function run(modelsDir, M, bytes) {
 }
 
 // bytes: an image file's bytes. Returns a score from 0 to 1; HIDE_AT and above means AI-made.
-async function score(modelsDir, bytes) {
+// With `strict` (STRICT), the second opinion is asked from 0.5 and the answer compares with 0.5, not HIDE_AT.
+async function score(modelsDir, bytes, strict) {
+  const sure = strict ? strict.sure : SURE, alone = strict ? strict.quickAlone : 0.99, line = strict ? strict.sure : HIDE_AT;
   const quick = await run(modelsDir, QUICK, bytes);
   if (quick == null) { const e = new Error('The AI-picture detector is not on this PC yet.'); e.missing = true; throw e; }
-  if (quick < SURE) return quick;
+  if (quick < sure) return quick;
   const strong = await run(modelsDir, STRONG, bytes);
-  // Without the stronger detector, only pictures the quick one is almost certain about count.
-  if (strong == null) return quick >= 0.99 ? quick : Math.min(quick, HIDE_AT - 0.01);
+  // Without the stronger detector, only pictures the quick one is very sure about count.
+  if (strong == null) return quick >= alone ? quick : Math.min(quick, line - 0.01);
   return Math.min(quick, strong);
 }
 
-module.exports = { score, HIDE_AT, VERSION, QUICK, STRONG, run };
+module.exports = { score, HIDE_AT, VERSION, STRICT, QUICK, STRONG, run };

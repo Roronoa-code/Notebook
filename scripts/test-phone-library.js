@@ -31,6 +31,26 @@ const { chromium } = require('playwright-core');
     const got = await cardImg.evaluate((i) => i.getBoundingClientRect().width / i.getBoundingClientRect().height);
     assert.ok(Math.abs(got - cropped.want) < 0.03, `the card takes the cropped shape (${got.toFixed(3)} vs ${cropped.want.toFixed(3)})`);
 
+    // Sort (as on the PC): by date taken with month headings, by name; cards glide to their new places.
+    await page.locator('#homesort .sortpill').click();
+    await page.locator('#formsheet [data-a="sortPick"][data-v="taken"]').click();
+    const glided = await page.evaluate(() => document.querySelectorAll('#homegrid .card').length && [...document.querySelectorAll('#homegrid .card')].some((c) => c.getAnimations().length));
+    assert.ok(glided, 'the cards glide rather than jump');
+    await page.waitForTimeout(600);
+    const thisMonth = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
+    assert.deepEqual(await page.locator('#homegrid .dategroup').allInnerTexts(), [thisMonth, 'JUNE 2025', 'FEBRUARY 2025'], 'no date inside: the day it was added');
+    assert.equal(await page.locator('#homegrid .dategroup:nth-of-type(2) + .card').getAttribute('aria-label'), 'Open Sage cardigan fit', 'newest taken first');
+    assert.match(await page.locator('#homesort').innerText(), /Date taken, newest/);
+    await page.locator('#homesort .sortpill').click();
+    await page.locator('#formsheet [data-a="sortPick"][data-v="name"]').click();
+    await page.waitForTimeout(600);
+    const names = (await page.locator('#homegrid > .card').evaluateAll((cs) => cs.map((c) => c.getAttribute('aria-label').replace(/^Open /, ''))));
+    assert.deepEqual(names, names.slice().sort((a, b) => a.localeCompare(b, 'en-GB', { numeric: true, sensitivity: 'base' })), 'A to Z');
+    await page.locator('#homesort .sortpill').click();
+    await page.locator('#formsheet [data-a="sortPick"][data-v="added"]').click();
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator('#homegrid .dategroup').count(), 0);
+
     // Search: titles, photo notes, note text and board names.
     await page.locator('#nav-search').click();
     await page.locator('#q').waitFor();

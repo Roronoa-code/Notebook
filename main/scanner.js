@@ -33,8 +33,8 @@ class Scanner {
   }
 
   // How likely a picture is to be AI-made (0 to 1), from its bytes; null if the detector isn't available.
-  async aiScore(bytes) {
-    const res = await this.ask({ cmd: 'aicheck', bytes });
+  async aiScore(bytes, strict = false) {
+    const res = await this.ask({ cmd: 'aicheck', bytes, strict });
     return res.ok ? res.score : null;
   }
 

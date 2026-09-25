@@ -335,7 +335,14 @@
     for (const c of [...grid.children]) if (!keep.has(c)) c.remove();
     order.forEach((el, i) => { if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null); });
     S.anim = false;
-    if (glide) {
+    // Many cards coming or going at once (a filter): gliding them all across columns looks chaotic, so
+    // the new set simply fades softly in. A few (a new picture, a stack): they glide as before.
+    const nowIds = new Set(list.map((i) => i.id));
+    const moved = glide ? [...beforeId.keys()].filter((id) => !nowIds.has(id)).length + [...nowIds].filter((id) => !beforeId.has(id)).length : 0;
+    if (glide && moved > 3) {
+      grid.getAnimations().forEach((a) => a.cancel());
+      grid.animate([{ opacity: 0.15, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    } else if (glide) {
       const ease = 'cubic-bezier(.2,.9,.3,1)';
       const onScreen = (r) => r && r.bottom > -100 && r.top < innerHeight + 100;
       for (const el of els) {

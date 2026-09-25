@@ -78,14 +78,14 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
     return { results: await dl.check(saved) };
   });
   handle('links:update', async () => ({ update: await dl.update() }));
-  const pinterest = setupPinterest({ getWin, handle, send, save: (url) => save(url, null), aiScore: (bytes) => scanner.aiScore(bytes) });
+  const pinterest = setupPinterest({ getWin, handle, send, save: (url) => save(url, null), aiScore: (bytes, strict) => scanner.aiScore(bytes, strict) });
 
   // ---------- Ideas (the Pinterest-style feed) ----------
   const changed = new Map();
   const feed = new Feed({
     getLib, dir: path.join(app.getPath('userData'), 'feed'),
     source: process.env.NOTEBOOK_FAKE_FEED ? new FakeSource() : new PinterestSource(pinterest.session),
-    embeddings: (lib) => scanner.embeddings(lib), embed: (bytes) => scanner.embed(bytes), aiHide: pinterest.aiHide,
+    embeddings: (lib) => scanner.embeddings(lib), embed: (bytes) => scanner.embed(bytes), aiHide: pinterest.aiHide, aiQuick: pinterest.aiQuick, aiKnown: pinterest.aiKnown,
     onChange: (key) => { clearTimeout(changed.get(key)); changed.set(key, setTimeout(() => send('feed:changed', { key }), 120)); }
   });
   // Plain answers (no library snapshot each time): { feed } or { error }.
@@ -105,6 +105,8 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
   };
   feedCall('feed:save', (url, boardId) => (saveIdea(String(url), boardId) ? {} : { error: 'That isn’t a Pinterest pin.' }));
   feed.saveIdea = saveIdea;
+  // For you and recently looked-at boards are kept ready (checked a minute after start, then every hour).
+  setTimeout(() => { feed.warm(); setInterval(() => feed.warm(), 60 * 60 * 1000); }, process.env.NOTEBOOK_USER_DATA ? 3600000 : 60000);
 
   return { kick, scanner, tools, feed, styles: () => getLib().styles(DEFAULT_STYLES), types: Object.keys(TYPES) };
 }

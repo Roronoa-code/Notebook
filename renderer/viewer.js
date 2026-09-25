@@ -225,7 +225,8 @@
       bits.push(it.kind === 'video' ? 'Video' : 'Photo');
       if (it.w && it.h) bits.push(`${Math.round(it.w)} × ${Math.round(it.h)}`);
       if (it.duration) bits.push(NB.duration(it.duration));
-      bits.push(it.takenAt ? `Taken ${NB.date(it.takenAt)}` : `Added ${NB.date(it.importedAt)}`);
+      const from = NB.smart.sourceOf(it);
+      bits.push(it.takenAt ? `Taken ${NB.date(it.takenAt)}` : from !== 'mine' ? `Saved from ${from === 'tiktok' ? 'TikTok' : 'Pinterest'} ${NB.date(it.importedAt)}` : `Added ${NB.date(it.importedAt)}`);
     }
     return bits.join(' · ');
   }

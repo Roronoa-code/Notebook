@@ -117,7 +117,7 @@
     img.addEventListener('error', () => { el.remove(); cards.delete(p.id); }, { once: true }); // a picture Pinterest no longer has
     const save = h('button', { type: 'button', class: 'btn small accent idea-save', onclick: () => saveIt(p, el) });
     const media = h('div', { class: 'media' }, img,
-      h('button', { type: 'button', class: 'idea-open', 'aria-label': `Open ${p.title || 'this pin'} on Pinterest`, onclick: () => NB.links.openAt(p.url) }),
+      h('button', { type: 'button', class: 'idea-open', 'aria-label': `Look at ${p.title || 'this pin'}`, onclick: () => closeup(p) }),
       p.video ? h('span', { class: 'badge' }, icon('play'), 'Video') : null,
       save,
       h('button', { type: 'button', class: 'iconbtn idea-hide', 'aria-label': 'Not for me', title: 'Not for me', onclick: () => hideIt(p, el) }, icon('x')));
@@ -127,9 +127,42 @@
     return el;
   }
 
+  // A pin up close, inside Notebook (instant: its picture is already here; a sharper copy follows).
+  // Save, Open in Pinterest, Not for me; ← → go through the ideas, Esc closes.
+  function closeup(p) {
+    document.querySelector('.ideaview')?.remove();
+    const img = h('img', { src: `nb://notebook/feed/${p.sig}.jpg`, alt: p.title || 'A pin from Pinterest', width: p.w, height: p.h });
+    const sharp = new Image();
+    sharp.src = `nb://notebook/feed/${p.sig}-big.jpg`;
+    sharp.decode().then(() => { if (img.isConnected) img.src = sharp.src; }, () => {});
+    const box = h('div', { class: 'ideaview', role: 'dialog', 'aria-modal': 'true', 'aria-label': p.title || 'Idea', 'data-pin': p.id });
+    const close = () => { document.removeEventListener('keydown', keys, true); box.classList.add('out'); setTimeout(() => box.remove(), 180); };
+    const step = (d) => { const i = data.pins.findIndex((x) => x.id === p.id), next = data.pins[i + d]; if (next) { document.removeEventListener('keydown', keys, true); closeup(next); } };
+    const keys = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(e.key === 'ArrowRight' ? 1 : -1); }
+    };
+    box.append(h('div', { class: 'iv-back', onclick: close }),
+      h('div', { class: 'iv-panel' },
+        h('div', { class: 'iv-pic' }, img, p.video ? h('span', { class: 'badge' }, icon('play'), 'Video') : null),
+        h('div', { class: 'iv-side' },
+          h('span', { class: 'micro' }, 'From Pinterest'),
+          h('h3', { class: 'display' }, p.title || 'Untitled pin'),
+          h('button', { type: 'button', class: 'btn accent idea-save', onclick: () => saveIt(p, box) }),
+          h('button', { type: 'button', class: 'btn', onclick: () => { close(); NB.links.openAt(p.url); } }, icon('pin'), 'Open in Pinterest'),
+          h('button', { type: 'button', class: 'btn', onclick: () => { close(); const el = cards.get(p.id); if (el) hideIt(p, el); else nb.feedHide(p.id); } }, icon('x'), 'Not for me'),
+          h('p', { class: 'hint' }, '← → for the next idea')),
+        h('button', { type: 'button', class: 'iconbtn spin iv-close', 'aria-label': 'Close', onclick: close }, icon('x'))));
+    mark(box, p);
+    document.body.append(box);
+    document.addEventListener('keydown', keys, true);
+    box.querySelector('.idea-save').focus();
+  }
+
   // The Save button: Save, Saving…, or Saved.
   function mark(el, p) {
-    const b = el.querySelector('.idea-save');
+    const b = el && el.querySelector('.idea-save');
+    if (!b) return;
     const state = p.saved ? 'saved' : saving.has(p.url) ? 'saving' : 'save';
     if (b.dataset.state === state) return;
     b.dataset.state = state;
@@ -140,9 +173,9 @@
 
   async function saveIt(p, el) {
     saving.add(p.url);
-    mark(el, p);
+    mark(el, p); mark(cards.get(p.id), p);
     const res = await nb.feedSave(p.url, NB.currentBoardId());
-    if (res && res.error) { saving.delete(p.url); mark(el, p); toast(res.error, { error: true }); }
+    if (res && res.error) { saving.delete(p.url); mark(el, p); mark(cards.get(p.id), p); toast(res.error, { error: true }); }
   }
   // The saved link's result (the toast itself comes from links.js).
   nb.onLinkSaved((r) => {
@@ -151,6 +184,8 @@
     const el = p && cards.get(p.id);
     if (p) p.saved = !!r.ok;
     if (el) mark(el, p);
+    const open = document.querySelector('.ideaview');
+    if (p && open && open.dataset.pin === p.id) mark(open, p);
   });
 
   async function hideIt(p, el) {

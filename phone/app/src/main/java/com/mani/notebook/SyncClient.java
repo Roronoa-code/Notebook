@@ -236,16 +236,19 @@ public class SyncClient {
     }
 
     // Fetches the feeds now (the Ideas screen asks when they're old). Returns the new feed JSON.
-    String refreshFeedNow() throws Exception {
+    // `want`: a board whose ideas the phone is showing (the PC makes them now if it has none yet).
+    String refreshFeedNow(String want) throws Exception {
         if (!paired()) throw new IOException("Pair with your PC first, then ideas arrive from it.");
         String b = base(), token = p.getString("token", null);
         sendFeedQueue(b, token);
-        refreshFeed(b, token);
+        refreshFeed(b, token, want);
         return feedJson();
     }
 
-    private void refreshFeed(String b, String token) throws Exception {
-        JSONObject o = new JSONObject(request("GET", b + "/api/feed", null, token, 20000));
+    private void refreshFeed(String b, String token) throws Exception { refreshFeed(b, token, null); }
+    private void refreshFeed(String b, String token, String want) throws Exception {
+        String q = want != null && want.matches("[A-Za-z0-9-]{1,64}") ? "?want=" + want : "";
+        JSONObject o = new JSONObject(request("GET", b + "/api/feed" + q, null, token, 30000));
         o.put("fetchedAt", Library.now());
         writeFeed(o);
         // The first pictures of each feed are fetched now, so ideas show even away from home.
