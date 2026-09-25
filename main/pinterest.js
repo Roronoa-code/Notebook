@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { WebContentsView, Menu, shell, app, ipcMain } = require('electron');
 const { attachAdFilter } = require('./adfilter');
-const { HIDE_AT } = require('./aidetect');
+const { HIDE_AT, VERSION: AI_VERSION } = require('./aidetect');
 
 const HOME = 'https://www.pinterest.com/';
 const PARTITION = 'persist:pinterest';
@@ -27,6 +27,7 @@ const signatureOf = (url) => { const m = /\/([0-9a-f]{32})\.(?:jpe?g|png|webp|gi
 function setupPinterest({ getWin, handle, send, save, aiScore }) {
   let ai = { hide: true, scores: {} };
   try { ai = { ...ai, ...JSON.parse(fs.readFileSync(aiFile(), 'utf8')) }; } catch { /* first time */ }
+  if (ai.v !== AI_VERSION) { ai.scores = {}; ai.v = AI_VERSION; } // answers from an older detector are worked out again
   let aiSaveTimer = null, queue = Promise.resolve(), countTimer = null;
   const hiddenSigs = new Set(); // AI-made pictures kept off the page this time (for the toolbar count)
   const counted = (sig) => { if (!hiddenSigs.has(sig)) { hiddenSigs.add(sig); clearTimeout(countTimer); countTimer = setTimeout(() => send('pin:ai', { hidden: hiddenSigs.size }), 300); } return true; };

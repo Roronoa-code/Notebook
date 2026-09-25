@@ -114,9 +114,11 @@ saved unless you choose it. Promoted (sponsored) pins are taken out before they 
 where you left it, and menus you open over it aren't hidden behind it.
 
 **Hide AI pins** (the switch in the Pinterest toolbar, on by default): every pin picture you see
-is checked once on your PC by an AI-picture detector, and pins it's very sure are AI-made are
-quietly hidden (the toolbar counts them). Nothing is sent anywhere for this. It's set to be
-careful, so it almost never hides a real photo, but some AI pictures will still get through.
+is checked once on your PC by two AI-picture detectors, and pins both are sure are AI-made are
+quietly taken out (the toolbar counts them). Nothing is sent anywhere for this. In tests it
+caught about 6 in 10 AI pictures and hid about 1 in 100 real photos by mistake, so some AI
+pictures will still get through. New pages of pins can take a second longer to appear the first
+time while their pictures are checked.
 Pinterest's own "See fewer AI Pins" setting (in your Pinterest settings) helps too. Pinterest
 sees what you browse there, just as it does in a browser.
 
