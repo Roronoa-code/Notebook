@@ -185,6 +185,35 @@ const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
   assert.ok(r.body.items.some((i) => i.id === pId), 'back on: sent again');
   ok('items switched off for the phone are left out of the sync answer, and come back when switched on');
 
+  // ---------- Ideas for the phone (the real feed, with made-up pins instead of Pinterest) ----------
+  const { Feed, FakeSource } = require('../main/feed');
+  const saves = [];
+  const feed = new Feed({ getLib: () => lib, dir: path.join(ROOT, 'userdata', 'feed'), source: new FakeSource(), embeddings: async () => ({}), embed: async () => null, aiHide: async () => false, log: { error: () => {} } });
+  feed.saveIdea = (url, boardId) => { if (!/^https:\/\/www\.pinterest\.com\/pin\/\d+\/$/.test(url)) return false; saves.push([url, boardId]); return true; };
+  server.feed = feed;
+  r = await api('GET', '/api/feed');
+  assert.equal(r.status, 401, 'Ideas need pairing too');
+  r = await api('GET', '/api/feed', { token });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.feeds.all && lib.data.boards.every((b) => r.body.feeds[b.id]), 'All and every board');
+  await new Promise((res) => setTimeout(res, 50));
+  await feed.queue; // the first ask starts them being made
+  r = await api('GET', '/api/feed', { token });
+  const pin = r.body.feeds.all.pins[0];
+  assert.ok(pin && pin.url && pin.sig && pin.w && pin.h, 'pins with their address, picture and shape');
+  r = await api('GET', '/api/feed/img/' + pin.sig, { token });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/jpeg');
+  assert.equal((await api('GET', '/api/feed/img/' + 'f'.repeat(32), { token })).status, 404, 'a picture no feed has');
+  assert.equal((await api('POST', '/api/feed/save', { token, json: { url: pin.url, boardId: null } })).status, 200);
+  assert.deepEqual(saves, [[pin.url, null]]);
+  assert.equal((await api('POST', '/api/feed/save', { token, json: { url: 'https://example.com/x' } })).status, 400, 'only Pinterest pins');
+  assert.equal((await api('POST', '/api/feed/hide', { token, json: { id: pin.id } })).status, 200);
+  r = await api('GET', '/api/feed', { token });
+  assert.ok(!r.body.feeds.all.pins.some((p) => p.id === pin.id), 'hidden from the phone is hidden everywhere');
+  assert.equal((await api('POST', '/api/feed/hide', { token, json: { id: '../x' } })).status, 400);
+  ok('Ideas for the phone: every feed, their pictures, save and hide (checked), paired phones only');
+
   // ---------- discovery ----------
   const reply = await new Promise((resolve, reject) => {
     const sock = dgram.createSocket('udp4');

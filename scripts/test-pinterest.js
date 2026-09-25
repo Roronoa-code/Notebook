@@ -120,5 +120,40 @@ const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 
   await page3.locator('#pin-ai-text', { hasText: 'Hide AI pins' }).waitFor();
   await app3.close();
   ok(`Hide AI pins: pins judged AI-made are hidden (${hiddenOnPage} here) and counted; answers are remembered; the switch turns it off`);
+
+  // Ideas from real Pinterest: For you on All items, a board's own Ideas, and saving one.
+  const app4 = await electron.launch({ ...(process.env.NOTEBOOK_EXE ? { executablePath: process.env.NOTEBOOK_EXE } : { args: [APP] }), env });
+  const page4 = await app4.firstWindow();
+  page4.on('pageerror', (e) => console.log('  [page error] ' + e.message));
+  await page4.locator('.bcard').first().waitFor();
+  const boardId = await page4.evaluate(async (pins) => {
+    const b = await nb.addBoard('Streetwear');
+    for (const it of NB.S.snap.items.filter((i) => pins.some((p) => (i.source || '').includes(p))).slice(0, 3)) await nb.updateItem(it.id, { boards: [b.id] });
+    NB.apply(await nb.state());
+    return b.id;
+  }, PINS);
+  await page4.locator('.bcard[data-id="all"]').click();
+  await page4.locator('.segbtn', { hasText: 'For you' }).click();
+  await page4.locator('#ideas .idea').nth(19).waitFor({ timeout: 120000 });
+  await page4.waitForFunction(() => [...document.querySelectorAll('#ideas .idea img')].slice(0, 4).every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 30000 });
+  const all = (await page4.evaluate(() => nb.feed('all'))).feed;
+  assert.ok(all.pins.every((p) => /^https:\/\/www\.pinterest\.com\/pin\/\d+\/$/.test(p.url)), 'real pins');
+  assert.equal(all.signedIn, false, 'this test isn’t signed in, so no home feed');
+  await page4.screenshot({ path: path.join(OUT, 'ideas-all.png') });
+  ok(`For you: ${all.pins.length} real pins from Pinterest (More like this and searches), pictures shown`);
+
+  await page4.locator(`.bcard[data-id="${boardId}"]`).click();
+  await page4.waitForFunction((id) => document.querySelectorAll('#ideas .idea').length >= 10 && NB.currentBoardId() === id, boardId, { timeout: 120000 });
+  const pick = page4.locator('#ideas .idea').first();
+  const pinId = await pick.getAttribute('data-pin');
+  await pick.hover();
+  await pick.locator('.idea-save').click();
+  await page4.waitForFunction((id) => NB.S.snap.items.some((i) => (i.source || '').includes(id)), pinId, { timeout: 120000 });
+  const got = onDisk().items.find((i) => (i.source || '').includes(pinId));
+  assert.ok(got.boards.includes(boardId), 'saved onto the board it was found for');
+  await page4.waitForFunction(() => document.querySelector('#ideas .idea .idea-save').dataset.state === 'saved');
+  await page4.screenshot({ path: path.join(OUT, 'ideas-board.png') });
+  await app4.close();
+  ok('a board’s Ideas come from its own pins and searches; Save puts the pin on that board and shows Saved');
   console.log(`\nAll ${passed} checks passed. Screenshot: ${OUT}`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

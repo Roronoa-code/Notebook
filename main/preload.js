@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('nb', {
   reorderBoards: call('boards:reorder'),
   updateItem: call('item:update'),
   saveThumb: call('item:thumb'),
+  rawThumb: call('item:rawThumb'),
   moveToBin: call('item:bin'),
   setOnPhone: call('items:onPhone'),
   stackItems: call('items:stack'),
@@ -60,6 +61,13 @@ contextBridge.exposeInMainWorld('nb', {
   onPinAi: (fn) => ipcRenderer.on('pin:ai', (_e, s) => fn(s)),
   pinGo: call('pin:go'),
   onPinState: (fn) => ipcRenderer.on('pin:state', (_e, s) => fn(s)),
+  // Ideas (the Pinterest-style feed)
+  feed: call('feed:get'),
+  feedRefresh: call('feed:refresh'),
+  feedMore: call('feed:more'),
+  feedHide: call('feed:hide'),
+  feedSave: call('feed:save'),
+  onFeedChanged: (fn) => ipcRenderer.on('feed:changed', (_e, s) => fn(s)),
   // Phone sync
   syncOpen: call('sync:open'),
   syncStatus: call('sync:status'),

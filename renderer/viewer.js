@@ -36,7 +36,9 @@
   function stageFor(it) {
     if (it.kind === 'photo') {
       const stage = h('div', { class: 'stage' });
-      const img = h('img', { src: it.src, alt: it.title, style: { objectViewBox: V.cropping ? '' : NB.viewBox(it) } });
+      const raw = NB.isRaw(it);
+      if (raw && !it.thumbSrc) return h('div', { class: 'stage' }, h('p', { class: 'ph' }, 'Making a preview of this RAW photo…'));
+      const img = h('img', { src: raw ? it.thumbSrc : it.src, alt: it.title, style: { objectViewBox: V.cropping ? '' : NB.viewBox(it) } });
       img.addEventListener('click', () => stage.classList.toggle('zoomed'));
       img.addEventListener('error', () => stage.replaceChildren(h('p', { class: 'ph' }, "This photo can't be shown. The file is still stored in your library.")));
       stage.append(img);
@@ -223,7 +225,7 @@
       bits.push(it.kind === 'video' ? 'Video' : 'Photo');
       if (it.w && it.h) bits.push(`${Math.round(it.w)} × ${Math.round(it.h)}`);
       if (it.duration) bits.push(NB.duration(it.duration));
-      bits.push(NB.date(it.importedAt));
+      bits.push(it.takenAt ? `Taken ${NB.date(it.takenAt)}` : `Added ${NB.date(it.importedAt)}`);
     }
     return bits.join(' · ');
   }

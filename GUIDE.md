@@ -34,6 +34,10 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   twice: you're told it's already there, with **Show it**.
 - **Boards**: they're listed on the left; drag one up or down to move it (or Alt + ↑ / ↓). Use **New board**,
   then **Rename board** or **Delete board** (click it twice). Deleting a board never deletes its items.
+- **Sort**: the menu next to the item count: **Newest added**, **Oldest added**, **Date taken**
+  (newest or oldest first, split into months) or **Name**. Each board remembers its own. The
+  date taken comes from the photo itself (what your phone or camera recorded), or from a dated
+  file name like `20260306_210639.jpg`. Things with no date go under **No date** at the end.
 - **Card size**: Ctrl + mouse wheel over the board, or Ctrl + plus / minus (Ctrl + 0 goes back).
   Videos play quietly on their cards while the pointer rests on them.
 - **Picking several**: Ctrl-click (or tick) cards, or Ctrl+A for everything showing. Then
@@ -50,7 +54,8 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   **Save crop**. Only the part you chose shows, here and on your phone. The original file
   stays whole: **Change crop** → **Show the whole picture** brings it all back.
 - **Open anything**: click it. Photos open full size (click to zoom), and notes open in the
-  editor. Videos play quietly on a loop: click (or Space) to pause, drag along the line at the
+  editor. Camera RAW photos (`.dng`, from a phone's Pro or RAW mode) show the picture saved
+  inside them; the RAW file itself is kept untouched. Videos play quietly on a loop: click (or Space) to pause, drag along the line at the
   bottom to move through it, and the speaker (or M) for sound. GIFs move on their cards.
   Use ← → to move between items and Esc to close.
 - **Several boards**: tick boards on the right when an item is open.
@@ -66,7 +71,8 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
 
 Notebook looks at every photo and video (by its preview) in the background and works out:
 
-- **What it is**: outfit, wallpaper, icon, profile picture or other. Each gets a main label
+- **What it is**: outfit, wallpaper, icon, profile picture or other (photos of things, like
+  a PC setup or a room, count as other). Each gets a main label
   and can have extra ones (a street photo can be an outfit and a profile picture).
 - **For outfits**: the colours of the clothes (only the clothes, never the background) and
   the top two styles from **your style list**.
@@ -84,8 +90,8 @@ bottom left says "Recognising 3 of 40…" while it works.
   corrections are kept forever: a re-scan never changes them. **Use what the PC saw** undoes a correction.
 - **Your styles**: the **Styles** chip lets you add your own styles or remove ones you never
   use. Outfits are looked at again for the new list.
-- **Suggested** (left, under the boards): groups of outfits that go together, and matching
-  sets of a wallpaper, an icon and a profile picture. Click one to look; **Keep as board**
+- **Suggested** (left, under the boards, folded away until you click it): groups of outfits
+  that go together, and matching sets of a wallpaper, an icon and a profile picture. Click one to look; **Keep as board**
   makes it a board, **Dismiss** hides it for good. Suggestions never move, change or delete anything.
 - **Where the tools live**: `D:\Notebook Tools\models` (about 3 GB, downloaded once). With
   them there, recognition needs no internet at all.
@@ -121,6 +127,27 @@ pictures will still get through. New pages of pins can take a second longer to a
 time while their pictures are checked.
 Pinterest's own "See fewer AI Pins" setting (in your Pinterest settings) helps too. Pinterest
 sees what you browse there, just as it does in a browser.
+
+## Ideas (For you)
+
+Above every board there's **Saved | Ideas** (on All items, **Saved | For you**). Ideas are pins
+from Pinterest picked for that board: "More like this" for pins you saved from Pinterest,
+searches made from the board's name and what's on it, and on For you your own Pinterest home
+feed too (sign in once in the Pinterest panel for that). Your PC then ranks them by how much they
+look like the board, and leaves out promoted pins, AI-made pins (with **Hide AI pins** on) and
+things you already have.
+
+- **Save** (on a pin): saves it to the board you're on, like pasting its link.
+- **×** (Not for me): the pin goes, and ones like it come up less.
+- Click a pin to open it in the Pinterest panel. Scroll down for more; **New ideas** fetches a
+  fresh set. Ideas refresh by themselves when they're a few hours old.
+- On your phone, **For you** is the third tab on Home, and each board has **Saved | Ideas**. Tap
+  a pin for **Save**, **Open in Pinterest** or **Not for me**. The phone gets them from your PC
+  when it syncs, so it shows the last ones it got when you're out; a pin saved from the phone
+  is downloaded by the PC and arrives with the next sync.
+- Pinterest is only asked when you look at Ideas (or when they've gone stale for the phone), one
+  board at a time, much like scrolling it yourself. This reads Pinterest's website the way the
+  site does; Pinterest can change it at any time, and it isn't something to sell in an app.
 
 ## Keeping it safe
 

@@ -47,6 +47,7 @@ public class MainActivity extends Activity {
     private static final int REQ_PICK = 1, REQ_CAMERA = 2, REQ_NET = 3;
     private WebView web;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService feedWorker = Executors.newSingleThreadExecutor(); // Ideas never wait behind a long sync
     private String pendingBoard = "";
     private Uri cameraUri;
     private Runnable afterNetPermission;
@@ -121,6 +122,11 @@ public class MainActivity extends Activity {
                 String rel = path.substring(1);
                 if (rel.contains("..")) throw new IOException("bad path");
                 return new WebResourceResponse(mime(rel), "utf-8", getAssets().open(rel));
+            }
+            if (path.startsWith("/feed/")) { // Ideas pictures: the phone's copy, or fetched from the PC
+                File f = Core.sync(this).feedImage(path.substring(6).replace(".jpg", ""));
+                if (f == null) throw new IOException("missing");
+                return fileResponse(f, req.getRequestHeaders());
             }
             if (path.startsWith("/lib/")) {
                 File base = Core.library(this).root;
@@ -337,6 +343,34 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface public String getPref(String key) { return getSharedPreferences("ui", MODE_PRIVATE).getString(key, ""); }
         @JavascriptInterface public void setPref(String key, String value) { getSharedPreferences("ui", MODE_PRIVATE).edit().putString(key, value).apply(); }
+
+        // Ideas: the feeds the PC prepared, fetching new ones, saving or hiding a pin, opening it in Pinterest.
+        @JavascriptInterface public String feed() { try { return Core.sync(MainActivity.this).feedJson(); } catch (Exception e) { return error(e); } }
+        @JavascriptInterface public void feedRefresh() {
+            runOnUiThread(() -> withLocalNetwork(() -> feedWorker.execute(() -> {
+                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow()); }
+                catch (Exception e) { js("nbOnFeed", error(e)); }
+            })));
+        }
+        @JavascriptInterface public void feedSave(String url, String boardId) {
+            if (!url.matches("https://www\\.pinterest\\.com/pin/\\d+/")) return;
+            feedWorker.execute(() -> {
+                try {
+                    Core.sync(MainActivity.this).feedAction("save", new JSONObject().put("url", url).put("boardId", boardId == null || boardId.isEmpty() ? JSONObject.NULL : boardId));
+                    toast("Saving on your PC. It arrives with the next sync.");
+                    ui.removeCallbacks(syncSoon);
+                    ui.postDelayed(syncSoon, 25000); // the PC needs a moment to download it
+                } catch (Exception e) { toast("Saved for later: it goes to your PC when it can reach it."); }
+            });
+        }
+        @JavascriptInterface public void feedHide(String id) {
+            if (!id.matches("\\d{1,25}")) return;
+            feedWorker.execute(() -> { try { Core.sync(MainActivity.this).feedAction("hide", new JSONObject().put("id", id)); } catch (Exception ignored) { /* sent with the next sync */ } });
+        }
+        @JavascriptInterface public void openPin(String url) {
+            if (!url.matches("https://www\\.pinterest\\.com/pin/\\d+/")) return;
+            runOnUiThread(() -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception e) { toast("No app here can open Pinterest links."); } });
+        }
 
         @JavascriptInterface public void sync() { runOnUiThread(() -> withLocalNetwork(() -> worker.execute(() -> runSync(false)))); }
         @JavascriptInterface public void syncQuiet() { autoSync(); }

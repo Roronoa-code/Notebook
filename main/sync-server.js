@@ -296,6 +296,7 @@ class SyncServer {
         return send(res, 200, { ok: true, pcId: this.pcId, pcName: this.pcName, items: this.lib.data.items.length });
       }
       if (route === '/api/sync' && req.method === 'POST') return await this.sync(req, res, device);
+      if (route.startsWith('/api/feed')) return await this.ideas(req, res, route);
       const media = /^\/api\/media\/([^/]+)$/.exec(route);
       if (media && ID_RE.test(media[1])) {
         if (req.method === 'GET') return await this.download(res, media[1]);
@@ -325,6 +326,31 @@ class SyncServer {
     if (changed || pcNeeds.length) this.onLibraryChanged({ arrived: [] });
     this.onStatusChanged();
     send(res, 200, answer);
+  }
+
+  // Ideas for the phone: every feed, their pictures, and saving or hiding a pin from the phone.
+  async ideas(req, res, route) {
+    const feed = this.feed;
+    if (!feed) return send(res, 404, { error: 'Ideas aren’t available on this PC.' });
+    if (route === '/api/feed' && req.method === 'GET') return send(res, 200, feed.forPhone());
+    const img = /^\/api\/feed\/img\/([0-9a-f]{32})$/.exec(route);
+    if (img && req.method === 'GET') {
+      const file = await feed.image(img[1]);
+      if (!file) return send(res, 404, { error: 'That picture isn’t available.' });
+      const st = await fs.promises.stat(file);
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': st.size, 'Cache-Control': 'no-store' });
+      return fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
+    }
+    if ((route === '/api/feed/save' || route === '/api/feed/hide') && req.method === 'POST') {
+      const body = await readJson(req, 4096);
+      if (!body || typeof body !== 'object') throw new SyncError('The phone sent something Notebook couldn’t read.', 400);
+      if (route === '/api/feed/hide') {
+        if (!/^\d{1,25}$/.test(String(body.id))) throw new SyncError('That isn’t a pin.', 400);
+        await feed.hide(String(body.id));
+      } else if (!feed.saveIdea(String(body.url || ''), body.boardId)) throw new SyncError('That isn’t a Pinterest pin.', 400);
+      return send(res, 200, { ok: true });
+    }
+    return send(res, 404, { error: "Notebook on the PC doesn't know that request." });
   }
 
   async download(res, id) {

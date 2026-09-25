@@ -4,8 +4,11 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { DEFAULT_STYLES } = require('./recognise');
+const { DEFAULT_STYLES, TYPES_VERSION } = require('./recognise');
 const { nameFrom } = require('./naming');
+const { isRaw } = require('./raw');
+// The picture recognition looks at: a video's (or RAW photo's) preview, otherwise the file itself.
+const pictureOf = (it) => (it.kind === 'video' || isRaw(it.file) ? it.thumb : it.file);
 
 const VERSION = 3; // bump to re-scan everything after a recogniser change (corrections still stay)
 
@@ -35,6 +38,12 @@ class Scanner {
     return res.ok ? res.score : null;
   }
 
+  // A picture's fingerprint from its bytes (same kind as the library's), or null if recognition isn't available.
+  async embed(bytes) {
+    const res = await this.ask({ cmd: 'embed', bytes });
+    return res.ok ? res.embedding : null;
+  }
+
   embPath() { return path.join(this.lib.root, 'ai', 'embeddings.json'); }
   async loadEmbeddings() {
     if (this.emb) return this.emb;
@@ -52,7 +61,7 @@ class Scanner {
   needs(lib) {
     const styles = lib.styles(DEFAULT_STYLES).join('|');
     return lib.data.items.filter((it) => !it.deletedAt && it.kind !== 'note' && (!it.ai || it.ai.v !== VERSION || (it.ai.styles && it.ai.stylesFor !== styles)))
-      .filter((it) => { const f = it.kind === 'video' ? it.thumb : it.file; return f && fs.existsSync(lib.p(f)); });
+      .filter((it) => { const f = pictureOf(it); return f && fs.existsSync(lib.p(f)); });
   }
 
   // Starts (or restarts) scanning the library. Safe to call often: only one run at a time.
@@ -64,7 +73,7 @@ class Scanner {
       do {
         this.again = false;
         const todo = this.needs(lib);
-        if (!todo.length) { this.set({ state: 'idle', done: 0, total: 0 }); break; }
+        if (!todo.length) { await this.retype(lib); this.set({ state: 'idle', done: 0, total: 0 }); break; }
         await this.loadEmbeddings();
         this.set({ state: 'scanning', done: 0, total: todo.length, error: null });
         let lastSave = Date.now();
@@ -72,14 +81,14 @@ class Scanner {
           if (this.lib !== lib) return;
           const it = todo[i];
           const styles = lib.styles(DEFAULT_STYLES);
-          const res = await this.ask({ cmd: 'analyse', file: lib.p(it.kind === 'video' ? it.thumb : it.file), styles, hint: it.originalName || it.title });
+          const res = await this.ask({ cmd: 'analyse', file: lib.p(pictureOf(it)), styles, hint: it.originalName || it.title });
           if (!res.ok) {
             if (res.missingModels) { this.set({ state: 'needs-setup', error: 'The recognition models are not on this PC yet.' }); return; }
             this.log.error('recognition', it.id, res.error);
             lib.setAi(it.id, { v: VERSION, failed: true, at: new Date().toISOString() });
           } else {
             const r = res.result;
-            lib.setAi(it.id, { v: VERSION, type: { main: r.type.main, extra: r.type.extra, conf: +(r.type.scores[r.type.main] || 0).toFixed(3) }, colours: r.colours || [], styles: r.styles, styleScores: r.styleScores ? Object.fromEntries(Object.entries(r.styleScores).map(([k, v]) => [k, +v.toFixed(3)])) : undefined, stylesFor: r.styles ? styles.join('|') : undefined, caption: r.caption || undefined, at: new Date().toISOString() });
+            lib.setAi(it.id, { v: VERSION, tv: TYPES_VERSION, type: { main: r.type.main, extra: r.type.extra, conf: +(r.type.scores[r.type.main] || 0).toFixed(3) }, colours: r.colours || [], styles: r.styles, styleScores: r.styleScores ? Object.fromEntries(Object.entries(r.styleScores).map(([k, v]) => [k, +v.toFixed(3)])) : undefined, stylesFor: r.styles ? styles.join('|') : undefined, caption: r.caption || undefined, at: new Date().toISOString() });
             // A proper name from the caption (only for placeholder titles; never one you typed).
             const L = it.labels || {};
             if (r.caption) lib.applyName(it.id, nameFrom({ caption: r.caption, type: L.main || r.type.main, colours: r.colours, styles: L.styles || r.styles }));
@@ -94,6 +103,19 @@ class Scanner {
       this.log.error('scanner', err);
       this.set({ state: 'error', error: err.message });
     } finally { this.running = false; }
+  }
+
+  // After the list of types changed: what each picture is, worked out again from its fingerprint (no re-scan).
+  async retype(lib) {
+    await this.loadEmbeddings();
+    const old = lib.data.items.filter((it) => it.ai && it.ai.v === VERSION && !it.ai.failed && (it.ai.tv || 1) !== TYPES_VERSION && this.emb[it.id]);
+    for (let i = 0; i < old.length; i += 100) {
+      const chunk = old.slice(i, i + 100);
+      const res = await this.ask({ cmd: 'types', embs: chunk.map((it) => this.emb[it.id]) });
+      if (!res.ok) return;
+      chunk.forEach((it, k) => { const t = res.result[k]; lib.setAi(it.id, { ...it.ai, tv: TYPES_VERSION, type: { main: t.main, extra: t.extra, conf: +(t.scores[t.main] || 0).toFixed(3) } }); });
+    }
+    if (old.length) { await lib.save(); this.onChanged(); }
   }
 
   // Look at everything again (e.g. after changing the style list). Corrections are kept.

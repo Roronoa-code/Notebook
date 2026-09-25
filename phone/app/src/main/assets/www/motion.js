@@ -274,7 +274,7 @@ window.NBMotion = (ctx) => {
       const t = e.touches[0];
       x0 = t.clientX; y0 = t.clientY; t0 = e.timeStamp; mode = 'maybe'; S.gesture = null; over = null;
       clearTimeout(swallow); swallow = 0; // a new touch means the last gesture's stray tap never came
-      target = e.target.closest('.card');
+      target = e.target.closest('.card:not(.idea)'); // ideas aren't yours yet: nothing to lift or stack
       stack = e.target.closest('.stackcard');
       topEl = stack && [...stack.querySelectorAll('.fanitem')].find((b) => !b.style.pointerEvents);
       clearTimeout(hold);

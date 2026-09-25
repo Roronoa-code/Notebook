@@ -141,9 +141,10 @@ function mergeInto(data, remote, nowMs = Date.now()) {
       if (li.hash) next.hash = li.hash; // and so does its file fingerprint
       if ('thumb' in keep && keep.thumb !== undefined) next.thumb = keep.thumb; else delete next.thumb;
       for (const k of ['w', 'h', 'duration']) if (next[k] == null && keep[k] != null) next[k] = keep[k];
+      if (next.takenAt == null && li.takenAt != null) next.takenAt = li.takenAt; // when it was taken: from whichever side knows
       replaceInPlace(li, next);
     } else {
-      for (const k of ['w', 'h', 'duration']) if (li[k] == null && ri[k] != null) li[k] = ri[k];
+      for (const k of ['w', 'h', 'duration', 'takenAt']) if (li[k] == null && ri[k] != null) li[k] = ri[k];
     }
   }
   const removed = [];

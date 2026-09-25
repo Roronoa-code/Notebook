@@ -3,7 +3,7 @@
 // unless you press Save or choose "Save to Notebook" on a pin. The rest of the app stays offline.
 const path = require('path');
 const fs = require('fs');
-const { WebContentsView, Menu, shell, app, ipcMain } = require('electron');
+const { WebContentsView, Menu, shell, app, ipcMain, session } = require('electron');
 const { attachAdFilter } = require('./adfilter');
 const { HIDE_AT, VERSION: AI_VERSION } = require('./aidetect');
 
@@ -82,6 +82,18 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
     }
     saveAi();
   }
+  // The same check for a picture already downloaded (the Ideas feed): true if it should be left out.
+  async function aiHide(url, bytes) {
+    const sig = signatureOf(url);
+    if (!ai.hide || !sig) return false;
+    if (!(sig in ai.scores)) {
+      const score = await aiScore(Buffer.from(bytes));
+      if (score == null) return false;
+      ai.scores[sig] = Math.round(score * 1000) / 1000;
+      saveAi();
+    }
+    return isAiSig(sig);
+  }
   ipcMain.handle('pin:ai', (e, url) => (view && e.sender === view.webContents && /^https:\/\/i\.pinimg\.com\//.test(String(url)) ? checkPicture(String(url)) : { hide: false }));
   handle('pin:aiSetting', (on) => { if (typeof on === 'boolean') { ai.hide = on; saveAi(); if (view) view.webContents.reload(); } return { hide: ai.hide, hidden: hiddenSigs.size }; });
 
@@ -127,14 +139,14 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
   handle('pin:close', () => { if (view) getWin().contentView.removeChildView(view); });
   handle('pin:back', () => { if (view && view.webContents.navigationHistory.canGoBack()) view.webContents.navigationHistory.goBack(); });
   handle('pin:home', () => { if (view) view.webContents.loadURL(HOME); });
-  handle('pin:go', (url) => { if (view && pinOf(url)) view.webContents.loadURL(url); });
+  handle('pin:go', (url) => { if (view && pinOf(url)) { view.webContents.loadURL(url); return state(); } });
   // Save what's open. Only a pin page can be saved.
   handle('pin:save', async () => {
     const pin = view && !loading && pinOf(view.webContents.getURL());
     if (!pin) { const e = new Error(); e.friendly = 'Open a pin first, then press Save to library.'; throw e; }
     return save(pin);
   });
-  return { pinOf };
+  return { pinOf, aiHide, session: () => session.fromPartition(PARTITION) };
 }
 
 module.exports = { setupPinterest, pinOf };

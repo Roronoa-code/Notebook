@@ -146,6 +146,11 @@
   new MutationObserver(() => { if (!checking) { checking = true; requestAnimationFrame(check); } })
     .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
 
-  NB.links = { save, isLink, closePanel, isOpen: () => open };
+  // Opens a pin in the Pinterest panel (from Ideas).
+  async function openAt(url) {
+    if (!open) { await openPanel(); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); }
+    pinState(await nb.pinGo(url));
+  }
+  NB.links = { save, isLink, closePanel, openAt, isOpen: () => open };
   nb.links().then((i) => { retry = i.retry || []; renderCount(); });
 })();

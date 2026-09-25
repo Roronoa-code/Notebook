@@ -5,13 +5,16 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
+const { takenAt } = require('./dates');
 const { pipeline } = require('stream/promises');
 const { cleanRemote, cleanCrop, mergeInto, pruneTombstones, SyncError, ID_RE } = require('./merge');
 const { isGenericTitle } = require('./naming');
+const backup = require('./backup');
+const { htmlToText, safeName } = backup;
 
 const DB = 'library.json';
 const MAX_UPLOAD = 2 * 1024 ** 3;
-const PHOTO_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif'];
+const PHOTO_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.dng']; // .dng: camera RAW, shown by its preview (raw.js)
 const VIDEO_EXT = ['.mp4', '.m4v', '.webm', '.mov'];
 const DEFAULT_BOARDS = ['Outfits', 'Wallpapers', 'Icons', 'Profile pictures'];
 
@@ -51,35 +54,6 @@ function kindOf(file) {
   return null;
 }
 
-function stamp() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
-
-function safeName(name) {
-  const s = String(name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().replace(/^[. ]+|[. ]+$/g, '').slice(0, 80);
-  return s || 'untitled';
-}
-
-function uniqueName(used, base, ext) {
-  let name = base + ext;
-  for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n})${ext}`;
-  used.add(name.toLowerCase());
-  return name;
-}
-
-// Notes are stored as simple HTML (bold, italic, lists, headings). This turns them into readable text.
-function htmlToText(html) {
-  return String(html || '')
-    .replace(/<\s*br\s*\/?>/gi, '\n')
-    .replace(/<\s*li[^>]*>/gi, '• ')
-    .replace(/<\s*\/\s*(p|div|h1|h2|h3|li|ul|ol)\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 function validate(data) {
   if (!data || typeof data !== 'object' || !Array.isArray(data.items) || !Array.isArray(data.boards)) {
     throw new FriendlyError("That folder doesn't contain a Notebook library.");
@@ -89,24 +63,6 @@ function validate(data) {
 
 async function readLibraryFile(file) {
   return validate(JSON.parse(await fsp.readFile(file, 'utf8')));
-}
-
-// Copies a whole folder, then checks every file arrived at the same size.
-async function copyVerified(src, dest) {
-  await fsp.cp(src, dest, { recursive: true, errorOnExist: true, force: false });
-  let files = 0, bytes = 0;
-  const walk = async (dir) => {
-    for (const entry of await fsp.readdir(dir, { withFileTypes: true })) {
-      const from = path.join(dir, entry.name);
-      if (entry.isDirectory()) { await walk(from); continue; }
-      const to = path.join(dest, path.relative(src, from));
-      const [a, b] = await Promise.all([fsp.stat(from), fsp.stat(to)]);
-      if (a.size !== b.size) throw new FriendlyError(`A file didn't copy completely (${entry.name}). Nothing was changed.`);
-      files++; bytes += a.size;
-    }
-  };
-  await walk(src);
-  return { files, bytes };
 }
 
 function isInside(child, parent) {
@@ -256,7 +212,7 @@ class Library {
         }
         const item = {
           id, kind, title: path.basename(src, path.extname(src)), file: rel, thumb: null, w: null, h: null, duration: null,
-          originalName: name, size: st.size, hash, importedAt: now(), updatedAt: now(), boards: [...boards], deletedAt: null
+          originalName: name, size: st.size, hash, takenAt: await takenAt(this.p(rel), name, kind), importedAt: now(), updatedAt: now(), boards: [...boards], deletedAt: null
         };
         known.set(hash, item);
         added.push(item);
@@ -286,6 +242,19 @@ class Library {
     for (const it of this.data.items) {
       if (it.kind === 'note' || it.hash || !it.file) continue;
       try { it.hash = await hashFile(this.p(it.file)); n++; } catch { /* file not here yet (waiting for the phone) */ }
+    }
+    if (n) await this.save();
+    return n;
+  }
+
+  // When each photo or video was taken (for sorting by date), for items added before dates were read
+  // or that arrived from the phone without one. Not a synced edit, like thumbnails. `null`: nothing says.
+  async fillDates() {
+    let n = 0;
+    for (const it of this.data.items) {
+      if (it.kind === 'note' || it.takenAt !== undefined || !it.file || !fs.existsSync(this.p(it.file))) continue;
+      it.takenAt = await takenAt(this.p(it.file), it.originalName || it.title, it.kind);
+      n++;
     }
     if (n) await this.save();
     return n;
@@ -594,97 +563,11 @@ class Library {
     return { ok: true };
   }
 
-  // ---------- backup, restore, export ----------
-
-  async backup(destParent) {
-    if (isInside(destParent, this.root)) throw new FriendlyError("Pick a folder outside the library itself for the backup.");
-    await this.queue.catch(() => {});
-    const name = `Notebook Backup ${stamp()}`;
-    const partial = path.join(destParent, name + ' (in progress)');
-    const final = path.join(destParent, name);
-    try {
-      const result = await copyVerified(this.root, partial);
-      await fsp.rm(path.join(partial, DB + '.tmp'), { force: true });
-      await fsp.writeFile(path.join(partial, 'backup-info.json'), JSON.stringify({
-        app: 'Notebook', createdAt: now(), from: this.root,
-        items: this.data.items.length, boards: this.data.boards.length, files: result.files, bytes: result.bytes
-      }, null, 1));
-      await fsp.rename(partial, final);
-      return { dir: final, ...result, items: this.data.items.length };
-    } catch (err) {
-      await fsp.rm(partial, { recursive: true, force: true });
-      throw err;
-    }
-  }
-
-  // Checks a backup is complete before anything is restored from it.
-  static async inspectBackup(dir) {
-    const data = await readLibraryFile(path.join(dir, DB)).catch((err) => {
-      throw err.friendly ? err : new FriendlyError("That folder isn't a Notebook backup (library.json is missing or damaged).");
-    });
-    const missing = [];
-    for (const it of data.items) {
-      if (it.file && !(await exists(path.join(dir, it.file)))) missing.push(it.title || it.file);
-    }
-    return { items: data.items.length, boards: data.boards.length, missing };
-  }
-
-  // Restores into a brand-new folder, leaving the current library untouched.
-  static async restoreBackup(backupDir, destDir) {
-    if (await exists(destDir)) throw new FriendlyError('The restore folder already exists. Pick another location.');
-    const info = await Library.inspectBackup(backupDir);
-    if (info.missing.length) throw new FriendlyError(`That backup is incomplete: ${info.missing.length} file(s) are missing, so nothing was restored.`);
-    try {
-      await copyVerified(backupDir, destDir);
-      await fsp.rm(path.join(destDir, 'backup-info.json'), { force: true });
-    } catch (err) {
-      await fsp.rm(destDir, { recursive: true, force: true });
-      throw err;
-    }
-    return info;
-  }
-
-  // Export: plain files anyone can open without Notebook.
-  async exportTo(destParent) {
-    if (isInside(destParent, this.root)) throw new FriendlyError('Pick a folder outside the library itself for the export.');
-    const name = `Notebook Export ${stamp()}`;
-    const partial = path.join(destParent, name + ' (in progress)');
-    const final = path.join(destParent, name);
-    const live = this.data.items.filter((i) => !i.deletedAt);
-    const boardName = (id) => (this.data.boards.find((b) => b.id === id) || {}).name;
-    const csv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = [['Title', 'Type', 'Exported file', 'Boards', 'Original file name', 'Added', 'Note'].map(csv).join(',')];
-    const used = new Set();
-    try {
-      await fsp.mkdir(path.join(partial, 'Media'), { recursive: true });
-      await fsp.mkdir(path.join(partial, 'Notes'), { recursive: true });
-      for (const it of live) {
-        let out;
-        if (it.kind === 'note') {
-          out = 'Notes/' + uniqueName(used, safeName(it.title), '.txt');
-          await fsp.writeFile(path.join(partial, out), htmlToText(it.html) + '\n', 'utf8');
-        } else {
-          out = 'Media/' + uniqueName(used, safeName(it.title), path.extname(it.file));
-          await fsp.copyFile(this.p(it.file), path.join(partial, out), fs.constants.COPYFILE_EXCL);
-        }
-        const boards = it.boards.map(boardName).filter(Boolean).join('; ');
-        rows.push([it.title, it.kind, out, boards, it.originalName || '', it.importedAt.slice(0, 10), it.caption || ''].map(csv).join(','));
-      }
-      await fsp.writeFile(path.join(partial, 'boards.csv'), '﻿' + rows.join('\r\n') + '\r\n', 'utf8');
-      await fsp.writeFile(path.join(partial, 'README.txt'), [
-        'Notebook export', '',
-        'Media  - every photo and video, named by its title.',
-        'Notes  - every note as a plain text file.',
-        'boards.csv - opens in Excel or Google Sheets: which boards each item is on, plus any note on a photo or video.', '',
-        `Exported ${new Date().toLocaleString('en-GB')} - ${live.length} items, ${this.data.boards.length} boards.`
-      ].join('\r\n'), 'utf8');
-      await fsp.rename(partial, final);
-      return { dir: final, items: live.length };
-    } catch (err) {
-      await fsp.rm(partial, { recursive: true, force: true });
-      throw err;
-    }
-  }
+  // ---------- backup, restore, export (backup.js) ----------
+  backup(destParent) { return backup.backup(this, destParent); }
+  static inspectBackup(dir) { return backup.inspectBackup(dir); }
+  static restoreBackup(backupDir, destDir) { return backup.restoreBackup(backupDir, destDir); }
+  exportTo(destParent) { return backup.exportTo(this, destParent); }
 }
 
 module.exports = { Library, FriendlyError, kindOf, htmlToText, safeName, PHOTO_EXT, VIDEO_EXT };

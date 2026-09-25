@@ -9,8 +9,12 @@ const TYPES = {
   wallpaper: ['a phone wallpaper', 'a desktop wallpaper', 'a landscape photo of nature', 'an abstract colourful background', 'a starry night sky', 'a simple gradient background'],
   icon: ['an app icon', 'a flat vector icon', 'an icon with rounded corners', 'a logo on a plain background', 'a set of app icons'],
   'profile picture': ['a profile picture', 'a portrait headshot of a person', 'a close-up of a face', 'an avatar', 'an anime character avatar', 'a passport photo'],
-  other: ['a screenshot of a website', 'a screenshot of text', 'a photo of food', 'a meme with text', 'a ticket or receipt', 'a document']
+  other: ['a screenshot of a website', 'a screenshot of text', 'a photo of food', 'a meme with text', 'a ticket or receipt', 'a document',
+    'a photo of a gaming PC setup', 'a photo of a desk with a computer and monitors', 'a photo inside a computer case with RGB fans', 'a photo of a graphics card',
+    'a photo of a room', 'a product photo of an object', 'a photo of a car', 'a photo of a figurine or toy', 'a photo of a gadget']
 };
+// Bump when TYPES changes: what each picture is gets worked out again from its fingerprint (quick; no re-scan).
+const TYPES_VERSION = 2;
 const DEFAULT_STYLES = ['streetwear', 'minimal', 'smart casual', 'sporty', 'techwear', 'vintage', 'y2k', 'formal'];
 const STYLE_PROMPTS = {
   streetwear: ['a streetwear outfit', 'hoodie, sneakers and baggy jeans streetwear', 'urban street style clothes'],
@@ -126,19 +130,29 @@ async function embedImage(M, image) {
   return norm(Array.from(image_embeds.data));
 }
 
-const scoresFor = (emb, vecs, names) => { const p = softmax(names.map((n, i) => 100 * dot(emb, vecs[i]))); return Object.fromEntries(names.map((n, i) => [n, +p[i].toFixed(4)])); };
+// A fingerprint for a picture given as bytes (the Ideas feed ranks pins with it).
+async function embedBytes(M, bytes) {
+  const image = await T.RawImage.fromBlob(new Blob([bytes]));
+  return (await embedImage(M, image)).map((x) => +x.toFixed(4));
+}
+
+const scoresFor =(emb, vecs, names) => { const p = softmax(names.map((n, i) => 100 * dot(emb, vecs[i]))); return Object.fromEntries(names.map((n, i) => [n, +p[i].toFixed(4)])); };
+
+// What a picture is, from its fingerprint: a main label, plus extra labels close enough to be a fair second reading.
+function typeOf(M, emb) {
+  const names = Object.keys(TYPES);
+  const scores = scoresFor(emb, names.map((n) => M.typeVecs[n]), names);
+  const ranked = names.slice().sort((a, b) => scores[b] - scores[a]);
+  const main = ranked[0];
+  return { main, extra: ranked.slice(1).filter((n) => scores[n] >= 0.2 && scores[n] >= scores[main] * 0.35), scores };
+}
 
 // Looks at one picture. `styles` is the user's style list.
 async function analyse(M, file, styles = DEFAULT_STYLES) {
   const image = await T.RawImage.read(file);
   const emb = await embedImage(M, image);
-  const names = Object.keys(TYPES);
-  const scores = scoresFor(emb, names.map((n) => M.typeVecs[n]), names);
-  const ranked = names.slice().sort((a, b) => scores[b] - scores[a]);
-  const main = ranked[0];
-  // Extra labels: close enough to the main one to be a fair second reading.
-  const extra = ranked.slice(1).filter((n) => scores[n] >= 0.2 && scores[n] >= scores[main] * 0.35);
-  const out = { type: { main, extra, scores }, embedding: emb.map((x) => +x.toFixed(4)) };
+  const type = typeOf(M, emb), { main, extra } = type;
+  const out = { type, embedding: emb.map((x) => +x.toFixed(4)) };
   if (M.cap) {
     const inputs = await M.cap.processor(image, M.cap.processor.construct_prompts('<CAPTION>'));
     const ids = await M.cap.model.generate({ ...inputs, max_new_tokens: 40 });
@@ -179,4 +193,4 @@ async function analyse(M, file, styles = DEFAULT_STYLES) {
   return out;
 }
 
-module.exports = { load, analyse, palette, lab, TYPES, DEFAULT_STYLES, NAMED };
+module.exports = { load, analyse, embedBytes, typeOf, TYPES_VERSION, palette, lab, TYPES, DEFAULT_STYLES, NAMED };

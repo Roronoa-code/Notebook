@@ -27,6 +27,7 @@ Both sides keep the same library folder layout: `library.json`, `media/`, `thumb
 - **Stacks:** items with the same `stack` id (an id, or `null`/missing) show as one stack in All. `stackIn` is the board the stack was made in (a board id, or `null`/missing for All): inside a board, a stack only shows grouped if its `stackIn` is that board; otherwise its items show as loose cards there. Stacking inside a board sets `stackIn` to it; stacking in All keeps the `stackIn` of any stack it joins. Unstacking clears both. Stacking and unstacking bump `updatedAt` like any edit.
 - **Show on phone:** `phone: false` means the PC doesn't send the item to the phone (missing means shown). Only the PC sets it: the PC ignores `phone` from the phone and keeps its own value even when the phone's copy is newer. It doesn't bump `updatedAt`. The phone removes items that stop arriving (and their files), as with any item missing from the answer. Exception: a hidden item whose file the PC is still waiting for keeps being sent until it's uploaded, so nothing is lost.
 - **Recognition:** `ai` is what the PC recognised (type, colours, styles). It's device-local like `thumb`: it doesn't bump `updatedAt`, and the PC keeps its own `ai` when the phone's copy is newer. `labels` are the user's corrections (`main`, `extra`, `styles`); they bump `updatedAt` and sync like any edit, and a re-scan never changes them.
+- **Date taken:** `takenAt` is when the photo or video was taken (ISO, or `null` when nothing says), read from the file on the PC. It doesn't bump `updatedAt`, and is filled in from whichever side has it.
 - `file` is always `media/<itemId><ext>`, lower-case extension, identical on both sides. `thumb` is device-local: each side makes its own.
 
 ## Discovery (finding the PC after its IP changes)
@@ -92,6 +93,16 @@ The phone then:
   - It returns `200 { "ok": true }`, or 400/409 with an error.
   - The upload body limit is 2 GB.
 - Thumbnails are never transferred. Each side makes its own.
+
+### Ideas (the Pinterest-style feed)
+
+The PC prepares the feeds; the phone only shows them. All need the token.
+
+- `GET /api/feed` returns `{ "feeds": { "all": { "at": ms, "signedIn": bool|null, "pins": [...] }, "<boardId>": {...} } }`. Each pin is `{ id, url, title, w, h, video, sig, saved }`: `url` is `https://www.pinterest.com/pin/<id>/`, `sig` is 32 hex characters naming its picture. Feeds older than a few hours are refreshed on the PC in the background for next time.
+- `GET /api/feed/img/<sig>` streams the pin's picture (`image/jpeg`), or 404.
+- `POST /api/feed/save` with `{ "url": "<pin url>", "boardId": "<id>"|null }` makes the PC download and save the pin (onto that board); it arrives on the phone with a later sync. 400 for anything that isn't a pin address.
+- `POST /api/feed/hide` with `{ "id": "<digits>" }`: "Not for me". The pin leaves every feed and similar ones rank lower.
+- The phone keeps the last feeds and their first pictures, so it can show them away from home. Saves and hides made while the PC can't be reached wait and go with the next sync.
 
 ## Security notes
 

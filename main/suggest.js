@@ -76,7 +76,7 @@ function outfitGroups(items, emb) {
   // Two groups with the same name read as one: number them.
   const seen = new Map();
   for (const g of groups) { const n = (seen.get(g.name) || 0) + 1; seen.set(g.name, n); if (n > 1) g.name += ` ${n}`; }
-  return groups.sort((x, y) => cohesion(y.ids, emb) - cohesion(x.ids, emb)).slice(0, 10);
+  return groups.sort((x, y) => cohesion(y.ids, emb) - cohesion(x.ids, emb)).slice(0, 5);
 }
 
 // Matching sets: a wallpaper with the icon and profile picture that suit it best: colours that go
@@ -99,7 +99,7 @@ function matchingSets(items, emb) {
     if (s.ids.some((id) => used(id) >= 2)) continue;
     s.ids.forEach((id) => uses.set(id, used(id) + 1));
     out.push({ kind: 'set', name: `${cap(s.colour)} set`, ids: s.ids, score: +s.score.toFixed(3) });
-    if (out.length === 10) break;
+    if (out.length === 3) break; // the best few; more read as a wall of near-copies
   }
   const seen = new Map();
   for (const g of out) { const n = (seen.get(g.name) || 0) + 1; seen.set(g.name, n); if (n > 1) g.name += ` ${n}`; }

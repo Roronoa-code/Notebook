@@ -13,7 +13,7 @@ const OUT = path.join(APP, 'test-output', 'features');
 const LIB = path.join(OUT, 'Notebook Library');
 let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
-const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: '47861', NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_FAKE_CAPTIONS: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
+const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: '47861', NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_FAKE_CAPTIONS: '1', NOTEBOOK_FAKE_FEED: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
 const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8'));
 
 async function launch() {
@@ -65,6 +65,8 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.evaluate(() => { for (const c of document.querySelectorAll('.grid > .card')) c.dataset.was = '1'; });
   await page.locator('.filters .fchip', { hasText: 'Outfits' }).click();
   assert.equal(await page.locator('.grid > .card').count(), 2, 'only the two outfits');
+  await page.waitForTimeout(900);
+  assert.equal(await page.locator('.card-ghost').count(), 0, 'the fading copies of hidden cards are gone');
   assert.equal(await page.locator('.grid > .card[data-was]').count(), 2, 'kept cards are reused, not rebuilt');
   assert.equal(await page.locator('.ctx-title.still').count(), 1, 'the title stays still');
   await page.locator('.filters .fchip', { hasText: 'Black' }).click();
@@ -72,6 +74,23 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.locator('.filters .linkbtn', { hasText: 'Clear filters' }).click();
   assert.equal(await page.locator('.grid > .card').count(), 5);
   ok('filters by type and clothing colour show the right items without rebuilding the page; Clear filters shows everything');
+
+  // Sorting: by name; by date taken, with a heading per month (these samples carry no date: "No date").
+  await page.locator('.sortbox .dd').click();
+  await page.locator('.ddlist .ddopt', { hasText: /^Name$/ }).click();
+  const sorted = await page.locator('.grid > .card > .sr').allInnerTexts();
+  assert.deepEqual(sorted, sorted.slice().sort((a, b) => a.localeCompare(b, 'en-GB', { numeric: true, sensitivity: 'base' })), 'A to Z');
+  await page.locator('.sortbox .dd').click();
+  await page.locator('.ddlist:not(.out) .ddopt', { hasText: 'Date taken, newest' }).click();
+  await page.locator('.grid > .dategroup').first().waitFor();
+  assert.equal(await page.locator('.grid > .dategroup').last().innerText(), 'NO DATE');
+  await page.reload();
+  await page.locator('.grid > .dategroup').first().waitFor();
+  assert.match(await page.locator('.sortbox .dd').innerText(), /Date taken, newest/, 'remembered');
+  await page.locator('.sortbox .dd').click();
+  await page.locator('.ddlist:not(.out) .ddopt', { hasText: 'Newest added' }).click();
+  assert.equal(await page.locator('.grid > .dategroup').count(), 0);
+  ok('sort by name or date taken (a heading for each month), remembered per board');
 
   // Correcting a label: it saves, survives a restart and a re-scan
   const coat = onDisk().items.find((i) => i.originalName === 'outfit coat.jpg');
@@ -113,6 +132,9 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   ok('the style list takes your own styles and outfits are re-styled against it');
 
   // Suggested groups and matching sets
+  await page.locator('#suggested .sughead').waitFor({ timeout: 10000 });
+  assert.equal(await page.locator('#suggested .navrow').count(), 0, 'Suggested starts folded away');
+  await page.locator('#suggested .sughead').click();
   await page.locator('#suggested .navrow').first().waitFor({ timeout: 10000 });
   const names = await page.locator('#suggested .sugname').allInnerTexts();
   assert.ok(names.some((n) => /set/i.test(n)), 'a matching set: ' + names.join(', '));
@@ -136,6 +158,51 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   }
   await page.screenshot({ path: path.join(OUT, 'suggested.png') });
   ok('suggestions appear beside the boards; viewing one changes nothing; Keep as board makes a board; Dismiss removes it');
+
+  // Ideas: "For you" on All items and "Ideas" on a board (a stand-in feed, no internet)
+  await page.locator('.bcard[data-id="all"]').click();
+  await page.locator('.segbtn', { hasText: 'For you' }).click();
+  await page.locator('#ideas .idea').nth(11).waitFor({ timeout: 20000 });
+  assert.ok(await page.locator('#grid').isHidden(), 'the saved items step aside');
+  await page.waitForFunction(() => { const i = document.querySelector('#ideas .idea img'); return i && i.complete && i.naturalWidth > 0; });
+  assert.equal(await page.locator('.ideas-hint').count(), 1, 'says signing in to Pinterest adds the home feed');
+  const cols = await page.locator('#ideas .ideacol').count();
+  assert.ok(cols >= 2, 'laid out in columns');
+  const first = await page.locator('#ideas .idea').count();
+  await page.locator('#page').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await page.waitForFunction((n) => document.querySelectorAll('#ideas .idea').length > n, first, { timeout: 20000 });
+  ok(`For you shows pins in ${cols} columns with their pictures; scrolling down loads more`);
+
+  const gone = await page.locator('#ideas .idea').first().getAttribute('data-pin');
+  await page.locator('#ideas .idea').first().hover();
+  await page.locator('#ideas .idea').first().locator('.idea-hide').click();
+  await page.waitForFunction((id) => !document.querySelector(`#ideas .idea[data-pin="${id}"]`), gone);
+  const again = await page.evaluate(() => nb.feed('all'));
+  assert.ok(!again.feed.pins.some((p) => p.id === gone), 'a hidden pin stays hidden');
+  const feedFile = JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'feed', 'feeds.json'), 'utf8'));
+  assert.ok(feedFile.hidden.includes(gone), 'remembered after a restart');
+  ok('Not for me hides a pin for good');
+
+  // Save: with no downloader tools in the test, it says so and the button goes back to Save.
+  const card = page.locator('#ideas .idea').first();
+  await card.hover();
+  await card.locator('.idea-save').click();
+  await page.locator('.toast', { hasText: 'downloader tools' }).waitFor({ timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('#ideas .idea .idea-save').dataset.state === 'save');
+  ok('Save sends the pin to the downloader (and says plainly when it can’t)');
+
+  // A board keeps Ideas on and shows its own; Saved brings the board back.
+  await page.locator(`.bcard[data-id="${board.id}"]`).click();
+  await page.locator('.segbtn.on', { hasText: 'Ideas' }).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('#ideas .idea').length >= 6, null, { timeout: 20000 });
+  const boardFeed = await page.evaluate((id) => nb.feed(id), board.id);
+  assert.equal(boardFeed.feed.key, board.id, 'the board has its own feed');
+  await page.screenshot({ path: path.join(OUT, 'ideas.png') });
+  await page.locator('.segbtn', { hasText: 'Saved' }).click();
+  await page.locator('#grid > .card').first().waitFor();
+  assert.ok(await page.locator('#ideas').isHidden());
+  assert.equal(await page.locator('#grid > .card').count(), 3, 'the board’s own items are back');
+  ok('each board has its own Ideas; Saved goes back to the board’s items');
 
   assert.deepEqual(web, [], 'no internet requests');
   ok('no internet requests were made');

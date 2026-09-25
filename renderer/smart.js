@@ -116,11 +116,20 @@
     const res = await nb.suggestions();
     if (res && !res.error) { list = res.suggestions; renderSuggestions(); }
   }
+  // Suggested is folded away until you open it (remembered), so the boards keep the room.
+  let unfolded = (() => { try { return localStorage.getItem('nb.suggested') === 'open'; } catch { return false; } })();
   function renderSuggestions() {
     const box = document.getElementById('suggested');
     if (!box) return;
     box.hidden = !list.length;
-    box.replaceChildren(h('div', { class: 'micro navlabel' }, 'Suggested'), ...list.map((g) => h('button', {
+    const open = unfolded || !!showing;
+    const head = h('button', { type: 'button', class: 'sughead', 'aria-expanded': String(open), onclick: () => {
+      unfolded = !open;
+      try { localStorage.setItem('nb.suggested', unfolded ? 'open' : 'shut'); } catch { /* remembering is a nicety */ }
+      if (!unfolded && showing) { showing = null; NB.showSuggestion(null); }
+      renderSuggestions();
+    } }, icon('right'), h('span', { class: 'micro navlabel' }, 'Suggested'), h('span', { class: 'n' }, list.length));
+    box.replaceChildren(head, ...(open ? list : []).map((g) => h('button', {
       type: 'button', class: 'navrow sug' + (showing === g.sig ? ' on' : ''), 'aria-pressed': String(showing === g.sig), onclick: () => show(g.sig)
     }, icon(g.kind === 'set' ? 'photo' : 'stack'), h('span', { class: 'sugname' }, g.name), h('span', { class: 'n' }, g.ids.length))));
   }

@@ -354,6 +354,27 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   assert.equal(sl.applyName(nm2.id, 'Beach again'), false, 'a rename on the phone is kept too');
   ok('proper names replace only placeholders or untouched names; names typed here or on the phone are kept');
 
+  // When a photo was taken: from its own EXIF date first, else a dated file name; kept through a sync.
+  const sharp = require('sharp');
+  const dDir = path.join(ROOT, 'dated'); fs.mkdirSync(dDir, { recursive: true });
+  const dated = path.join(dDir, '20250218_205934.jpg'), exifed = path.join(dDir, 'holiday.jpg'), plain = path.join(dDir, 'plain.jpg');
+  const px = (r) => sharp({ create: { width: 40, height: 30, channels: 3, background: { r, g: 10, b: 10 } } }).jpeg();
+  fs.writeFileSync(dated, await px(11).toBuffer());
+  fs.writeFileSync(exifed, await px(22).withExif({ IFD0: { DateTime: '2024:05:17 10:11:12' } }).toBuffer());
+  fs.writeFileSync(plain, await px(33).toBuffer());
+  const di = await sl.importFiles([dated, exifed, plain]);
+  const got = di.added.map((id) => sl.item(id).takenAt);
+  assert.equal(got[0], new Date(2025, 1, 18, 20, 59, 34).toISOString(), 'from the file name');
+  assert.equal(got[1], new Date(2024, 4, 17, 10, 11, 12).toISOString(), 'from the picture’s own date');
+  assert.equal(got[2], null, 'nothing says: no date');
+  const old = sl.item(di.added[2]); delete old.takenAt;
+  assert.ok(await sl.fillDates() >= 1 && old.takenAt === null, 'older items get theirs looked up');
+  assert.equal(await sl.fillDates(), 0, 'and only once');
+  const phoneCopy = { ...sl.item(di.added[0]), takenAt: null, title: 'Renamed on phone', updatedAt: new Date(Date.now() + 1000).toISOString() };
+  await sl.mergeRemote({ items: [phoneCopy], boards: sl.data.boards, tombstones: { items: [], boards: [] } });
+  assert.equal(sl.item(di.added[0]).takenAt, got[0], 'a newer phone edit without a date keeps the PC’s');
+  ok('dates taken: from the picture’s EXIF or a dated file name, filled in for older items, kept through a sync');
+
   // Weekly backups keep the newest three they made; a backup made by hand in the same folder stays.
   process.env.NOTEBOOK_AUTOBACKUP_DELAY_MS = '1';
   const { setupAutoBackup } = require('../main/autobackup');

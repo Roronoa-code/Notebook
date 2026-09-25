@@ -4,13 +4,14 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { utilityProcess } = require('electron');
+const { utilityProcess, ipcMain } = require('electron');
 const { Scanner } = require('./scanner');
 const { TYPES, DEFAULT_STYLES } = require('./recognise');
 const { suggestions } = require('./suggest');
 const { Downloader } = require('./downloader');
 const links = require('./links');
 const { setupPinterest } = require('./pinterest');
+const { Feed, PinterestSource, FakeSource, pinIdOf } = require('./feed');
 
 // Where downloaded tools live: D:\Notebook Tools when there's a D: drive (as agreed), else next to the settings.
 function toolsDir(app) {
@@ -77,9 +78,35 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
     return { results: await dl.check(saved) };
   });
   handle('links:update', async () => ({ update: await dl.update() }));
-  setupPinterest({ getWin, handle, send, save: (url) => save(url, null), aiScore: (bytes) => scanner.aiScore(bytes) });
+  const pinterest = setupPinterest({ getWin, handle, send, save: (url) => save(url, null), aiScore: (bytes) => scanner.aiScore(bytes) });
 
-  return { kick, scanner, tools, styles: () => getLib().styles(DEFAULT_STYLES), types: Object.keys(TYPES) };
+  // ---------- Ideas (the Pinterest-style feed) ----------
+  const changed = new Map();
+  const feed = new Feed({
+    getLib, dir: path.join(app.getPath('userData'), 'feed'),
+    source: process.env.NOTEBOOK_FAKE_FEED ? new FakeSource() : new PinterestSource(pinterest.session),
+    embeddings: (lib) => scanner.embeddings(lib), embed: (bytes) => scanner.embed(bytes), aiHide: pinterest.aiHide,
+    onChange: (key) => { clearTimeout(changed.get(key)); changed.set(key, setTimeout(() => send('feed:changed', { key }), 120)); }
+  });
+  // Plain answers (no library snapshot each time): { feed } or { error }.
+  const feedCall = (channel, fn) => ipcMain.handle(channel, async (_e, ...args) => {
+    try { return await fn(...args); } catch (err) { console.error(channel, err); return { error: 'Ideas aren’t available just now.' }; }
+  });
+  feedCall('feed:get', (key) => ({ feed: feed.get(String(key)) }));
+  feedCall('feed:refresh', (key) => { feed.load(String(key), 'fresh'); return { feed: feed.get(String(key), { load: false }) }; });
+  feedCall('feed:more', (key) => { feed.load(String(key), 'more'); return { feed: feed.get(String(key), { load: false }) }; });
+  feedCall('feed:hide', async (id) => { await feed.hide(String(id)); return {}; });
+  // Save a pin from Ideas (onto a board if given). The result arrives like any saved link.
+  const saveIdea = (url, boardId) => {
+    const id = pinIdOf(url), lib = getLib();
+    if (!id || !lib) return false;
+    save(`https://www.pinterest.com/pin/${id}/`, typeof boardId === 'string' && lib.data.boards.some((b) => b.id === boardId) ? boardId : null);
+    return true;
+  };
+  feedCall('feed:save', (url, boardId) => (saveIdea(String(url), boardId) ? {} : { error: 'That isn’t a Pinterest pin.' }));
+  feed.saveIdea = saveIdea;
+
+  return { kick, scanner, tools, feed, styles: () => getLib().styles(DEFAULT_STYLES), types: Object.keys(TYPES) };
 }
 
 module.exports = { setupFeatures, toolsDir };

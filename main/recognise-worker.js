@@ -24,10 +24,15 @@ port.on('message', async ({ data }) => {
     if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, score: process.env.NOTEBOOK_FAKE_AI === 'some' ? (data.bytes.length % 3 === 0 ? 1 : 0) : process.env.NOTEBOOK_FAKE_AI ? 1 : 0 });
     try { return port.postMessage({ id, ok: true, score: await AI.score(modelsDir, data.bytes) }); } catch (err) { return port.postMessage({ id, ok: false, error: err.message, missing: !!err.missing }); }
   }
+  // The stand-in's fingerprint for a picture's bytes: eight numbers from a hash of them (different pictures differ).
+  if (cmd === 'embed' && process.env.NOTEBOOK_FAKE_RECOGNISER) { const v = [...require('crypto').createHash('sha256').update(data.bytes).digest().subarray(0, 8)].map((x) => x - 127.5), n = Math.hypot(...v); return port.postMessage({ id, ok: true, embedding: v.map((x) => x / n) }); }
+  if (process.env.NOTEBOOK_FAKE_RECOGNISER && cmd === 'types') return port.postMessage({ id, ok: false, error: 'not in the stand-in' });
   if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, device: 'stand-in', result: cmd === 'hello' ? null : fake(hint, styles) });
   try {
     if (!M) M = await R.load(modelsDir);
     if (cmd === 'hello') return port.postMessage({ id, ok: true, device: M.device });
+    if (cmd === 'embed') return port.postMessage({ id, ok: true, embedding: await R.embedBytes(M, data.bytes) });
+    if (cmd === 'types') return port.postMessage({ id, ok: true, result: data.embs.map((e) => R.typeOf(M, e)) });
     const result = await R.analyse(M, file, styles);
     port.postMessage({ id, ok: true, result, device: M.device });
   } catch (err) {

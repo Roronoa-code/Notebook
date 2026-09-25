@@ -21,8 +21,7 @@
       const it = S.snap.items.find((i) => i.id === id);
       if (!it) continue;
       try {
-        const { bytes, meta } = await (it.kind === 'video' ? videoThumb(it.src) : photoThumb(it.src));
-        const res = await nb.saveThumb(id, bytes, meta);
+        const res = NB.isRaw(it) ? await nb.rawThumb(id) : await (it.kind === 'video' ? videoThumb(it.src) : photoThumb(it.src)).then(({ bytes, meta }) => nb.saveThumb(id, bytes, meta));
         if (res.error) throw new Error(res.error);
         S.snap = res.snap;
       } catch (err) {

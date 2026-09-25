@@ -17,12 +17,13 @@
     const q = S.q.trim().toLowerCase();
     const g = NB.smart.suggestion();
     const list = g ? live().filter((i) => g.ids.includes(i.id)) : NB.smart.filter(itemsFor(S.board));
-    return q ? searchIn(list, q) : list;
+    return NB.sort.apply(q ? searchIn(list, q) : list, S.board);
   };
   // Title, notes, and what it is (type, style, clothing colours).
   const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.sourceTitle || '', i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
   const searchIn = (list, q) => list.filter((i) => words(i).includes(q));
   NB.refreshGrid = () => { renderContext(); renderGrid(); };
+  NB.refreshContext = () => renderContext();
   // Showing a suggested group (or back to the boards). `boardId`: jump to a board made from it.
   NB.showSuggestion = (g, boardId) => {
     S.anim = true;
@@ -154,7 +155,11 @@
     const titleKey = S.board + (S.snap.root || '');
     box.append(h('h2', { class: 'ctx-title' + (titleKey === renderContext.last ? ' still' : '') }, board ? board.name : S.board === 'bin' ? 'Bin' : 'All items'));
     renderContext.last = titleKey;
+    const tabs = NB.ideas.tabs();
+    if (tabs) box.append(tabs);
+    if (NB.ideas.active()) { box.append(...NB.ideas.info()); return; }
     box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
+    if (S.board !== 'bin') box.append(NB.sort.menu(S.board, () => renderGrid()));
     if (board) {
       const rename = h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board');
       // Deleting asks once more (a second click within a few seconds). Its items always stay in your notebook.
@@ -257,6 +262,7 @@
     size = next;
     try { localStorage.setItem('nb.cardSize', String(size)); } catch { /* remembering is a nicety */ }
     glideAround(() => document.documentElement.style.setProperty('--card', size + 'px'));
+    NB.ideas.redeal();
   }
   let wheelWait = 0;
   window.addEventListener('wheel', (e) => {
@@ -298,12 +304,15 @@
   const sigOf = (it) => [it.id, it.kind === 'note' ? it.updatedAt : '', it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id), NB.viewBox(it), it.deletedAt ? 1 : 0].join('|');
   const idsIn = (el) => (el.classList.contains('stackcard') ? [...el.querySelectorAll('.fanitem')].map((b) => b.dataset.id) : [el.dataset.id]);
   function renderGrid() {
+    NB.ideas.sync(); // Ideas showing instead of the saved items?
+    if (NB.ideas.active()) { S.anim = false; return; }
     const grid = $('grid'), empty = $('empty');
     const list = NB.visibleItems();
     const glide = !S.anim && grid.querySelector(':scope > .card') && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const before = new Map(), beforeId = new Map();
     if (glide) for (const el of grid.querySelectorAll(':scope > .card')) { const r = el.getBoundingClientRect(); before.set(el, r); for (const id of idsIn(el)) beforeId.set(id, r); }
-    const els = NB.stacks.group(list, NB.smart.suggestion() ? null : currentBoardId()).map((x, i) => {
+    const groups = NB.stacks.group(list, NB.smart.suggestion() ? null : currentBoardId());
+    const els = groups.map((x, i) => {
       const key = Array.isArray(x) ? 's:' + x.map((m) => m.id).sort().join(',') : 'c:' + x.id;
       const sig = Array.isArray(x) ? x.map(sigOf).join(';') : sigOf(x);
       const hit = kept.get(key);
@@ -321,9 +330,10 @@
     for (const [k] of kept) if (!k.slice(2).split(',').every((id) => alive.has(id))) kept.delete(k);
     grid.className = 'grid' + (S.anim ? ' anim ' + S.dir : '');
     // Only cards that are out of place are moved (moving a card restarts its picture and loses the pointer).
-    const keep = new Set(els);
+    const order = NB.sort.withHeadings(groups, els, S.board); // sorted by date taken: a heading for each month
+    const keep = new Set(order);
     for (const c of [...grid.children]) if (!keep.has(c)) c.remove();
-    els.forEach((el, i) => { if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null); });
+    order.forEach((el, i) => { if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null); });
     S.anim = false;
     if (glide) {
       const ease = 'cubic-bezier(.2,.9,.3,1)';
@@ -343,14 +353,18 @@
         // A copy fades (the card itself is kept, ready for when a filter brings it back),
         // under the cards that stay, which glide over it.
         const ghost = el.cloneNode(true);
-        ghost.className = 'card-ghost';
+        ghost.className = 'card-ghost'; // looks like the card, but isn't one (never counted, never clicked)
         ghost.setAttribute('aria-hidden', 'true');
+        ghost.querySelectorAll('.pick, .hoverplay').forEach((x) => x.remove());
         const g = grid.getBoundingClientRect();
         Object.assign(ghost.style, { position: 'absolute', left: r.left - g.left + 'px', top: r.top - g.top + 'px', width: r.width + 'px', margin: 0, pointerEvents: 'none', animation: 'none' });
         grid.prepend(ghost);
         const to = into ? into.getBoundingClientRect() : null;
         const end = to ? `translate(${to.left + to.width / 2 - (r.left + r.width / 2)}px, ${to.top + 40 - r.top}px) scale(.5)` : 'scale(.92)';
-        ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 260, easing: 'ease-in', fill: 'forwards' }).onfinish = () => ghost.remove();
+        const fade = ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: end }], { duration: to ? 340 : 220, easing: 'ease-in', fill: 'forwards' });
+        // Gone when the fade ends, and for certain soon after (a fade the browser holds back must never leave copies behind).
+        const bye = () => ghost.remove();
+        fade.onfinish = bye; fade.oncancel = bye; setTimeout(bye, 700);
       }
     }
     empty.hidden = list.length > 0;
@@ -475,7 +489,7 @@
     };
     $('bin-btn').onclick = () => go(S.board === 'bin' ? 'all' : 'bin');
     $('lib-keys').onclick = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); NB.shortcuts(); };
-    $('search').addEventListener('input', (e) => { S.q = e.target.value; renderContext(); renderGrid(); });
+    $('search').addEventListener('input', (e) => { S.q = e.target.value; NB.ideas.leave(); renderContext(); renderGrid(); }); // searching shows your own things
     $('lib-btn').onclick = () => {
       const pop = $('lib-pop');
       pop.hidden = !pop.hidden;
@@ -538,7 +552,7 @@
       if (NB.viewer.isOpen() || NB.phone.isOpen() || !S.snap) return;
       const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]');
       if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
-      else if (!typing && e.ctrlKey && e.key.toLowerCase() === 'a' && S.board !== 'bin') { e.preventDefault(); NB.stacks.pickAll(); }
+      else if (!typing && e.ctrlKey && e.key.toLowerCase() === 'a' && S.board !== 'bin' && !NB.ideas.active()) { e.preventDefault(); NB.stacks.pickAll(); }
       else if (!typing && e.key === 'Delete' && NB.stacks.isPicking()) { e.preventDefault(); NB.stacks.binPicked(); }
       else if (!typing && e.key === '?') { e.preventDefault(); NB.shortcuts(); }
       else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }

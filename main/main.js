@@ -8,6 +8,7 @@ const { Library, PHOTO_EXT, VIDEO_EXT } = require('./library');
 const { SyncServer } = require('./sync-server');
 const { setupFeatures } = require('./features');
 const { setupAutoBackup } = require('./autobackup');
+const { rawPreview, isRaw } = require('./raw');
 let features = null, autoBackup = null;
 
 // The page and the library files are both served from nb://notebook/ so the page can
@@ -166,8 +167,10 @@ async function useLibrary(root) {
   writeConfig({ libraryPath: root });
   await sync.start(lib); // never throws: problems show in the Phone panel
   if (autoBackup) autoBackup.check();
-  const opened = lib; // fingerprints for older items, quietly, so duplicates are noticed
-  setTimeout(() => opened.fillHashes().catch((err) => console.error('fingerprints', err)), 4000);
+  const opened = lib; // fingerprints for older items, quietly, so duplicates are noticed; and when things were taken
+  setTimeout(() => opened.fillHashes().catch((err) => console.error('fingerprints', err))
+    .then(() => opened.fillDates()).then((n) => { if (n && lib === opened) send('lib:changed', { snap: snapshot(), arrived: [] }); })
+    .catch((err) => console.error('dates', err)), 4000);
   return { recovered: lib.recovered };
 }
 
@@ -193,6 +196,7 @@ async function confirm(message, detail, okLabel) {
 
 function registerHandlers() {
   features = setupFeatures({ app, handle, getLib: () => lib, send, snapshot, getWin: () => win });
+  sync.feed = features.feed; // the phone gets Ideas too
   autoBackup = setupAutoBackup({ handle, getLib: () => lib, readConfig, writeConfig, pickFolder, send });
   handle('lib:state', async () => {
     const saved = readConfig().libraryPath;
@@ -255,6 +259,13 @@ function registerHandlers() {
 
   handle('item:update', (id, changes) => lib.updateItem(id, changes || {}));
   handle('item:thumb', (id, bytes, meta) => lib.saveThumb(id, bytes, meta));
+  // A camera RAW photo's preview, from the JPEG inside it (the page can't read RAW files itself).
+  handle('item:rawThumb', async (id) => {
+    const it = lib.item(String(id));
+    if (!isRaw(it.file)) { const e = new Error(); e.friendly = 'That isn’t a RAW photo.'; throw e; }
+    const { data, width, height } = await rawPreview(lib.p(it.file));
+    await lib.saveThumb(it.id, data, { w: width, h: height });
+  });
   handle('item:bin', (id) => lib.moveToBin(id));
   handle('items:onPhone', (ids, on) => lib.setOnPhone(Array.isArray(ids) ? ids.map(String) : [], !!on));
   handle('items:stack', async (ids, boardId) => ({ id: await lib.stackItems(Array.isArray(ids) ? ids.map(String) : [], typeof boardId === 'string' ? boardId : null) }));
@@ -359,7 +370,10 @@ app.whenReady().then(async () => {
   if (!FIRST_INSTANCE) return;
   nativeTheme.themeSource = 'dark';
   Menu.setApplicationMenu(null);
-  protocol.handle('nb', (request) => {
+  protocol.handle('nb', async (request) => {
+    // Pictures for Ideas: fetched from Pinterest by this PC the first time they're shown, then kept.
+    const idea = /^nb:\/\/notebook\/feed\/([0-9a-f]{32})\.jpg$/.exec(request.url);
+    if (idea) { const file = features && await features.feed.image(idea[1]); return file ? serveFile(file, request) : new Response('Not found', { status: 404 }); }
     const file = resolveUrl(request.url);
     return file ? serveFile(file, request) : new Response('Not found', { status: 404 });
   });

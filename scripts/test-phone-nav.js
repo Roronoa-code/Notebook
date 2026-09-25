@@ -80,7 +80,7 @@ const { chromium } = require('playwright-core');
       document.querySelector('#tab-recent').click();
       return { mid, end };
     });
-    assert.ok(topMotion.mid > 0 && topMotion.mid < 78 && Math.abs(topMotion.end - 78) < 1, 'top Recent/Notes selection travels too');
+    assert.ok(topMotion.mid > 0 && topMotion.mid < 74 && Math.abs(topMotion.end - 74) < 1, 'top Recent/Notes selection travels too');
     await page.locator('#addbtn').click();
     assert.equal(await page.locator('#addsheet').isVisible(), true);
     await page.locator('#addbtn').click();
