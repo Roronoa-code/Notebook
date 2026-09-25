@@ -6,7 +6,8 @@ window.NBMotion = (ctx) => {
   const { S, app, tick } = ctx;
 
   // Transform and opacity stay on compositor layers; clipping a whole frosted screen repaints it.
-  const EASE = 'cubic-bezier(.2,.75,.25,1)', DUR = 460;
+  // The same timing as the stylesheet's --ease and --t-screen.
+  const EASE = 'cubic-bezier(.22,1,.36,1)', DUR = 440;
 
   // An open photo or video is an overlay on the screen underneath: the picture itself grows out of
   // its card (and shrinks back into it), the backdrop fades, and nothing else moves.
@@ -379,5 +380,43 @@ window.NBMotion = (ctx) => {
   const pickedCards = () => app.querySelectorAll('.grid .card.sel').length;
   function endSelect() { S.select = null; markSelection(); ctx.updateChrome(); }
 
-  return { flipGrid, animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
+  // Floating sheets (Add, Cover, small forms, a pin): drag one down and it follows the finger; far or fast
+  // enough and it closes, otherwise it settles back. Typing in a field is left alone.
+  function wirePops(els, close) {
+    for (const el of els) {
+      let y0 = null, dy = 0, dragging = false, samples = [];
+      el.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('input, textarea') || el.dataset.leaving) return;
+        el.getAnimations().forEach((a) => a.finish());
+        y0 = e.clientY; dy = 0; dragging = false; samples = [[e.clientY, e.timeStamp]];
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (y0 === null) return;
+        if (!dragging) {
+          if (Math.abs(e.clientY - y0) < 8) return;
+          if (e.clientY < y0) { y0 = null; return; } // upwards: not a dismiss
+          dragging = true; y0 = e.clientY; el.setPointerCapture(e.pointerId);
+        }
+        dy = e.clientY - y0;
+        samples.push([e.clientY, e.timeStamp]); if (samples.length > 5) samples.shift();
+        el.style.transform = `translateY(${(dy < 0 ? dy * 0.2 : dy).toFixed(1)}px)`;
+      });
+      const end = (e) => {
+        if (y0 === null) return;
+        y0 = null;
+        if (!dragging) return;
+        dragging = false;
+        swallowClick(); // the tap the browser adds after a drag isn't a tap on a row
+        const a = samples[0], b = samples[samples.length - 1], v = b[1] > a[1] ? (b[0] - a[0]) / (b[1] - a[1]) : 0;
+        if (e.type === 'pointerup' && (dy > 70 || v > 0.5)) { close(); return; }
+        const from = el.style.transform;
+        el.style.transform = '';
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) el.animate([{ transform: from }, { transform: 'none' }], { duration: 320, easing: EASE });
+      };
+      el.addEventListener('pointerup', end);
+      el.addEventListener('pointercancel', end);
+    }
+  }
+
+  return { flipGrid, wirePops, animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
 };

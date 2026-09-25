@@ -269,6 +269,7 @@
       <button type="button" class="addbtn" data-a="add" id="addbtn" aria-label="Add" aria-expanded="false">${svg(P.plus, 22, 2.4)}</button>
       <button type="button" class="navbtn" data-a="sync" id="nav-sync" aria-label="Sync">${svg(P.sync)}<span class="navlbl">Sync</span></button>
     </nav>
+    <div class="popscrim" id="popscrim" data-a="closePops" hidden></div>
     <div class="popsheet frost" id="addsheet" hidden>
       <button type="button" class="addrow" data-a="addGallery">${svg(P.photo, 20, 1.9)}Photos and videos from Gallery</button>
       <button type="button" class="addrow" data-a="addCamera">${svg(P.camera, 20, 1.9)}Take a photo</button>
@@ -290,21 +291,26 @@
   }
 
   // Pop-ups rise in (CSS) and sink away (here) instead of vanishing.
+  // Every floating sheet (and its backdrop) comes and goes the same way; one dragged down leaves from
+  // wherever the finger let go of it.
   function showSheet(el, on) {
     if (on) {
       el.getAnimations().forEach((x) => x.cancel());
       delete el.dataset.leaving;
       el.inert = false;
+      el.style.transform = '';
       if (el.hidden) el.hidden = false;
       return;
     }
     if (el.hidden || el.dataset.leaving) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.hidden = true; return; }
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.hidden = true; el.style.transform = ''; return; }
     el.dataset.leaving = '1';
     el.inert = true;
-    const a = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(26px) scale(.97)' }], { duration: 200, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
-    a.onfinish = () => { if (el.dataset.leaving) { el.hidden = true; delete el.dataset.leaving; } el.inert = false; a.cancel(); };
+    const y = new DOMMatrix(getComputedStyle(el).transform).m42;
+    const a = el.animate([{ opacity: 1, transform: `translateY(${y}px)` }, { opacity: 0, transform: el.id === 'popscrim' ? 'none' : `translateY(${y + 24}px) scale(.97)` }], { duration: 180, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    a.onfinish = () => { if (el.dataset.leaving) { el.hidden = true; delete el.dataset.leaving; el.style.transform = ''; } el.inert = false; a.cancel(); };
   }
+  const closePops = () => { if (S.sheet) closeForm(); S.add = S.cover = false; updateChrome(); };
 
   function updateChrome() {
     // The bar slides away under an open item and back when it closes. An open item sits on top of the
@@ -317,7 +323,7 @@
       nav.getAnimations().forEach((x) => x.cancel());
       if (!hide) nav.hidden = false;
       if (!calm) {
-        const a = nav.animate([{ opacity: 1, translate: '-50% 0' }, { opacity: 0, translate: '-50% 28px' }], { duration: hide ? 240 : 380, easing: 'cubic-bezier(.2,.75,.25,1)', direction: hide ? 'normal' : 'reverse', fill: hide ? 'forwards' : 'none' });
+        const a = nav.animate([{ opacity: 1, translate: '-50% 0' }, { opacity: 0, translate: '-50% 28px' }], { duration: hide ? 240 : 380, easing: 'cubic-bezier(.22,1,.36,1)', direction: hide ? 'normal' : 'reverse', fill: hide ? 'forwards' : 'none' });
         if (hide) a.onfinish = () => { if (nav.dataset.away) nav.hidden = true; a.cancel(); };
       } else nav.hidden = hide;
     }
@@ -337,6 +343,7 @@
     $('#seg-dots').classList.toggle('on', S.coverDots);
     $('#seg-plain').classList.toggle('on', !S.coverDots);
     showSheet($('#formsheet'), !!S.sheet);
+    showSheet($('#popscrim'), S.add || S.cover || !!S.sheet);
     const n = S.select ? S.select.size : 0;
     showSheet($('#selbar'), !!S.select);
     const cards = S.select ? M.pickedCards() : 0;
@@ -567,6 +574,7 @@
     ideaHide: () => { closeForm(); I.hide(); },
     ideaOpen: () => { I.openPin(); closeForm(); },
     ideasNow: () => I.now(),
+    closePops,
     // Sort: a small sheet of choices; the cards glide to their new places.
     sortOpen: (x, el) => { if (!SO.closeMenu()) { SO.openMenu(app, el, S.screen === 'board' ? S.board : 'all'); tick(); } },
     sortPick: (v) => {
@@ -645,14 +653,16 @@
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }
     if (S.screen === 'item') { if (!NBViewer.back()) A.back(); return true; }
-    if (S.screen === 'board') { go('home', null, 'pop'); return true; }
-    if (S.screen !== 'home') { go('home'); return true; }
+    if (S.screen === 'board') { A.boardBack(); return true; }
+    if (S.screen === 'bin') { A.binBack(); return true; }
+    if (S.screen !== 'home') { A.home(); return true; }
     return false;
   };
   const setHero = () => app.style.setProperty('--hero', Math.round(Math.min(600, window.innerHeight * 0.7)) + 'px');
   window.addEventListener('resize', setHero);
   setHero();
   app.innerHTML = chromeHTML();
+  M.wirePops([...app.querySelectorAll('#addsheet, #coversheet, #formsheet')], closePops);
   showScreen('fade');
   // Catch up with the PC quietly when the app opens, and keep "synced x min ago" current.
   if ((DB.sync || {}).paired) setTimeout(() => N.syncQuiet(), 1200);
