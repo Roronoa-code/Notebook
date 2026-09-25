@@ -117,7 +117,7 @@ function mergeInto(data, remote, nowMs = Date.now()) {
   for (const rb of remote.boards) {
     const lb = boards.get(rb.id);
     if (!lb) { const copy = { ...rb }; boards.set(rb.id, copy); boardOrder.push(copy); }
-    else if (time(rb.updatedAt) > time(lb.updatedAt)) replaceInPlace(lb, { ...rb });
+    else if (time(rb.updatedAt) > time(lb.updatedAt)) replaceInPlace(lb, { ...rb, ...(lb.phone === false ? { phone: false } : {}) }); // the PC's "on phone" stays
   }
   data.boards = boardOrder.filter((b) => !(tombBoard.has(b.id) && tombBoard.get(b.id) >= time(b.updatedAt)));
 
@@ -168,9 +168,14 @@ function mergeInto(data, remote, nowMs = Date.now()) {
 
 // What the phone gets back: everything except items the PC has set not to show on the phone.
 // A hidden item whose file the PC hasn't received yet is still sent, so the phone keeps (and uploads) it.
-function forPhone(items, pcNeeds) {
-  const waiting = new Set(pcNeeds);
-  return items.filter((it) => it.phone !== false || waiting.has(it.id));
+// What the phone gets. A board switched off for the phone (`phone: false`, set on the PC only) isn't
+// sent, nor is anything that's only on switched-off boards; nor an item switched off itself. A file the
+// PC is still waiting for keeps being sent until it's uploaded.
+const boardsForPhone = (boards) => boards.filter((b) => b.phone !== false);
+function forPhone(items, pcNeeds, boards = []) {
+  const waiting = new Set(pcNeeds), hidden = new Set(boards.filter((b) => b.phone === false).map((b) => b.id));
+  const offBoards = (it) => hidden.size && (it.boards || []).length > 0 && it.boards.every((id) => hidden.has(id));
+  return items.filter((it) => (it.phone !== false && !offBoards(it)) || waiting.has(it.id));
 }
 
-module.exports = { cleanRemote, cleanCrop, mergeInto, forPhone, unionTombstones, pruneTombstones, SyncError, TOMBSTONE_DAYS, ID_RE };
+module.exports = { cleanRemote, cleanCrop, mergeInto, forPhone, boardsForPhone, unionTombstones, pruneTombstones, SyncError, TOMBSTONE_DAYS, ID_RE };

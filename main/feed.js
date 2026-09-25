@@ -292,7 +292,7 @@ class Feed {
       if (!had) await Promise.race([this.queue, new Promise((r) => setTimeout(r, 15000))]); // a first set, if it's quick
     }
     const lib = this.getLib();
-    const keys = ['all', ...(lib ? lib.data.boards.map((b) => b.id) : [])];
+    const keys = ['all', ...(lib ? lib.data.boards.filter((b) => b.phone !== false).map((b) => b.id) : [])];
     const feeds = {};
     for (const k of keys) { const f = this.get(k, { load: false }); if (f) feeds[k] = { at: f.at, signedIn: f.signedIn, pins: f.pins.slice(0, 150) }; }
     this.warm();

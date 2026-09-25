@@ -472,6 +472,14 @@ class Library {
     await this.save();
   }
 
+  // "On phone" for a whole board (the PC decides, like an item's own switch). Not a synced edit: the phone
+  // simply stops getting the board and anything only on it, and gets them back when switched on again.
+  async setBoardOnPhone(id, on) {
+    const board = this.board(id);
+    if (on) delete board.phone; else board.phone = false;
+    await this.save();
+  }
+
   // Deleting a board only removes the board: its items stay in All items and any other boards.
   // A new order for the boards (all of them, each once). Only the order changes, so it isn't a synced edit;
   // the phone gets the PC's order at its next sync.

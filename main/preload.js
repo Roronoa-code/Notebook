@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('nb', {
   emptyBin: call('bin:empty'),
   addBoard: call('board:add'),
   renameBoard: call('board:rename'),
+  setBoardOnPhone: call('board:onPhone'),
   deleteBoard: call('board:delete'),
   backup: call('backup:run'),
   autoBackup: call('backup:auto:get'),

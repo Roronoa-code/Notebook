@@ -287,6 +287,7 @@ function registerHandlers() {
 
   handle('board:add', async (name) => ({ id: await lib.addBoard(name) }));
   handle('board:rename', (id, name) => lib.renameBoard(id, name));
+  handle('board:onPhone', (id, on) => lib.setBoardOnPhone(String(id), !!on));
   handle('board:delete', async (id) => {
     const board = lib.board(id);
     const sure = await confirm(`Delete the board "${board.name}"?`, 'Only the board is removed. Every item on it stays in All items and on its other boards.', 'Delete board');

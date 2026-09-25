@@ -32,6 +32,9 @@ Pinterest panel. Recognising your pictures happens on your own PC, even with the
   website), or a TikTok or Pinterest link (see below). You can also drag a picture straight out
   of your browser. If a board is open, new things land on it. The same picture is never added
   twice: you're told it's already there, with **Show it**.
+- **Boards on your phone**: each board has an **On phone** switch next to Rename. Off keeps the
+  board, and anything that's only on it, on your PC; your phone lets go of them at the next sync
+  and gets them back when you switch it on again.
 - **Boards**: they're listed on the left; drag one up or down to move it (or Alt + ↑ / ↓). Use **New board**,
   then **Rename board** or **Delete board** (click it twice). Deleting a board never deletes its items.
 - **Sort**: the menu next to the item count: **Newest added**, **Oldest added**, **Date taken**

@@ -95,7 +95,7 @@
       el.classList.toggle('on', S.board === b.id);
       el.setAttribute('aria-pressed', String(S.board === b.id));
       el.querySelector('.name').textContent = b.name;
-      el.querySelector('.count').textContent = `${n} item${n === 1 ? '' : 's'}`;
+      el.querySelector('.count').textContent = `${n} item${n === 1 ? '' : 's'}${b.phone === false ? ' · not on phone' : ''}`;
       const pics = stackKey(b.id);
       if (pics !== rec.pics) { rec.pics = pics; el.querySelector('.stack').replaceChildren(...stackFor(b.id)); }
       want.push(el);
@@ -159,8 +159,15 @@
     if (S.board !== 'bin') box.append(NB.sort.menu(S.board, () => renderGrid()));
     if (board) {
       const rename = h('button', { type: 'button', class: 'btn small', onclick: () => { S.renaming = true; renderContext(); } }, 'Rename board');
+      // On phone: off keeps this board (and anything only on it) on the PC; the phone drops it at the next sync.
+      const onPhone = h('input', { type: 'checkbox', id: 'board-phone', class: 'switch', role: 'switch', checked: board.phone !== false });
+      onPhone.addEventListener('change', async () => {
+        const res = await NB.run('setBoardOnPhone', board.id, onPhone.checked);
+        if (res) toast(onPhone.checked ? `“${board.name}” will show on your phone after the next sync` : `“${board.name}” will leave your phone at the next sync. It all stays here.`);
+      });
+      const phoneRow = h('label', { class: 'row-switch board-phone', for: 'board-phone', title: 'Off: this board, and anything only on it, stays on your PC and leaves your phone at the next sync.' }, h('span', null, 'On phone'), onPhone);
       // Deleting asks once more (a second click within a few seconds). Its items always stay in your notebook.
-      box.append(h('div', { class: 'ctx-actions' }, rename, h('button', { type: 'button', class: 'btn small danger', onclick: async (e) => {
+      box.append(h('div', { class: 'ctx-actions' }, phoneRow, rename, h('button', { type: 'button', class: 'btn small danger', onclick: async (e) => {
         const b = e.currentTarget;
         if (!b.dataset.sure) {
           b.dataset.sure = '1'; b.textContent = 'Click again to delete';
