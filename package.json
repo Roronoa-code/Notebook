@@ -1,7 +1,7 @@
 {
   "name": "notebook",
   "productName": "Notebook",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "An offline Pinterest-style notebook for photos, videos and notes.",
   "main": "main/main.js",
   "private": true,
