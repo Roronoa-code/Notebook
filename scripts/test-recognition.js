@@ -3,6 +3,7 @@
 // Usage: node scripts/test-recognition.js   (NOTEBOOK_TOOLS=<folder> to use another tools folder)
 const fs = require('fs');
 const path = require('path');
+const { nameFrom } = require('../main/naming');
 const R = require('../main/recognise');
 
 const TOOLS = process.env.NOTEBOOK_TOOLS || 'D:/Notebook Tools';
@@ -18,11 +19,12 @@ const sameColour = (a, b) => fam(a) === fam(b) || (fam(a) === 'navy' && fam(b) =
   const M = await R.load(path.join(TOOLS, 'models'), { allowDownload: !!process.env.NOTEBOOK_ALLOW_DOWNLOAD });
   console.log(`models loaded on ${M.device} in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   let typeRight = 0, colourRight = 0, styleRight = 0, outfits = 0;
-  const rows = [];
+  const rows = [], names = [];
   for (const t of truth) {
     const s = Date.now();
     const r = await R.analyse(M, path.join(SET, t.file));
     const labels = [r.type.main, ...r.type.extra];
+    names.push({ file: t.file, caption: r.caption || '(no caption model)', name: nameFrom({ caption: r.caption, type: r.type.main, colours: r.colours, styles: r.styles }) || '-' });
     const ok = labels.includes(t.main) && labels.every((l) => l === t.main || t.extra.includes(l));
     if (ok) typeRight++;
     let colourOk = '', styleOk = '';
@@ -36,6 +38,9 @@ const sameColour = (a, b) => fam(a) === fam(b) || (fam(a) === 'navy' && fam(b) =
       rows.push(`${t.file.padEnd(18)} ${ok ? 'OK ' : 'NO '} ${labels.join('+').padEnd(28)} colours ${got.join(',').padEnd(24)} (${colourOk}, want ${t.colours[0]})  styles ${(r.styles || []).join(',').padEnd(24)} (${styleOk}, want ${t.styles[0]})  ${Date.now() - s}ms`);
     } else rows.push(`${t.file.padEnd(18)} ${ok ? 'OK ' : 'NO '} ${labels.join('+').padEnd(28)} want ${t.main}${t.extra.length ? ' (+' + t.extra.join(',') + ' fine)' : ''}  ${Date.now() - s}ms`);
   }
+  // The names the pictures would get (to read over; there's no pass mark for taste).
+  console.log('\nNames:');
+  for (const n of names) console.log(`  ${n.file.padEnd(18)} ${n.name.padEnd(36)} <- ${n.caption}`);
   console.log(rows.join('\n'));
   const verdict = (n, pass, fail) => (n >= pass ? 'PASS' : n < fail ? 'FAIL' : 'INCONCLUSIVE');
   console.log(`\nA1 item types: ${typeRight}/${truth.length} right -> ${verdict(typeRight, 34, 30)} (pass 34+, fail under 30)`);

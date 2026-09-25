@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 const { cleanRemote, cleanCrop, mergeInto, pruneTombstones, SyncError, ID_RE } = require('./merge');
+const { isGenericTitle } = require('./naming');
 
 const DB = 'library.json';
 const MAX_UPLOAD = 2 * 1024 ** 3;
@@ -302,7 +303,11 @@ class Library {
 
   async updateItem(id, changes) {
     const it = this.item(id);
-    if (typeof changes.title === 'string') it.title = changes.title.trim().slice(0, 120) || (it.kind === 'note' ? 'Untitled note' : it.originalName);
+    if (typeof changes.title === 'string') {
+      const t = changes.title.trim().slice(0, 120) || (it.kind === 'note' ? 'Untitled note' : it.originalName);
+      if (t !== it.title && it.kind !== 'note') it.named = 'user'; // a name you gave is never replaced
+      it.title = t;
+    }
     if (typeof changes.html === 'string' && it.kind === 'note') it.html = changes.html.slice(0, 500000);
     if (typeof changes.caption === 'string' && it.kind !== 'note') it.caption = changes.caption.slice(0, 5000);
     if (Array.isArray(changes.boards)) it.boards = this.validBoards(changes.boards);
@@ -312,6 +317,29 @@ class Library {
     }
     it.updatedAt = now();
     await this.save();
+  }
+
+  // ---------- names ----------
+
+  // Can this item's title be replaced by a proper name? Not if you named it (here or on the phone):
+  // only placeholders (file or website names), a post's own wording, or a name given here before
+  // that nobody has changed since.
+  nameable(it) {
+    if (it.kind === 'note' || it.named === 'user') return false;
+    if (it.aiName) return it.title === it.aiName;
+    return !!it.source || isGenericTitle(it.title);
+  }
+
+  // Gives an item its proper name (made from what the picture shows). The old title is kept as
+  // `sourceTitle`, so search still finds it. A synced edit, so the phone shows the name too. Call save() after.
+  applyName(id, name) {
+    const it = this.data.items.find((i) => i.id === id);
+    if (!it || !name || !this.nameable(it) || it.title === name) return false;
+    if (it.sourceTitle == null) it.sourceTitle = it.title;
+    it.title = name;
+    it.aiName = name;
+    it.updatedAt = now();
+    return true;
   }
 
   // ---------- recognition (build plan A1-A3) ----------

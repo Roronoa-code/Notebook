@@ -103,7 +103,13 @@ async function load(modelsDir, { allowDownload = false } = {}) {
       }
       return out;
     };
-    return { vis: vis.m, processor, seg: seg.m, embedText, labelVectors, device: vis.device, typeVecs: await labelVectors(TYPES), styleVecs: {} };
+    // The captioning model (a sentence about the picture, for its name). Optional: without it, nothing is renamed.
+    let cap = null;
+    try {
+      const CAP = 'onnx-community/Florence-2-base-ft';
+      cap = { model: await T.Florence2ForConditionalGeneration.from_pretrained(CAP, { device: vis.device, dtype: 'fp32' }), processor: await T.AutoProcessor.from_pretrained(CAP) };
+    } catch { /* not downloaded: pictures keep their titles */ }
+    return { vis: vis.m, processor, seg: seg.m, cap, embedText, labelVectors, device: vis.device, typeVecs: await labelVectors(TYPES), styleVecs: {} };
   })();
   return loaded;
 }
@@ -133,6 +139,11 @@ async function analyse(M, file, styles = DEFAULT_STYLES) {
   // Extra labels: close enough to the main one to be a fair second reading.
   const extra = ranked.slice(1).filter((n) => scores[n] >= 0.2 && scores[n] >= scores[main] * 0.35);
   const out = { type: { main, extra, scores }, embedding: emb.map((x) => +x.toFixed(4)) };
+  if (M.cap) {
+    const inputs = await M.cap.processor(image, M.cap.processor.construct_prompts('<CAPTION>'));
+    const ids = await M.cap.model.generate({ ...inputs, max_new_tokens: 40 });
+    out.caption = String(M.cap.processor.post_process_generation(M.cap.processor.batch_decode(ids, { skip_special_tokens: false })[0], '<CAPTION>', image.size)['<CAPTION>'] || '').trim();
+  }
   const rgbOf = (img) => { const px = []; const c = img.channels; for (let i = 0; i < img.width * img.height; i++) px.push([img.data[i * c], img.data[i * c + 1], img.data[i * c + 2]]); return px; };
   if (main === 'outfit' || extra.includes('outfit')) {
     // Colours from the clothes only: the clothes-finding model marks clothing pixels; everything else is ignored.

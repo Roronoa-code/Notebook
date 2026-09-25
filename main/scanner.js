@@ -5,8 +5,9 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { DEFAULT_STYLES } = require('./recognise');
+const { nameFrom } = require('./naming');
 
-const VERSION = 2; // bump to re-scan everything after a recogniser change (corrections still stay)
+const VERSION = 3; // bump to re-scan everything after a recogniser change (corrections still stay)
 
 class Scanner {
   // fork(file) starts the worker process; onProgress({ state, done, total, device, error }); onChanged() after results land.
@@ -72,7 +73,10 @@ class Scanner {
             lib.setAi(it.id, { v: VERSION, failed: true, at: new Date().toISOString() });
           } else {
             const r = res.result;
-            lib.setAi(it.id, { v: VERSION, type: { main: r.type.main, extra: r.type.extra, conf: +(r.type.scores[r.type.main] || 0).toFixed(3) }, colours: r.colours || [], styles: r.styles, styleScores: r.styleScores ? Object.fromEntries(Object.entries(r.styleScores).map(([k, v]) => [k, +v.toFixed(3)])) : undefined, stylesFor: r.styles ? styles.join('|') : undefined, at: new Date().toISOString() });
+            lib.setAi(it.id, { v: VERSION, type: { main: r.type.main, extra: r.type.extra, conf: +(r.type.scores[r.type.main] || 0).toFixed(3) }, colours: r.colours || [], styles: r.styles, styleScores: r.styleScores ? Object.fromEntries(Object.entries(r.styleScores).map(([k, v]) => [k, +v.toFixed(3)])) : undefined, stylesFor: r.styles ? styles.join('|') : undefined, caption: r.caption || undefined, at: new Date().toISOString() });
+            // A proper name from the caption (only for placeholder titles; never one you typed).
+            const L = it.labels || {};
+            if (r.caption) lib.applyName(it.id, nameFrom({ caption: r.caption, type: L.main || r.type.main, colours: r.colours, styles: L.styles || r.styles }));
             this.emb[it.id] = r.embedding;
           }
           this.set({ done: i + 1, device: res.device });

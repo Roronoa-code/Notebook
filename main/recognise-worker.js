@@ -11,7 +11,9 @@ const port = process.parentPort || { on: (e, fn) => process.on('message', (data)
 function fake(hint, styles) {
   const n = String(hint || '').toLowerCase();
   const main = /outfit|shirt|coat/.test(n) ? 'outfit' : /wall|sky|lake/.test(n) ? 'wallpaper' : /icon|logo/.test(n) ? 'icon' : /face|pfp|portrait/.test(n) ? 'profile picture' : 'other';
-  return { type: { main, extra: [], scores: { [main]: 0.9 } }, colours: main === 'outfit' ? [{ name: 'black', hex: '#141414', share: 0.6 }] : [{ name: 'blue', hex: '#2c5abe', share: 0.5 }], styles: main === 'outfit' ? styles.slice(0, 2) : undefined, embedding: [1, 0, 0].map((x, i) => x + (n.length % (i + 3)) * 0.05) };
+  // Captions (for names) only when a check asks for them, so item titles in other checks stay put.
+  const caption = process.env.NOTEBOOK_FAKE_CAPTIONS ? { outfit: 'A man wearing a black coat and jeans standing on a street.', wallpaper: 'A calm lake under a blue sky in the background.', icon: 'A white bird on a blue circle.', 'profile picture': 'A woman with short hair smiling.' }[main] : undefined;
+  return { caption, type: { main, extra: [], scores: { [main]: 0.9 } }, colours: main === 'outfit' ? [{ name: 'black', hex: '#141414', share: 0.6 }] : [{ name: 'blue', hex: '#2c5abe', share: 0.5 }], styles: main === 'outfit' ? styles.slice(0, 2) : undefined, embedding: [1, 0, 0].map((x, i) => x + (n.length % (i + 3)) * 0.05) };
 }
 
 port.on('message', async ({ data }) => {

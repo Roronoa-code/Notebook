@@ -20,7 +20,7 @@
     return q ? searchIn(list, q) : list;
   };
   // Title, notes, and what it is (type, style, clothing colours).
-  const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
+  const words = (i) => { const L = NB.smart.labelsOf(i); return [i.title, i.sourceTitle || '', i.kind === 'note' ? textOf(i.html) : i.caption || '', ...L.types, ...L.styles, ...L.colours.map((c) => c.name)].join(' ').toLowerCase(); };
   const searchIn = (list, q) => list.filter((i) => words(i).includes(q));
   NB.refreshGrid = () => { renderContext(); renderGrid(); };
   // Showing a suggested group (or back to the boards). `boardId`: jump to a board made from it.

@@ -33,6 +33,7 @@ async function saveLink({ lib, dl, url, boardId }) {
       const it = lib.item(id);
       it.title = res.added.length > 1 ? `${title} (${i + 1}/${res.added.length})` : title;
       it.source = url;
+      it.named = 'source'; // the post's own wording: a proper name may replace it
     });
     if (res.added.length > 1) await lib.stackItems(res.added); // a slideshow stays together as one stack
     L.retry = L.retry.filter((r) => r.url !== url);

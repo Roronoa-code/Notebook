@@ -13,7 +13,7 @@ const OUT = path.join(APP, 'test-output', 'features');
 const LIB = path.join(OUT, 'Notebook Library');
 let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
-const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: '47861', NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
+const ENV = { ...process.env, NOTEBOOK_USER_DATA: path.join(OUT, 'userdata'), NOTEBOOK_SYNC_HOST: '127.0.0.1', NOTEBOOK_SYNC_PORT: '47861', NOTEBOOK_FAKE_RECOGNISER: '1', NOTEBOOK_FAKE_CAPTIONS: '1', NOTEBOOK_TOOLS: path.join(OUT, 'tools'), NOTEBOOK_WINDOW_DISPLAY: 'second' };
 const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8'));
 
 async function launch() {
@@ -34,7 +34,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   fs.mkdirSync(samples, { recursive: true });
   // Names the stand-in recogniser understands: two outfits, a wallpaper, an icon and a profile picture.
   const jpg = src.filter((f) => f.endsWith('.jpg'));
-  const files = [['outfit coat.jpg', jpg[0]], ['outfit shirt.jpg', jpg[1]], ['wall lake.jpg', jpg[1]], ['icon logo.jpg', jpg[0]], ['face pfp.jpg', jpg[0]]]
+  const files = [['outfit coat.jpg', jpg[0]], ['IMG_2031 outfit shirt.jpg', jpg[1]], ['wall lake.jpg', jpg[1]], ['icon logo.jpg', jpg[0]], ['face pfp.jpg', jpg[0]]]
     // A few extra bytes after the picture make each file different, so none is skipped as a duplicate.
     .map(([name, from]) => { const to = path.join(samples, name); fs.writeFileSync(to, Buffer.concat([fs.readFileSync(from), Buffer.from(name)])); return to; });
 
@@ -50,6 +50,16 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.waitForFunction(() => NB.S.snap.items.every((i) => i.ai && i.ai.type));
   assert.deepEqual(onDisk().items.map((i) => i.ai.type.main).sort(), ['icon', 'outfit', 'outfit', 'profile picture', 'wallpaper']);
   ok('new photos are recognised in the background and saved (type, colours, styles)');
+
+  // Names: a placeholder title (a camera file name) gets a proper name from the caption; a real one stays.
+  const named = onDisk().items.find((i) => i.originalName === 'IMG_2031 outfit shirt.jpg');
+  assert.equal(named.title, 'Black coat and jeans', 'the camera file name became a proper name');
+  assert.equal(named.sourceTitle, 'IMG_2031 outfit shirt');
+  assert.equal(onDisk().items.find((i) => i.originalName === 'outfit coat.jpg').title, 'outfit coat', 'a real title stays');
+  await page.fill('#search', 'IMG_2031');
+  assert.equal(await page.locator('.grid > .card').count(), 1, 'the old name still finds it');
+  await page.fill('#search', '');
+  ok('placeholder titles get proper names from what the picture shows; real titles stay; old names still searchable');
 
   // Filters: the cards that stay are the same cards (they glide, nothing reloads), and the title doesn't replay
   await page.evaluate(() => { for (const c of document.querySelectorAll('.grid > .card')) c.dataset.was = '1'; });

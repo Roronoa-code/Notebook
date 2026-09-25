@@ -336,6 +336,24 @@ const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
   await assert.rejects(sl.mergeRemote({ deviceId: 'phone-1', boards: [], tombstones: emptyT, items: [{ ...JSON.parse(JSON.stringify(sl.item(pId))), crop: { x: 0, y: 0, w: 5, h: 1 }, updatedAt: iso(480000) }] }), /couldn't read/);
   ok('crop: saved as fractions, a synced edit, the file never changes, bad crops refused (here and from the phone), can be removed');
 
+  // Proper names: only placeholders (and a post's wording) are replaced, never a name you gave.
+  const nm = sl.data.items.find((i) => i.kind === 'photo' && !i.deletedAt);
+  nm.title = 'IMG_4411'; delete nm.named; delete nm.aiName; delete nm.source; delete nm.sourceTitle;
+  const t0 = nm.updatedAt;
+  assert.equal(sl.applyName(nm.id, 'Black coat and jeans'), true);
+  assert.ok(nm.title === 'Black coat and jeans' && nm.sourceTitle === 'IMG_4411' && nm.updatedAt !== t0, 'named, old title kept, synced');
+  assert.equal(sl.applyName(nm.id, 'Grey coat'), true, 'a re-scan may improve a name nobody changed');
+  await sl.updateItem(nm.id, { title: 'My winter fit' });
+  assert.equal(sl.applyName(nm.id, 'Another name'), false, 'a name you typed is never replaced');
+  assert.equal(nm.title, 'My winter fit');
+  const nm2 = sl.data.items.find((i) => i.kind === 'photo' && !i.deletedAt && i.id !== nm.id) || nm;
+  nm2.title = 'Beach day'; delete nm2.named; delete nm2.aiName; delete nm2.source;
+  assert.equal(sl.applyName(nm2.id, 'Sandy beach'), false, 'a real title from the file name stays');
+  nm2.title = 'Pinterest pin'; assert.equal(sl.applyName(nm2.id, 'Sandy beach'), true);
+  nm2.title = 'Renamed on the phone'; // as if the phone renamed it after that
+  assert.equal(sl.applyName(nm2.id, 'Beach again'), false, 'a rename on the phone is kept too');
+  ok('proper names replace only placeholders or untouched names; names typed here or on the phone are kept');
+
   // Weekly backups keep the newest three they made; a backup made by hand in the same folder stays.
   process.env.NOTEBOOK_AUTOBACKUP_DELAY_MS = '1';
   const { setupAutoBackup } = require('../main/autobackup');
