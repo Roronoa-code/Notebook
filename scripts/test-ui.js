@@ -344,6 +344,21 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.evaluate(async (id) => NB.apply(await nb.deleteBoard(id)), emptyBoard);
   ok('searching inside a board offers the matches found in All items');
 
+  // No flicker: a change in the background (here a rename) keeps the pictures already on screen.
+  const still = await page.evaluate(async () => {
+    const boardImgs = [...document.querySelectorAll('.bcard .stack img')], card = document.querySelector('.grid > .card:not(.stackcard)');
+    const cardImg = card.querySelector('img'), id = card.dataset.id;
+    const before = NB.S.snap.items.find((i) => i.id === id).title;
+    NB.apply(await nb.updateItem(id, { title: 'Renamed quietly' }));
+    const same = boardImgs.every((i) => i.isConnected) && document.querySelector(`.grid .card[data-id="${id}"] img`) === cardImg;
+    const label = document.querySelector(`.grid .card[data-id="${id}"]`).getAttribute('aria-label');
+    NB.apply(await nb.updateItem(id, { title: before }));
+    return { same, label };
+  });
+  assert.equal(still.same, true, 'board pictures and the card picture are kept');
+  assert.equal(still.label, 'Open Renamed quietly', 'the card still knows its new name');
+  ok('background changes don’t rebuild pictures already on screen (no flicker)');
+
   // Boards can be dragged into a new order.
   const boardNames = () => page.locator('.bcard[data-id]:not([data-id="all"]) .name').allInnerTexts();
   const namesBefore = await boardNames();

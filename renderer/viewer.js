@@ -408,6 +408,13 @@
     },
     close,
     // Called after the library changes: close if the item vanished, otherwise update the side panel.
-    refresh() { if (V.shell) { if (!item()) { V.shell.remove(); V.shell = null; V.id = null; document.body.classList.remove('viewing'); window.removeEventListener('keydown', onKey, true); } else refreshSide(); } }
+    refresh() {
+      if (!V.shell) return;
+      const it = item();
+      if (!it) { V.shell.remove(); V.shell = null; V.id = null; document.body.classList.remove('viewing'); window.removeEventListener('keydown', onKey, true); return; }
+      // Only when something about this item (or the boards) changed: a background update elsewhere leaves it alone.
+      const sig = JSON.stringify([it.updatedAt, it.ai, it.labels, it.phone, it.stack, it.deletedAt, NB.S.snap.boards]);
+      if (sig !== V.sideSig) { V.sideSig = sig; refreshSide(); }
+    }
   };
 })();

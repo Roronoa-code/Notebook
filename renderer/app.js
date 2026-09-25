@@ -74,23 +74,42 @@
     return [h('div', { class: 'ph blank' })];
   }
 
+  // The board list. Board cards are kept and only what changed is updated, so nothing flickers when
+  // the library changes in the background (a sync, recognition, a new preview).
+  const boardEls = new Map(); // id -> { el, pics }
   function renderBoards() {
     const nav = $('boards');
     let hl = nav.querySelector('.bhl');
     if (!hl) { hl = h('div', { class: 'bhl', 'aria-hidden': 'true' }); nav.append(hl); }
-    for (const el of [...nav.children]) if (el !== hl) el.remove();
     const all = [{ id: 'all', name: 'All items' }, ...S.snap.boards];
+    const want = [];
     for (const b of all) {
       const n = itemsFor(b.id).length;
-      const el = h('button', { type: 'button', class: 'bcard' + (S.board === b.id ? ' on' : ''), 'aria-pressed': String(S.board === b.id), 'data-id': b.id, onclick: () => go(b.id) },
-        h('div', { class: 'stack', 'aria-hidden': 'true' }, stackFor(b.id)),
-        h('div', null, h('div', { class: 'name' }, b.name), h('div', { class: 'count micro' }, `${n} item${n === 1 ? '' : 's'}`)));
-      if (b.id !== 'all') { NB.drag.target(el, b.id); NB.drag.board(el, b.id); }
-      nav.append(el);
+      let rec = boardEls.get(b.id);
+      if (!rec) {
+        const el = h('button', { type: 'button', class: 'bcard', 'data-id': b.id, onclick: () => go(b.id) },
+          h('div', { class: 'stack', 'aria-hidden': 'true' }), h('div', null, h('div', { class: 'name' }), h('div', { class: 'count micro' })));
+        if (b.id !== 'all') { NB.drag.target(el, b.id); NB.drag.board(el, b.id); }
+        rec = { el, pics: null };
+        boardEls.set(b.id, rec);
+      }
+      const { el } = rec;
+      el.classList.toggle('on', S.board === b.id);
+      el.setAttribute('aria-pressed', String(S.board === b.id));
+      el.querySelector('.name').textContent = b.name;
+      el.querySelector('.count').textContent = `${n} item${n === 1 ? '' : 's'}`;
+      const pics = stackKey(b.id);
+      if (pics !== rec.pics) { rec.pics = pics; el.querySelector('.stack').replaceChildren(...stackFor(b.id)); }
+      want.push(el);
     }
-    nav.append(h('button', { type: 'button', class: 'bcard add', onclick: newBoard }, icon('plus'), 'New board'));
+    for (const [id, rec] of boardEls) if (!all.some((b) => b.id === id)) { rec.el.remove(); boardEls.delete(id); }
+    let add = nav.querySelector('.bcard.add');
+    if (!add) add = h('button', { type: 'button', class: 'bcard add', onclick: newBoard }, icon('plus'), 'New board');
+    // Only move elements that are out of place (moving an element restarts its images).
+    [...want, add].forEach((el, i) => { if (nav.children[i + 1] !== el) nav.insertBefore(el, nav.children[i + 1] || null); });
     requestAnimationFrame(placeHighlight);
   }
+  const stackKey = (id) => { const items = itemsFor(id); const pics = items.filter((i) => i.thumbSrc).slice(0, 3); return pics.length ? pics.map((i) => i.thumbSrc + NB.viewBox(i)).join('|') : items.some((i) => i.kind === 'note') ? 'note' : 'blank'; };
 
   function placeHighlight() {
     const nav = $('boards'), hl = nav.querySelector('.bhl');
@@ -197,8 +216,19 @@
   // A video card plays (quietly, on a loop) while the pointer rests on it, so the board keeps moving.
   function hoverPlay(btn, it) {
     let wait = 0, v = null;
+    const stop = () => {
+      clearTimeout(wait);
+      removeEventListener('mousemove', check, true);
+      if (!v) return;
+      const x = v; v = null;
+      x.classList.remove('on');
+      setTimeout(() => { x.pause(); x.removeAttribute('src'); x.load(); x.remove(); }, 260);
+    };
+    // If the cards move under a resting pointer, the browser may never say it left: check on each move.
+    const check = (e) => { const r = btn.getBoundingClientRect(); if (!btn.isConnected || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) stop(); };
     btn.addEventListener('mouseenter', () => {
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      clearTimeout(wait);
       wait = setTimeout(() => {
         const box = btn.querySelector('.media');
         if (!box || v) return;
@@ -207,15 +237,10 @@
         v.addEventListener('playing', () => v && v.classList.add('on'), { once: true });
         box.append(v);
         v.play().catch(() => {});
+        addEventListener('mousemove', check, true);
       }, 160);
     });
-    btn.addEventListener('mouseleave', () => {
-      clearTimeout(wait);
-      if (!v) return;
-      const x = v; v = null;
-      x.classList.remove('on');
-      setTimeout(() => { x.pause(); x.removeAttribute('src'); x.load(); x.remove(); }, 260);
-    });
+    btn.addEventListener('mouseleave', stop);
   }
 
   // Card size: Ctrl + mouse wheel over the board, or Ctrl + plus / minus (Ctrl + 0 goes back). Each step
@@ -270,7 +295,7 @@
   // Cards that haven't changed are kept (no reload, no flash). When the list changes in place (a filter,
   // a stack, a sync) every card glides from where it was to where it goes; new ones grow in, gone ones fade.
   const kept = new Map(); // key -> { sig, el }
-  const sigOf = (it) => [it.id, it.updatedAt, it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id), NB.viewBox(it)].join('|');
+  const sigOf = (it) => [it.id, it.kind === 'note' ? it.updatedAt : '', it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id), NB.viewBox(it), it.deletedAt ? 1 : 0].join('|');
   const idsIn = (el) => (el.classList.contains('stackcard') ? [...el.querySelectorAll('.fanitem')].map((b) => b.dataset.id) : [el.dataset.id]);
   function renderGrid() {
     const grid = $('grid'), empty = $('empty');
@@ -282,7 +307,10 @@
       const key = Array.isArray(x) ? 's:' + x.map((m) => m.id).sort().join(',') : 'c:' + x.id;
       const sig = Array.isArray(x) ? x.map(sigOf).join(';') : sigOf(x);
       const hit = kept.get(key);
-      if (hit && hit.sig === sig && !S.anim) return hit.el;
+      if (hit && hit.sig === sig && !S.anim) {
+        if (!Array.isArray(x)) { hit.el.setAttribute('aria-label', `Open ${x.title}`); const sr = hit.el.querySelector(':scope > .sr'); if (sr) sr.textContent = x.title; }
+        return hit.el;
+      }
       const el = Array.isArray(x) ? NB.stacks.stackCard(x, i, media) : card(x, i);
       if (glide) el.style.animation = 'none';
       kept.set(key, { sig, el });
@@ -292,7 +320,10 @@
     const alive = new Set(S.snap.items.map((i) => i.id));
     for (const [k] of kept) if (!k.slice(2).split(',').every((id) => alive.has(id))) kept.delete(k);
     grid.className = 'grid' + (S.anim ? ' anim ' + S.dir : '');
-    grid.replaceChildren(...els);
+    // Only cards that are out of place are moved (moving a card restarts its picture and loses the pointer).
+    const keep = new Set(els);
+    for (const c of [...grid.children]) if (!keep.has(c)) c.remove();
+    els.forEach((el, i) => { if (grid.children[i] !== el) grid.insertBefore(el, grid.children[i] || null); });
     S.anim = false;
     if (glide) {
       const ease = 'cubic-bezier(.2,.9,.3,1)';
