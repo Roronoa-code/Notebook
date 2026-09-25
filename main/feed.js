@@ -13,6 +13,7 @@ const BASE = 'https://www.pinterest.com';
 const STALE = 3 * 60 * 60 * 1000; // looked at after this long, a feed is refreshed
 const PER_BATCH = 60;              // new pins checked per load
 const KEEP = 300;                  // pins kept per feed
+const SAME = 0.92;                 // this alike (fingerprints) counts as the same picture: one you have, or one already shown
 const DOUBT = 0.5;                 // the quick AI detector's score from which a pin needs a second opinion
 const TYPE_WORD = { outfit: 'outfit', wallpaper: 'wallpaper', icon: 'app icon', 'profile picture': 'pfp' };
 
@@ -123,7 +124,7 @@ function rank(cands, profile, hiddenVecs, shown) {
     for (let i = 0; i < left.length; i++) {
       const c = left[i];
       const same = c.vec ? Math.max(0, ...[...recent, ...picked.slice(-20)].filter((p) => p.vec && p.vec.length === c.vec.length).map((p) => dot(p.vec, c.vec))) : 0;
-      const v = c.score - 0.4 * Math.max(0, same - 0.55) - (same > 0.96 ? 10 : 0);
+      const v = c.score - 0.4 * Math.max(0, same - 0.55) - (same > SAME ? 10 : 0);
       if (v > bestV) { bestV = v; best = i; }
     }
     const [c] = left.splice(best, 1);
@@ -224,7 +225,7 @@ class Feed {
       const mine = items.map((i) => emb[i.id]).filter(Boolean);
       const profile = key === 'all' ? mine.slice(-400) : mine;
       // Already in your notebook (the same picture): not an idea.
-      const ranked = (list, shown) => rank(list.filter((c) => !c.drop && !(c.vec && mine.some((u) => u.length === c.vec.length && dot(u, c.vec) > 0.95))), profile, this.state.hiddenVecs, shown)
+      const ranked = (list, shown) => rank(list.filter((c) => !c.drop && !(c.vec && mine.some((u) => u.length === c.vec.length && dot(u, c.vec) > SAME))), profile, this.state.hiddenVecs, shown)
         .map(({ vec, drop, score, bytes, doubt, ...p }) => p);
       const shownOf = (pins) => pins.map((p) => ({ vec: this.vecs.get(p.sig) }));
       const clear = cands.filter((c) => !c.doubt), doubtful = cands.filter((c) => c.doubt && !c.drop);

@@ -41,9 +41,10 @@ class Namer {
         for (const it of list) {
           if (!lib.data.items.includes(it) || !it.ai) continue;
           const res = await w.ask({ file: lib.p(it.kind === 'video' || isRaw(it.file) ? it.thumb : it.file), hint: it.originalName || it.title, modelsDir: this.modelsDir });
-          if (res.ok) { const name = cleanName(res.name); if (name && lib.applyName(it.id, name)) changed++; }
-          else this.log.error('naming', it.id, res.error);
-          it.ai = { ...it.ai, nameV: NAME_V }; // looked at (named, or not nameable by the model): not asked again
+          if (!res.ok) { this.log.error('naming', it.id, res.error); if (/stopped/.test(res.error)) break; continue; } // tried again next time
+          const name = cleanName(res.name);
+          if (name && lib.applyName(it.id, name)) changed++;
+          it.ai = { ...it.ai, nameV: NAME_V }; // looked at: not asked again
           if (Date.now() - last > 3000) { await lib.save(); if (changed) this.onChanged(); changed = 0; last = Date.now(); }
         }
         await lib.save();
