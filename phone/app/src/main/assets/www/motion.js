@@ -131,7 +131,7 @@ window.NBMotion = (ctx) => {
       if (kind === 'zoom') {
         fold.onfinish = () => { fold.cancel(); if (ctx.current() === el) oldEl.style.visibility = 'hidden'; };
       } else {
-        fold.onfinish = () => oldEl.remove();
+        fold.onfinish = () => { if (ctx.current() === el) oldEl.style.visibility = 'hidden'; }; // kept underneath, as you left it
         oldEl.style.pointerEvents = 'none';
       }
       return;

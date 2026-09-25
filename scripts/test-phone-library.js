@@ -51,6 +51,25 @@ const { chromium } = require('playwright-core');
     await page.waitForTimeout(500);
     assert.equal(await page.locator('#homegrid .dategroup').count(), 0);
 
+    // In a board, scrolled down: opening a picture and closing it comes back to the same place, same cards.
+    await page.locator('.pill[data-pill="0"]').click();
+    if (!(await page.locator('#boardgrid').count())) await page.locator('.pill[data-pill="0"]').click();
+    await page.locator('#boardgrid').waitFor();
+    await page.waitForTimeout(900);
+    const scr = page.locator('.screen:has(#boardgrid)');
+    const down = await scr.evaluate((s) => { s.scrollTop = s.scrollHeight; return s.scrollTop; });
+    assert.ok(down > 50, 'the board scrolls');
+    await page.evaluate(() => document.querySelectorAll('#boardgrid .card').forEach((c) => { c.dataset.kept = '1'; }));
+    await page.locator('#boardgrid .card[data-a="open"]').last().click();
+    await page.locator('.media-screen, .notestage').first().waitFor();
+    await page.waitForTimeout(700);
+    await page.locator('.lbback, [data-a="back"]').first().click();
+    await page.waitForTimeout(900);
+    assert.equal(await scr.evaluate((s) => s.scrollTop), down, 'still scrolled to where it was');
+    assert.equal(await page.locator('#boardgrid .card:not([data-kept])').count(), 0, 'the same cards (nothing redrawn)');
+    await page.locator('[data-a="boardBack"]').click();
+    await page.waitForTimeout(700);
+
     // Search: titles, photo notes, note text and board names.
     await page.locator('#nav-search').click();
     await page.locator('#q').waitFor();

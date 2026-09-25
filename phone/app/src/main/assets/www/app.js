@@ -397,6 +397,7 @@
     if (S.select) markSelection();
   }
   function refreshScreen() {
+    if (currentEl) currentEl.dataset.ver = dataVer;
     if (S.screen === 'home') refreshHome();
     else if (S.screen === 'board') {
       const b = boards().find((x) => x.id === S.board);
@@ -434,12 +435,14 @@
       homeEl.querySelector('#homegrid').classList.remove('anim'); // the first-load entrance is over; changes glide from here
       refreshHome();
       el = homeEl;
-    } else if (underEl && underEl.dataset.screen === S.screen && old && old.classList.contains('media-screen')) {
-      el = underEl; // back from an open photo to the board / search it was opened from
+    } else if (underEl && underEl.dataset.screen === S.screen && old && old.dataset.screen === 'item') {
+      el = underEl; // back from an open item to the board / search it was opened from, as you left it
+      el.querySelectorAll('.grid.anim').forEach((g) => g.classList.remove('anim')); // no second entrance
     } else {
       el = build(S.screen);
       if (!el) { S.screen = 'home'; return showScreen('fade'); }
       el.dataset.screen = S.screen;
+      el.dataset.ver = dataVer;
       if (S.screen === 'home') { homeEl = el; homeVer = dataVer; boardSig = sigOf(); }
     }
     // A quick return can reuse Home before its previous exit animation finishes.
@@ -448,13 +451,16 @@
     el.inert = false;
     el.style.visibility = '';
     el.style.pointerEvents = '';
-    underEl = el.classList.contains('media-screen') && old && old !== homeEl ? old : null;
+    underEl = S.screen === 'item' && old && old !== homeEl ? old : null; // kept under an open item (photo or note)
     for (const stale of [...stage.children]) {
       if (stale === old || stale === el || stale === underEl) continue;
       stale.getAnimations().forEach((animation) => animation.cancel());
       if (stale === homeEl) stale.style.visibility = 'hidden'; else stale.remove();
     }
-    if (el !== old) stage.appendChild(el);
+    // Moving a screen within the page resets its scrolling: note where it was and put it back after.
+    const scrolled = [el, ...el.querySelectorAll('.lift')].map((n) => [n, n.scrollTop]);
+    const back = kind === 'unzoom' || kind === 'pop';
+    if (el !== old && (el.parentNode !== stage || !back)) stage.appendChild(el); // going back, it's already in place under the one leaving
     currentEl = el;
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
     if (S.screen === 'item') { wireItem(el); wireDismiss(el); }
@@ -467,7 +473,9 @@
       if (!S.query) setTimeout(() => q.focus(), 350);
     }
     animateSwap(old, el, kind);
-    if (el.dataset.screen && el === old?.previousElementSibling) refreshScreen(); // a kept screen catches up
+    for (const [n, top] of scrolled) if (n.scrollTop !== top) n.scrollTop = top;
+    // A kept screen catches up, only if something changed while it was covered (no needless redraw).
+    if (el.dataset.screen && el === old?.previousElementSibling && +el.dataset.ver !== dataVer) refreshScreen();
     updateChrome();
   }
 
