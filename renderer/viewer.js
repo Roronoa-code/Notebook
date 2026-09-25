@@ -393,7 +393,7 @@
     document.body.classList.remove('viewing');
     window.removeEventListener('keydown', onKey, true);
     NB.apply({ snap: NB.S.snap });
-    if (V.returnFocus && document.contains(V.returnFocus)) V.returnFocus.focus();
+    if (V.returnFocus && document.contains(V.returnFocus)) V.returnFocus.focus({ preventScroll: true }); // never moves the page
   }
 
   NB.viewer = {
