@@ -201,40 +201,27 @@
     </div>`;
   }
 
-  function itemHTML() {
-    const it = byId(S.item);
-    if (!it) return null;
-    const chips = boards().map((b) => { const on = (it.boards || []).includes(b.id); return `<button type="button" class="chip${on ? ' on' : ''}" aria-pressed="${on}" data-a="boardToggle" data-v="${b.id}">${esc(b.name)}</button>`; }).join('');
-    let stage;
-    if (it.kind === 'note') {
-      stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn" style="height:40px">Tidy up</button></div>
-        <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Start typing, then tap Tidy up to turn it into a heading and bullet points.">${sanitize(it.html)}</div></div>`;
-    } else if (it.kind === 'video') {
-      // Our own quiet player: plays on a loop with the sound off; tap to pause, drag the line to seek.
-      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><div class="vbox">
-        <img class="vposter" src="${url(it.thumb)}" alt="" style="${vb(it)}">
-        <video id="vid" src="${url(it.file)}" style="${vb(it)}" muted loop playsinline preload="auto" aria-label="${esc(it.title)}"></video>
-        <span class="vpaused" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></span>
-        <div class="vbar" role="slider" aria-label="Position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><div class="vfill"></div></div>
-        <button type="button" class="vsound" aria-label="Sound on" aria-pressed="false">${svg('M11 5L6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6', 18)}</button>
-      </div><p class="media-message" role="status"></p></div>`;
-    } else {
-      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(/\.dng$/i.test(it.file || '') ? (it.thumb || it.file) : it.file)}" alt="${esc(it.title)}" decoding="async" style="${vb(it)}"${it.crop && shapeOf(it) ? ` data-ar="${(shapeOf(it)[0] / shapeOf(it)[1]).toFixed(4)}"` : ''}></button></div>`;
-    }
-    // Wide pictures leave room below, so their note and boards start open there.
-    return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
-      ${stage}
-      <button type="button" class="iconbtn glass lbback" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:4">${svg(P.back)}</button>
-      ${it.kind === 'note' ? '<span class="glass kindpill">Note</span>' : ''}
-      <div class="sheet frost${it.kind === 'note' ? ' compact' : ''}">
-        ${it.kind !== 'note' ? `<details class="media-details"${it.w > it.h * 1.1 ? ' open' : ''}><summary><span>${esc(it.title)}</span><small>Details & boards</small></summary><div class="media-fields">` : '<div class="handle"></div>'}
-        ${it.kind !== 'note' ? `<div style="display:flex;flex-direction:column;gap:8px"><label class="lbl" for="note">Note</label><textarea id="note" class="notebox" placeholder="Why did you save this?">${esc(it.caption || '')}</textarea></div>` : ''}
-        <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Boards</span><div class="chips">${chips}</div></div>
-        ${it.stack ? `<button type="button" class="btn" data-a="unstack" style="align-self:flex-start">Take out of stack</button>` : ''}
-        <div style="display:flex;gap:10px"><button type="button" class="btn danger" data-a="bin">${svg(P.bin, 16)}<span>Move to Bin</span></button><span style="flex:1"></span><button type="button" class="btn white" data-a="back">Done</button></div>
-        ${it.kind !== 'note' ? '</div></details>' : ''}
-      </div>
-    </div>`;
+  // The open item's screen (item.js).
+  const { itemHTML, peekHTML } = NBItem({ S, esc, svg, P, url, vb, sanitize, byId, boards, arStyle: (it) => arStyle(it) });
+
+  // The pictures an open item can be swiped through: those in the grid it was opened from, in order.
+  const swipeList = () => {
+    const seen = new Set();
+    return [...(underEl || homeEl || document).querySelectorAll('.grid [data-a="open"][data-v]')].map((b) => b.dataset.v)
+      .filter((id) => { const it = byId(id); return it && it.kind !== 'note' && !seen.has(id) && seen.add(id); });
+  };
+  // Swiped to another picture: it takes this one's place (no animation: it's already where it belongs).
+  function swapItem(id, carry) {
+    flushSave();
+    S.item = id;
+    const old = currentEl, el = build('item');
+    if (!el) return;
+    el.dataset.screen = 'item';
+    el.dataset.ver = dataVer;
+    old.replaceWith(el);
+    currentEl = el;
+    wireItem(el, carry);
+    updateChrome();
   }
 
   // Search: titles, notes (on photos and in notes) and board names. Only the results update as you type.
@@ -366,7 +353,7 @@
   });
   const SO = NBSort({ N, esc });
   const I = NBIdeas({ N, S, $, esc, toast, paired: () => !!(DB.sync || {}).paired, boardName: () => (S.screen === 'board' ? (boards().find((b) => b.id === S.board) || {}).name : ''), rerender: () => { dataVer++; refresh(); } });
-  const { animateSwap, setLift, wireHome, wireGrid, wireDismiss, markSelection, toggleSelect, endSelect } = M;
+  const { animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect } = M;
   const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML, search: searchHTML, bin: binHTML };
   const sigOf = () => boards().map((b) => b.id + ':' + b.name).join('|');
 
@@ -463,7 +450,7 @@
     if (el !== old && (el.parentNode !== stage || !back)) stage.appendChild(el); // going back, it's already in place under the one leaving
     currentEl = el;
     if (S.screen === 'home' && !el.dataset.wired) { el.dataset.wired = '1'; layoutPills(); wireHome(el); wireWheel(el); }
-    if (S.screen === 'item') { wireItem(el); wireDismiss(el); }
+    if (S.screen === 'item') wireItem(el);
     el.querySelectorAll('.grid').forEach(wireGrid);
     if (S.screen === 'sync') $('#syncbody').innerHTML = syncBodyHTML();
     if (S.screen === 'search') {
@@ -489,7 +476,7 @@
   let saveTimer = null;
   function saveSoon(fn) { clearTimeout(saveTimer); saveTimer = setTimeout(() => { saveTimer = null; fn(); }, 600); }
   function flushSave() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; if (flushSave.fn) flushSave.fn(); } }
-  function wireItem(root) {
+  function wireItem(root, carry) {
     const it = byId(S.item);
     flushSave.fn = null;
     const note = root.querySelector('#note');
@@ -512,6 +499,7 @@
       full.decode().then(() => { img.src = full.src; }, () => { img.src = full.src; });
     }
     NBMedia.wire(root);
+    NBViewer.wire(root, { id: it.id, list: swipeList(), peek: peekHTML, go: swapItem, close: () => A.back(), under: () => underEl || homeEl, carry });
   }
 
   // ---------- small forms (new board, rename, type pairing code): forms.js ----------
@@ -651,13 +639,12 @@
 
   // Android back gesture: close a panel or step back before leaving the app.
   window.nbBack = () => {
-    if (NBMedia.closePhoto()) return true;
     if (S.select) { endSelect(); return true; }
     if (SO.closeMenu()) return true;
     if (S.sheet) { closeForm(); return true; }
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }
-    if (S.screen === 'item') { A.back(); return true; }
+    if (S.screen === 'item') { if (!NBViewer.back()) A.back(); return true; }
     if (S.screen === 'board') { go('home', null, 'pop'); return true; }
     if (S.screen !== 'home') { go('home'); return true; }
     return false;

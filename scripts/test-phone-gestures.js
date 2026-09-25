@@ -100,7 +100,7 @@ const { chromium } = require('playwright-core');
     // Tap opens the picture on top; it can be taken out of the stack there.
     await stack.click();
     await page.locator('.media-screen').waitFor();
-    await page.locator('.media-details summary').click();
+    await page.locator('.dhead').click();
     await page.waitForTimeout(500);
     await page.locator('[data-a="unstack"]').click();
     await page.waitForTimeout(900);

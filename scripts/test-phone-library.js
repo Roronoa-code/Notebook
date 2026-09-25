@@ -85,7 +85,7 @@ const { chromium } = require('playwright-core');
     await page.locator('.media-screen').waitFor();
 
     // Move it to the Bin, then find it there and put it back.
-    await page.locator('.media-details summary').click();
+    await page.locator('.dhead').click();
     await page.waitForTimeout(500);
     await page.locator('[data-a="bin"]').click();
     await page.waitForTimeout(700);

@@ -1,5 +1,6 @@
 // Motion and touch on the phone screens: screen changes (photos fly between their card and the screen),
-// the items panel's spring, swipe down to close, flicking through stacks and press-and-hold to pick.
+// the items panel's spring, flicking through stacks and press-and-hold to pick. (An open photo's own
+// gestures: viewer.js.)
 // app.js owns the state and passes it in through `ctx`.
 window.NBMotion = (ctx) => {
   const { S, app, tick } = ctx;
@@ -29,7 +30,8 @@ window.NBMotion = (ctx) => {
     const o = { duration: DUR, easing: EASE };
     scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.8, easing: 'ease-out' });
     el.querySelector('.sheet').animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], o);
-    el.querySelector('.lbback').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], o);
+    // Back fades in once the backdrop covers the screen underneath (never on top of its header).
+    el.querySelector('.lbback').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { ...o, delay: DUR * 0.35, fill: 'backwards' });
     if (media && onScreen(r)) {
       card.style.visibility = 'hidden';
       const a = media.animate([{ transform: overRect(media, r) }, { transform: 'none' }], o);
@@ -37,8 +39,17 @@ window.NBMotion = (ctx) => {
     } else if (media) media.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'none' }], o);
     return scrim.getAnimations()[0];
   }
+  // After swiping through pictures, the one being closed may be off screen in the grid: the grid
+  // scrolls (instantly, while still covered) so it can fly back into its card.
+  function revealCard(under) {
+    const card = cardOf(under), r = card && card.getBoundingClientRect();
+    if (!card || onScreen(r) && r.top > 60 && r.bottom < innerHeight - 60) return;
+    const scroller = card.closest('.lift.up') || (card.closest('.lift') ? null : card.closest('.screen'));
+    if (scroller) scroller.scrollTop += r.top + r.height / 2 - innerHeight * 0.45;
+  }
   function lightboxClose(el, under) {
     const media = mediaOf(el), scrim = el.querySelector('.scrim');
+    revealCard(under);
     const card = cardOf(under), r = card && card.getBoundingClientRect();
     const o = { duration: DUR, easing: EASE, fill: 'forwards' };
     const from = media ? media.style.transform || 'none' : 'none';
@@ -368,57 +379,5 @@ window.NBMotion = (ctx) => {
   const pickedCards = () => app.querySelectorAll('.grid .card.sel').length;
   function endSelect() { S.select = null; markSelection(); ctx.updateChrome(); }
 
-  // Swipe down on an open photo or video to go back: only the picture follows the finger (shrinking a
-  // little) while the backdrop fades to the screen underneath; let go past the line, or flick, and it
-  // flies back into its card from wherever it is. Otherwise it springs back.
-  function wireDismiss(root) {
-    const stage = root.querySelector('.media-screen .stage');
-    if (!stage) return;
-    const media = mediaOf(root), scrim = root.querySelector('.scrim');
-    let y0 = 0, x0 = 0, dx = 0, dy = 0, active = false, dragging = false, samples = [];
-    stage.addEventListener('touchstart', (e) => {
-      const t = e.touches[0];
-      // Leave the video's position line and sound button alone.
-      if (e.touches.length > 1 || e.target.closest('.vbar, .vsound')) { active = false; return; }
-      active = true; dragging = false; y0 = t.clientY; x0 = t.clientX; dx = dy = 0; samples = [{ y: y0, t: e.timeStamp }];
-    }, { passive: true });
-    stage.addEventListener('touchmove', (e) => {
-      if (!active) return;
-      const t = e.touches[0];
-      dx = t.clientX - x0; dy = t.clientY - y0;
-      samples.push({ y: t.clientY, t: e.timeStamp }); if (samples.length > 5) samples.shift();
-      if (!dragging) {
-        if (dy < 10 || Math.abs(dy) < Math.abs(dx)) return;
-        dragging = true;
-        [media, scrim, ...chromeOf(root)].forEach((x) => x.getAnimations().forEach((a) => a.finish()));
-        const under = root.previousElementSibling;
-        if (under) under.style.visibility = '';
-        y0 = t.clientY - 10; dy = 10;
-      }
-      const k = Math.max(0, dy);
-      media.style.transform = `translate(${(dx * 0.7).toFixed(1)}px,${k.toFixed(1)}px) scale(${Math.max(0.6, 1 - k / 1200).toFixed(4)})`;
-      scrim.style.opacity = Math.max(0, 1 - k / 320).toFixed(3);
-      const fade = Math.max(0, 1 - k / 70).toFixed(3);
-      chromeOf(root).forEach((c) => { c.style.opacity = fade; });
-    }, { passive: true });
-    const end = () => {
-      if (!active || !dragging) { active = false; return; }
-      active = false; dragging = false;
-      const a = samples[0], b = samples[samples.length - 1];
-      const v = b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0; // px per ms, + is down
-      if (dy > 110 || v > 0.5) { ctx.actions().back(); return; }
-      const o = { duration: 320, easing: 'cubic-bezier(.2,.9,.3,1.12)' };
-      media.animate([{ transform: media.style.transform }, { transform: 'none' }], o);
-      scrim.animate([{ opacity: scrim.style.opacity }, { opacity: 1 }], o);
-      chromeOf(root).forEach((c) => c.animate([{ opacity: c.style.opacity }, { opacity: 1 }], o));
-      media.style.transform = ''; scrim.style.opacity = '';
-      chromeOf(root).forEach((c) => { c.style.opacity = ''; });
-      const under = root.previousElementSibling;
-      setTimeout(() => { if (under && ctx.current() === root) under.style.visibility = 'hidden'; }, 330);
-    };
-    stage.addEventListener('touchend', end, { passive: true });
-    stage.addEventListener('touchcancel', end, { passive: true });
-  }
-
-  return { flipGrid, animateSwap, setLift, wireHome, wireGrid, wireDismiss, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
+  return { flipGrid, animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
 };
