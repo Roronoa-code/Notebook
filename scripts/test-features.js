@@ -95,6 +95,8 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.waitForFunction(() => NB.S.snap.items.filter((i) => i.ai && i.ai.styles).every((i) => i.ai.stylesFor && i.ai.stylesFor.includes('gorpcore')), null, { timeout: 20000 });
   await idle(page);
   assert.ok(onDisk().settings.styles.includes('gorpcore'));
+  // The background recogniser saves every second or so: wait for it to reach the file.
+  for (let i = 0; i < 50 && !onDisk().items.filter((x) => x.ai && x.ai.styles).every((x) => x.ai.stylesFor.includes('gorpcore')); i++) await page.waitForTimeout(100);
   assert.ok(onDisk().items.filter((i) => i.ai && i.ai.styles).every((i) => i.ai.stylesFor.includes('gorpcore')), 'outfits looked at again for the new list');
   ok('the style list takes your own styles and outfits are re-styled against it');
 

@@ -85,7 +85,7 @@
         onclick: (e) => click(e, members.map((x) => x.id), () => NB.viewer.open(m.id)) }, media(m), h('span', { class: 'sr' }, m.title))));
     el.append(fan, h('span', { class: 'stackct', 'aria-hidden': 'true' }, icon('stack'), h('span')), pickBox(members.map((x) => x.id)));
     swipe(el);
-    NB.dragSource(el, members.map((x) => x.id));
+    NB.drag.source(el, members.map((x) => x.id));
     // A sideways scroll (trackpad, tilt wheel or Shift + wheel) flicks through too.
     let wait = 0;
     el.addEventListener('wheel', (e) => {
@@ -159,7 +159,7 @@
         if (res) { picked.clear(); mark(); toast(`Stacked ${n}. Use the arrows (or scroll sideways) to go through them.`); }
       } }, icon('stack'), 'Stack'),
       NB.S.snap.boards.length ? h('button', { type: 'button', class: 'btn small', onclick: (e) => NB.menu(e.currentTarget, 'Add to board', NB.S.snap.boards.map((b) => ({ value: b.id, label: b.name })), async (boardId) => {
-        await NB.addToBoard(ids, boardId);
+        await NB.drag.addToBoard(ids, boardId);
         picked.clear(); mark();
       }) }, icon('plus'), 'Add to board') : null,
       h('button', { type: 'button', class: 'btn small', onclick: async () => {
