@@ -77,7 +77,7 @@ function setupFeatures({ app, handle, getLib, send, snapshot, getWin }) {
     return { results: await dl.check(saved) };
   });
   handle('links:update', async () => ({ update: await dl.update() }));
-  setupPinterest({ getWin, handle, send, save: (url) => save(url, null) });
+  setupPinterest({ getWin, handle, send, save: (url) => save(url, null), aiScore: (bytes) => scanner.aiScore(bytes) });
 
   return { kick, scanner, tools, styles: () => getLib().styles(DEFAULT_STYLES), types: Object.keys(TYPES) };
 }

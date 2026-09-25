@@ -29,6 +29,12 @@ class Scanner {
     return new Promise((resolve) => { this.pending.set(id, resolve); this.worker.postMessage({ ...msg, id, modelsDir: this.modelsDir }); });
   }
 
+  // How likely a picture is to be AI-made (0 to 1), from its bytes; null if the detector isn't available.
+  async aiScore(bytes) {
+    const res = await this.ask({ cmd: 'aicheck', bytes });
+    return res.ok ? res.score : null;
+  }
+
   embPath() { return path.join(this.lib.root, 'ai', 'embeddings.json'); }
   async loadEmbeddings() {
     if (this.emb) return this.emb;

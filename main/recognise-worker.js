@@ -2,6 +2,7 @@
 // plain Node child in the checks). Loads the models once, then looks at one picture at a time, so the
 // app itself never stutters. Nothing here uses the internet.
 const R = require('./recognise');
+const AI = require('./aidetect');
 
 let M = null;
 const port = process.parentPort || { on: (e, fn) => process.on('message', (data) => fn({ data })), postMessage: (m) => process.send(m) };
@@ -18,6 +19,11 @@ function fake(hint, styles) {
 
 port.on('message', async ({ data }) => {
   const { id, cmd, file, styles, modelsDir, hint } = data;
+  // "Is this picture AI-made?" (the Pinterest panel). Only the small detector is loaded for this.
+  if (cmd === 'aicheck') {
+    if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, score: process.env.NOTEBOOK_FAKE_AI ? 1 : 0 });
+    try { return port.postMessage({ id, ok: true, score: await AI.score(modelsDir, data.bytes) }); } catch (err) { return port.postMessage({ id, ok: false, error: err.message, missing: !!err.missing }); }
+  }
   if (process.env.NOTEBOOK_FAKE_RECOGNISER) return port.postMessage({ id, ok: true, device: 'stand-in', result: cmd === 'hello' ? null : fake(hint, styles) });
   try {
     if (!M) M = await R.load(modelsDir);

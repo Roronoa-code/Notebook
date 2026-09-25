@@ -118,6 +118,12 @@
     if (!s.pin) setStatus('Open a pin, then Save to library. Or right-click any pin and choose Save to Notebook.');
   }
   nb.onPinState(pinState);
+  // "Hide AI pins": on by default; shows how many were hidden this time.
+  const aiBox = $('pin-ai'), aiText = $('pin-ai-text');
+  const drawAi = (s) => { aiBox.checked = !!s.hide; aiText.textContent = s.hide && s.hidden ? `${s.hidden} AI pin${s.hidden === 1 ? '' : 's'} hidden` : 'Hide AI pins'; };
+  nb.pinAiSetting().then((s) => s && !s.error && drawAi(s));
+  aiBox.addEventListener('change', async () => { const s = await nb.pinAiSetting(aiBox.checked); if (s && !s.error) drawAi(s); });
+  nb.onPinAi((s) => drawAi({ hide: aiBox.checked, hidden: s.hidden }));
   new ResizeObserver(() => { if (open) nb.pinBounds(rect()); }).observe(host);
   $('pin-btn').addEventListener('click', () => (open ? closePanel() : openPanel()));
   $('pin-close').addEventListener('click', closePanel);

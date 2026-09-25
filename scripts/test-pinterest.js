@@ -100,5 +100,24 @@ const onDisk = () => JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 
   assert.match(await pinUrl(), /\/pin\//, 'reopens on the last pin');
   ok('after a restart, the Pinterest panel opens on the last page you had open');
   await app2.close();
+
+  // Hide AI pins: with a stand-in detector that calls every picture AI-made, pins are hidden and counted.
+  // (The runs above already remembered these pins as not AI-made, so start from a clean slate.)
+  fs.rmSync(path.join(OUT, 'userdata', 'pinterest-ai.json'), { force: true });
+  const app3 = await electron.launch({ ...(process.env.NOTEBOOK_EXE ? { executablePath: process.env.NOTEBOOK_EXE } : { args: [APP] }), env: { ...env, NOTEBOOK_FAKE_AI: '1' } });
+  const page3 = await app3.firstWindow();
+  await page3.locator('.bcard').first().waitFor();
+  await page3.click('#pin-btn');
+  await page3.locator('#pin-ai-text', { hasText: /AI pins? hidden/ }).waitFor({ timeout: 90000 });
+  const hiddenOnPage = await app3.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => /pinterest/.test(w.getURL())).executeJavaScript('document.querySelectorAll("[data-nb-ai]").length'));
+  assert.ok(hiddenOnPage > 0, 'pins judged AI-made are hidden on the page');
+  const aiFile = path.join(OUT, 'userdata', 'pinterest-ai.json');
+  for (let i = 0; i < 50 && !fs.existsSync(aiFile); i++) await page3.waitForTimeout(100); // saved a couple of seconds later
+  const saved = JSON.parse(fs.readFileSync(aiFile, 'utf8'));
+  assert.ok(saved.hide === true && Object.keys(saved.scores).length > 0, 'answers are remembered');
+  await page3.locator('#pin-ai').uncheck();
+  await page3.locator('#pin-ai-text', { hasText: 'Hide AI pins' }).waitFor();
+  await app3.close();
+  ok(`Hide AI pins: pins judged AI-made are hidden (${hiddenOnPage} here) and counted; answers are remembered; the switch turns it off`);
   console.log(`\nAll ${passed} checks passed. Screenshot: ${OUT}`);
 })().catch((err) => { console.error('\nFAILED:', err); process.exit(1); });

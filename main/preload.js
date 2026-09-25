@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('nb', {
   pinBack: call('pin:back'),
   pinHome: call('pin:home'),
   pinSave: call('pin:save'),
+  pinAiSetting: call('pin:aiSetting'),
+  onPinAi: (fn) => ipcRenderer.on('pin:ai', (_e, s) => fn(s)),
   pinGo: call('pin:go'),
   onPinState: (fn) => ipcRenderer.on('pin:state', (_e, s) => fn(s)),
   // Phone sync

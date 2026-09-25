@@ -44,4 +44,10 @@ assert.deepEqual(JSON.parse(inner).feed.map((p) => p.id), ['1']);
 assert.equal(JSON.parse(inner).feed[0].title, 'a </script> b');
 assert.ok(hOut.text.includes('<script>var x = 1;</script>') && hOut.text.endsWith('<body>hi</body></html>'));
 assert.equal(filterHtml('<html>no data</html>').text, '<html>no data</html>');
+// Pins already known to be AI-made (by their picture's fingerprint) go too, when asked.
+const known = (o) => o.image_signature === 'aaaa';
+const withAi = JSON.parse(filterText(JSON.stringify({ data: [pin('1', { image_signature: 'aaaa' }), pin('2', { image_signature: 'bbbb' })] }), known).text);
+assert.deepEqual(withAi.data.map((p) => p.id), ['2'], 'a pin known to be AI-made is taken out');
+assert.equal(JSON.parse(filterText(JSON.stringify({ data: [pin('1', { image_signature: 'aaaa' }), ad('x')] })).text).data.length, 1, 'without the extra rule only ads go');
+
 console.log('Ad filter passed: promoted pins leave lists, id tables, wrappers, references and the page\'s own data; other answers are untouched.');

@@ -3,8 +3,9 @@
 // unless you press Save or choose "Save to Notebook" on a pin. The rest of the app stays offline.
 const path = require('path');
 const fs = require('fs');
-const { WebContentsView, Menu, shell, app } = require('electron');
+const { WebContentsView, Menu, shell, app, ipcMain } = require('electron');
 const { attachAdFilter } = require('./adfilter');
+const { HIDE_AT } = require('./aidetect');
 
 const HOME = 'https://www.pinterest.com/';
 const PARTITION = 'persist:pinterest';
@@ -17,7 +18,47 @@ const lastFile = () => path.join(app.getPath('userData'), 'pinterest-last.json')
 const isPinterest = (url) => { try { return /(^|\.)pinterest\.[a-z.]+$/i.test(new URL(url).hostname); } catch { return false; } };
 function lastPage() { try { const u = JSON.parse(fs.readFileSync(lastFile(), 'utf8')).url; return isPinterest(u) ? u : HOME; } catch { return HOME; } }
 
-function setupPinterest({ getWin, handle, send, save }) {
+// AI-made pins: each pin picture shown is checked once on this PC and the answer remembered (by the
+// picture's fingerprint in its address). Pins found to be AI-made are hidden, and taken out of what
+// Pinterest sends next time. The setting and answers live in pinterest-ai.json in the app's folder.
+const aiFile = () => path.join(app.getPath('userData'), 'pinterest-ai.json');
+const signatureOf = (url) => { const m = /\/([0-9a-f]{32})\.(?:jpe?g|png|webp|gif)/i.exec(String(url || '')); return m ? m[1].toLowerCase() : null; };
+
+function setupPinterest({ getWin, handle, send, save, aiScore }) {
+  let ai = { hide: true, scores: {} };
+  try { ai = { ...ai, ...JSON.parse(fs.readFileSync(aiFile(), 'utf8')) }; } catch { /* first time */ }
+  let aiSaveTimer = null, hiddenNow = 0, queue = Promise.resolve();
+  const saveAi = () => { clearTimeout(aiSaveTimer); aiSaveTimer = setTimeout(() => {
+    const keys = Object.keys(ai.scores); if (keys.length > 20000) for (const k of keys.slice(0, keys.length - 20000)) delete ai.scores[k];
+    fs.promises.writeFile(aiFile(), JSON.stringify(ai)).catch(() => {});
+  }, 2000); };
+  const isAiSig = (sig) => ai.hide && sig && ai.scores[sig] >= HIDE_AT;
+  // A pin in Pinterest's data whose picture is already known to be AI-made.
+  const knownAiPin = (o) => ai.hide && (isAiSig(o.image_signature) || (o.images && typeof o.images === 'object' && Object.values(o.images).some((im) => im && isAiSig(signatureOf(im.url)))));
+  async function checkPicture(url) {
+    const sig = signatureOf(url);
+    if (!sig) return { hide: false };
+    if (!(sig in ai.scores)) {
+      const big = url.replace(/\/\d+x\//, '/474x/'); // a clearer copy than the small grid picture
+      queue = queue.then(async () => {
+        if (sig in ai.scores) return;
+        const get = (u) => view.webContents.session.fetch(u, { signal: AbortSignal.timeout(10000) }).then((r) => (r.ok ? r : null)).catch(() => null); // never hold up the queue
+        const res = await get(big) || await get(url);
+        if (!res || !res.ok) return;
+        const score = await aiScore(Buffer.from(await res.arrayBuffer()));
+        if (score == null) return;
+        ai.scores[sig] = Math.round(score * 1000) / 1000;
+        saveAi();
+      }).catch(() => {});
+      await queue;
+    }
+    const hide = isAiSig(sig);
+    if (hide) { hiddenNow++; send('pin:ai', { hidden: hiddenNow }); }
+    return { hide };
+  }
+  ipcMain.handle('pin:ai', (e, url) => (view && e.sender === view.webContents && /^https:\/\/i\.pinimg\.com\//.test(String(url)) ? checkPicture(String(url)) : { hide: false }));
+  handle('pin:aiSetting', (on) => { if (typeof on === 'boolean') { ai.hide = on; saveAi(); if (view) view.webContents.reload(); } return { hide: ai.hide, hidden: hiddenNow }; });
+
   let view = null, loading = false;
   // While another page is loading, there's nothing to save yet (so Save can never save the pin you just left).
   const state = () => ({ url: view ? view.webContents.getURL() : null, pin: view && !loading ? pinOf(view.webContents.getURL()) : null, canBack: !!(view && view.webContents.navigationHistory.canGoBack()) });
@@ -27,7 +68,7 @@ function setupPinterest({ getWin, handle, send, save }) {
     view = new WebContentsView({ webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'pinterest-preload.js') } });
     view.setBackgroundColor('#0A0A0A');
     const wc = view.webContents;
-    attachAdFilter(wc); // promoted pins are taken out before Pinterest's page sees them
+    attachAdFilter(wc, knownAiPin); // promoted pins (and pins already found to be AI-made) are taken out before the page sees them
     wc.setWindowOpenHandler(({ url }) => {
       let host = ''; try { host = new URL(url).hostname; } catch { /* ignore */ }
       if (SIGN_IN.test(host)) return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, parent: getWin(), webPreferences: { partition: PARTITION, sandbox: true } } };
