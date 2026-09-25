@@ -505,7 +505,10 @@
     let depth = 0;
     // Files from Explorer, pictures dragged out of a browser, or a TikTok/Pinterest link dragged in.
     const types = (e) => [...(e.dataTransfer?.types || [])];
-    const hasFiles = (e) => types(e).includes('Files') || (types(e).includes('text/uri-list') && !types(e).includes(NB.drag.TYPE));
+    // Drags that start inside Notebook (a card, a stack swipe, a board) are never "adding": they carry
+    // pictures, so the browser would otherwise treat them like files dropped in.
+    const inside = (e) => types(e).some((t) => t.startsWith('application/x-notebook-'));
+    const hasFiles = (e) => !inside(e) && (types(e).includes('Files') || types(e).includes('text/uri-list'));
     window.addEventListener('dragenter', (e) => {
       if (!hasFiles(e) || !S.snap) return;
       depth++;
@@ -517,7 +520,7 @@
     window.addEventListener('drop', async (e) => {
       e.preventDefault();
       depth = 0; drop.hidden = true;
-      if (!S.snap) return;
+      if (!S.snap || inside(e)) return;
       const files = [...e.dataTransfer.files];
       const paths = files.map((f) => nb.pathForFile(f)).filter(Boolean);
       const loose = files.filter((f) => !nb.pathForFile(f) && /^(image|video)\//.test(f.type));

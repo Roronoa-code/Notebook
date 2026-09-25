@@ -187,6 +187,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.mouse.move(sb.x + sb.width * 0.75, sb.y + sb.height / 2);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(sb.x + sb.width * 0.75 - i * 14, sb.y + sb.height / 2 + 1);
+  assert.equal(await page.locator('#drop').isHidden(), true, 'swiping a stack never shows "Drop to add"');
   await page.mouse.up();
   await page.waitForTimeout(500);
   assert.equal(await stackCard.locator('.stackct').innerText(), '2/2', 'dragging across the stack goes to the next picture');
