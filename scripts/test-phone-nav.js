@@ -71,7 +71,7 @@ const { chromium } = require('playwright-core');
     assert.equal(await page.locator('#stage > .screen').evaluate((el) => getComputedStyle(el).pointerEvents), 'auto');
 
     const topMotion = await page.evaluate(async () => {
-      const seg = document.querySelector('.topbar .seg');
+      const seg = document.querySelector('#homeseg');
       document.querySelector('#tab-notes').click();
       await new Promise(r => setTimeout(r, 100));
       const mid = new DOMMatrix(getComputedStyle(seg, '::before').transform).m41;

@@ -22,7 +22,7 @@ const { chromium } = require('playwright-core');
     assert.equal(await page.locator('#homegrid .card.idea').count(), 5, 'the PC’s picks for All');
     await page.waitForFunction(() => { const i = document.querySelector('#homegrid .card.idea img'); return i && i.complete && i.naturalWidth > 0; });
     assert.equal(await page.locator('#homegrid .card.idea .badge').count(), 1, 'a video pin is marked');
-    const slid = await page.locator('.topbar .seg').evaluate((s) => getComputedStyle(s, '::before').transform);
+    const slid = await page.locator('#homeseg').evaluate((s) => getComputedStyle(s, '::before').transform);
     assert.notEqual(slid, 'none', 'the tab highlight slides to For you');
 
     // Tap a pin: Save to your notebook.

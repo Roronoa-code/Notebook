@@ -20,7 +20,7 @@
   const onBoard = (id) => live().filter((it) => (it.boards || []).includes(id));
   const byId = (id) => DB.items.find((it) => it.id === id);
   const wheel = () => boards().concat([{ id: '__new', name: 'New board', isNew: true }]);
-  const textOf = (html) => { const d = document.createElement('div'); d.innerHTML = sanitize(html); return (d.textContent || '').trim(); };
+  const textOf = (html) => { const d = document.createElement('div'); d.innerHTML = sanitize(html).replace(/<\/(li|p|div|h[1-6])>|<br\s*\/?>/gi, ' $&'); return (d.textContent || '').replace(/\s+/g, ' ').trim(); }; // lines and list items keep a space between them
 
   // Every change goes through the app, which replies with the new library (or a plain-English error).
   function call(method, ...args) {
@@ -173,13 +173,12 @@
       </div>
       <div class="lift" id="lift">
         <button type="button" class="grip" data-a="lift" aria-label="Lift items up"></button>
-        <div class="sortslot" id="homesort">${S.tab === 'ideas' ? '' : SO.pillHTML('all')}</div>
+        <div class="panelbar"><div class="seg glass slide" id="homeseg" style="--i:${['recent', 'notes', 'ideas'].indexOf(S.tab)}"><button type="button" class="${S.tab === 'recent' ? 'on' : ''}" data-a="tab" data-v="recent" id="tab-recent">Recent</button><button type="button" class="${S.tab === 'notes' ? 'on' : ''}" data-a="tab" data-v="notes" id="tab-notes">Notes</button><button type="button" class="${S.tab === 'ideas' ? 'on' : ''}" data-a="tab" data-v="ideas" id="tab-ideas">For you</button></div>
+          <span id="homesort">${S.tab === 'ideas' ? '' : SO.pillHTML('all')}</span></div>
         <div class="grid anim" id="homegrid">${homeGrid()}</div>
       </div>
       <div class="topglass" id="topglass"></div>
-      <div class="topbar"><div class="wordmark">notebook<span>.</span></div>
-        <div class="seg glass"><button type="button" class="on" data-a="tab" data-v="recent" id="tab-recent">Recent</button><button type="button" data-a="tab" data-v="notes" id="tab-notes">Notes</button><button type="button" data-a="tab" data-v="ideas" id="tab-ideas">For you</button></div>
-      </div>
+      <div class="topbar"><div class="wordmark">notebook<span>.</span></div></div>
     </div>`;
   }
 
@@ -197,7 +196,7 @@
         <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:calc(var(--st) + 10px);right:16px">${svg(P.edit, 18)}</button>
         <div style="position:absolute;left:22px;right:22px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
       </div>
-      <div class="boardseg"><div class="seg glass"><button type="button" class="${S.btab === 'ideas' ? '' : 'on'}" data-a="btab" data-v="saved" id="btab-saved">Saved</button><button type="button" class="${S.btab === 'ideas' ? 'on' : ''}" data-a="btab" data-v="ideas" id="btab-ideas">Ideas</button></div><span id="boardsort" style="margin-left:auto">${S.btab === 'ideas' ? '' : SO.pillHTML(b.id)}</span></div>
+      <div class="panelbar boardbar"><div class="seg glass slide" id="boardseg" style="--i:${S.btab === 'ideas' ? 1 : 0}"><button type="button" class="${S.btab === 'ideas' ? '' : 'on'}" data-a="btab" data-v="saved" id="btab-saved">Saved</button><button type="button" class="${S.btab === 'ideas' ? 'on' : ''}" data-a="btab" data-v="ideas" id="btab-ideas">Ideas</button></div><span id="boardsort" style="margin-left:auto">${S.btab === 'ideas' ? '' : SO.pillHTML(b.id)}</span></div>
       <div class="grid anim" id="boardgrid">${boardGrid(b.id)}</div>
     </div>`;
   }
@@ -220,7 +219,7 @@
         <button type="button" class="vsound" aria-label="Sound on" aria-pressed="false">${svg('M11 5L6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6', 18)}</button>
       </div><p class="media-message" role="status"></p></div>`;
     } else {
-      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(it.file)}" alt="${esc(it.title)}" decoding="async" style="${vb(it)}"${it.crop && shapeOf(it) ? ` data-ar="${(shapeOf(it)[0] / shapeOf(it)[1]).toFixed(4)}"` : ''}></button></div>`;
+      stage = `<div class="scrim"></div><div class="stage" style="${arStyle(it)}"><button type="button" class="photo-open" aria-label="Expand photo"><img src="${url(it.thumb || it.file)}" data-full="${url(/\.dng$/i.test(it.file || '') ? (it.thumb || it.file) : it.file)}" alt="${esc(it.title)}" decoding="async" style="${vb(it)}"${it.crop && shapeOf(it) ? ` data-ar="${(shapeOf(it)[0] / shapeOf(it)[1]).toFixed(4)}"` : ''}></button></div>`;
     }
     // Wide pictures leave room below, so their note and boards start open there.
     return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
@@ -546,6 +545,7 @@
       const order = ['recent', 'notes', 'ideas'], dir = order.indexOf(v) > order.indexOf(S.tab) ? -1 : 1;
       S.tab = v;
       for (const t of order) homeEl.querySelector('#tab-' + t).classList.toggle('on', v === t);
+      homeEl.querySelector('#homeseg').style.setProperty('--i', order.indexOf(v));
       const grid = homeEl.querySelector('#homegrid');
       homeEl.querySelector('#homesort').innerHTML = v === 'ideas' ? '' : SO.pillHTML('all');
       const swap = () => {
@@ -560,6 +560,7 @@
       if ((S.btab || 'saved') === v || S.screen !== 'board') return;
       S.btab = v;
       $('#btab-saved').classList.toggle('on', v === 'saved'); $('#btab-ideas').classList.toggle('on', v === 'ideas');
+      $('#boardseg').style.setProperty('--i', v === 'ideas' ? 1 : 0);
       $('#boardsort').innerHTML = v === 'ideas' ? '' : SO.pillHTML(S.board);
       const g = $('#boardgrid');
       g.classList.remove('anim'); g.innerHTML = boardGrid(S.board);
@@ -571,10 +572,10 @@
     ideaOpen: () => { I.openPin(); closeForm(); },
     ideasNow: () => I.now(),
     // Sort: a small sheet of choices; the cards glide to their new places.
-    sortOpen: () => { S.sheet = 'sort'; S.add = false; S.cover = false; $('#formsheet').innerHTML = SO.sheetHTML(S.screen === 'board' ? S.board : 'all'); updateChrome(); tick(); },
+    sortOpen: (x, el) => { if (!SO.closeMenu()) { SO.openMenu(app, el, S.screen === 'board' ? S.board : 'all'); tick(); } },
     sortPick: (v) => {
       const onBoardScreen = S.screen === 'board', key = onBoardScreen ? S.board : 'all';
-      closeForm();
+      SO.closeMenu();
       if (SO.get(key) === v) return;
       SO.set(key, v);
       const grid = onBoardScreen ? $('#boardgrid') : homeEl && homeEl.querySelector('#homegrid');
@@ -633,6 +634,7 @@
   };
   app.addEventListener('click', (e) => {
     if (M.takeSwallowed()) return;
+    if (!e.target.closest('.sortmenu, .sortpill')) SO.closeMenu(); // a tap anywhere else closes the sort menu
     if (S.select && e.target.closest('.grid .card:not(.idea)')) { toggleSelect(e.target.closest('.grid .card')); return; }
     const el = e.target.closest('[data-a]');
     if (el && A[el.dataset.a]) A[el.dataset.a](el.dataset.v, el);
@@ -643,6 +645,7 @@
   window.nbBack = () => {
     if (NBMedia.closePhoto()) return true;
     if (S.select) { endSelect(); return true; }
+    if (SO.closeMenu()) return true;
     if (S.sheet) { closeForm(); return true; }
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }

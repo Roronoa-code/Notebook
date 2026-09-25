@@ -196,14 +196,18 @@ public class Library {
                 w = bmp.getWidth(); h = bmp.getHeight();
                 bmp = scale(bmp, 640);
             } else {
+                // A camera RAW photo (.dng) is shown by the full-size JPEG inside it, kept larger as it's also what opens.
+                boolean raw = src.getName().toLowerCase(Locale.ROOT).endsWith(".dng");
+                byte[] inner = raw ? rawPreview(src) : null;
+                int max = raw ? 1600 : 640;
                 BitmapFactory.Options o = new BitmapFactory.Options();
                 o.inJustDecodeBounds = true;
-                BitmapFactory.decodeFile(src.getAbsolutePath(), o);
+                if (inner != null) BitmapFactory.decodeByteArray(inner, 0, inner.length, o); else BitmapFactory.decodeFile(src.getAbsolutePath(), o);
                 int sample = 1;
-                while (o.outWidth / (sample * 2) >= 640) sample *= 2;
+                while (o.outWidth / (sample * 2) >= max) sample *= 2;
                 BitmapFactory.Options o2 = new BitmapFactory.Options();
                 o2.inSampleSize = sample;
-                bmp = BitmapFactory.decodeFile(src.getAbsolutePath(), o2);
+                bmp = inner != null ? BitmapFactory.decodeByteArray(inner, 0, inner.length, o2) : BitmapFactory.decodeFile(src.getAbsolutePath(), o2);
                 if (bmp == null) return;
                 int rot = 0;
                 try {
@@ -213,13 +217,31 @@ public class Library {
                 if (rot != 0) { Matrix m = new Matrix(); m.postRotate(rot); bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), m, true); }
                 boolean swap = rot == 90 || rot == 270;
                 w = swap ? o.outHeight : o.outWidth; h = swap ? o.outWidth : o.outHeight;
-                bmp = scale(bmp, 640);
+                bmp = scale(bmp, max);
             }
             try (FileOutputStream fo = new FileOutputStream(out)) { bmp.compress(Bitmap.CompressFormat.JPEG, 85, fo); }
             it.put("thumb", "thumbs/" + id + ".jpg").put("w", w).put("h", h);
         } catch (Exception ignored) {
             // No preview: the grid shows a placeholder, the item itself is still saved.
         }
+    }
+
+    // The largest JPEG stored inside a RAW file (its full-size preview), or null.
+    private static byte[] rawPreview(File f) {
+        try {
+            byte[] all = java.nio.file.Files.readAllBytes(f.toPath());
+            int best = -1, bestLen = 0;
+            for (int i = 0; i + 3 < all.length; i++) {
+                if ((all[i] & 0xFF) != 0xFF || (all[i + 1] & 0xFF) != 0xD8 || (all[i + 2] & 0xFF) != 0xFF) continue;
+                int end = -1;
+                for (int j = i + 3; j + 1 < all.length; j++) if ((all[j] & 0xFF) == 0xFF && (all[j + 1] & 0xFF) == 0xD9) { end = j + 2; }
+                // (the last end marker after this start: embedded previews are stored whole)
+                if (end > i && end - i > bestLen) { BitmapFactory.Options o = new BitmapFactory.Options(); o.inJustDecodeBounds = true; BitmapFactory.decodeByteArray(all, i, end - i, o); if (o.outWidth > 0) { best = i; bestLen = end - i; } }
+                i += 2;
+                if (bestLen > all.length / 20) break; // a big one found: that's the full-size preview
+            }
+            return best < 0 ? null : java.util.Arrays.copyOfRange(all, best, best + bestLen);
+        } catch (Exception | OutOfMemoryError e) { return null; }
     }
 
     private static Bitmap scale(Bitmap b, int maxW) {
@@ -463,4 +485,18 @@ public class Library {
 
     // After a downloaded file arrives: make its preview and save.
     synchronized void afterDownload(String id) throws IOException, JSONException { makeThumb(item(id)); save(); }
+
+    // Previews still missing (e.g. a RAW photo from before the phone could read them): made now.
+    synchronized boolean fillThumbs() throws IOException, JSONException {
+        JSONArray a = items();
+        boolean changed = false;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject it = a.getJSONObject(i);
+            if ("note".equals(it.optString("kind")) || !it.isNull("thumb") && it.has("thumb") || it.isNull("file") || !new File(root, it.optString("file")).isFile()) continue;
+            makeThumb(it);
+            changed |= !it.isNull("thumb");
+        }
+        if (changed) save();
+        return changed;
+    }
 }

@@ -102,6 +102,7 @@ public class MainActivity extends Activity {
         // A background sync that changes the library refreshes this screen.
         Core.onLibraryChanged = () -> runOnUiThread(this::pushState);
         try { if (Core.sync(this).paired()) Core.scheduleBackgroundSync(this); } catch (Exception ignored) { /* shown on the Sync screen */ }
+        worker.execute(() -> { try { if (Core.library(this).fillThumbs()) pushState(); } catch (Exception ignored) { /* previews are a nicety */ } });
     }
 
     @Override

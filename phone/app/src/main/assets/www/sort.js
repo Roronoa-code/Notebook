@@ -31,12 +31,36 @@ window.NBSort = function NBSort({ N, esc }) {
   const byMonth = (key) => !!key && get(key).startsWith('taken');
   const monthOf = (it) => { const t = dated(it); return Number.isNaN(t) ? 'No date' : new Date(t).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }); };
 
-  const TICK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
-  const sheetHTML = (key) => `<span class="lbl" style="padding:4px 16px 0">Sort</span>` + OPTIONS.map((o) => {
-    const on = o.value === get(key);
-    return `<button type="button" class="addrow${on ? ' on' : ''}" aria-pressed="${on}" data-a="sortPick" data-v="${o.value}"><span style="flex:1">${esc(o.label)}</span>${on ? TICK : ''}</button>`;
-  }).join('');
-  const pillHTML = (key) => `<button type="button" class="sortpill" data-a="sortOpen" aria-label="Sort: ${esc(label(key))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg><span>${esc(label(key))}</span></button>`;
+  const TICK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+  const SHORT = { added: 'Newest', 'added-old': 'Oldest', taken: 'Date taken', 'taken-old': 'Date taken, oldest', name: 'A to Z' };
+  const pillHTML = (key) => `<button type="button" class="sortpill" data-a="sortOpen" aria-haspopup="menu" aria-label="Sort: ${esc(label(key))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg><span>${esc(SHORT[get(key)])}</span></button>`;
 
-  return { apply, get, set, byMonth, monthOf, sheetHTML, pillHTML };
+  // A small menu just under the sort button (like the PC's), not a sheet over the screen.
+  let menu = null;
+  function openMenu(root, pill, key) {
+    closeMenu();
+    const r = pill.getBoundingClientRect();
+    menu = document.createElement('div');
+    menu.className = 'sortmenu';
+    menu.setAttribute('role', 'menu');
+    menu.style.top = Math.round(r.bottom + 6) + 'px';
+    menu.style.right = Math.round(window.innerWidth - r.right) + 'px';
+    menu.innerHTML = OPTIONS.map((o) => { const on = o.value === get(key); return `<button type="button" role="menuitemradio" aria-checked="${on}" class="${on ? 'on' : ''}" data-a="sortPick" data-v="${o.value}"><span>${esc(o.label)}</span>${on ? TICK : ''}</button>`; }).join('');
+    root.appendChild(menu);
+    // Not enough room below (the button is low on the screen, above the bottom bar): open upwards.
+    if (menu.getBoundingClientRect().bottom > window.innerHeight - 96) {
+      menu.style.top = 'auto';
+      menu.style.bottom = Math.round(window.innerHeight - r.top + 6) + 'px';
+      menu.style.transformOrigin = 'bottom right';
+    }
+  }
+  function closeMenu() {
+    if (!menu) return false;
+    const m = menu; menu = null;
+    m.classList.add('out'); // on its way out: not tappable
+    m.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-4px) scale(.97)' }], { duration: 140, easing: 'ease-in', fill: 'forwards' }).onfinish = () => m.remove();
+    return true;
+  }
+
+  return { apply, get, set, byMonth, monthOf, pillHTML, openMenu, closeMenu };
 };

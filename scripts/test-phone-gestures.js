@@ -67,9 +67,8 @@ const { chromium } = require('playwright-core');
     assert.equal(await page.locator('.media-screen').count(), 0, 'a long swipe goes back');
     assert.equal(await page.locator('#nav').isVisible(), true);
 
-    // Stacks: press and hold a card to start picking, tap another, Stack.
-    await page.locator('.grip').click();
-    await page.waitForTimeout(900);
+    // Stacks: press and hold a card to start picking, tap another, Stack (with the panel up).
+    if (!(await page.locator('#lift.up').count())) { await page.locator('.grip').click(); await page.waitForTimeout(900); }
     const box = async (sel) => { const b = await page.locator(sel).boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
     const photos = page.locator('#homegrid .card[data-v]');
     const first = await box('#homegrid .card[data-v] >> nth=0');
