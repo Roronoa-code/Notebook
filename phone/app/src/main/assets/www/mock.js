@@ -30,6 +30,11 @@ if (!window.NBNative) {
     all: { more: true, pins: [pin(1, 'outfit2', 600, 750, 'Layered knit'), pin(2, 'wall2', 600, 800, 'Dusk peaks'), pin(3, 'video1', 600, 1066, 'Fit check'), pin(4, 'pfp1', 600, 750, 'Soft light portrait'), pin(5, 'icons1', 600, 600, 'Icon pack')] },
     [boards[0].id]: { pins: [pin(6, 'outfit1', 600, 800, 'Plaid layers'), pin(7, 'outfit2', 600, 750, 'Cardigan and cream')] }
   } };
+  const refreshIdeas = (k) => {
+    if (!feed.feeds[k]) feed.feeds[k] = { more: false, pins: [pin(301, 'outfit1', 600, 800, 'Related idea'), pin(302, 'wall2', 600, 800, 'Another idea')] };
+    feed.feeds[k].at = Date.now();
+    setTimeout(() => window.nbOnFeed && window.nbOnFeed(JSON.stringify({ ...feed, key: k })), 50);
+  };
   window.NB_MOCK_CALLS = [];
   const ok = (extra) => JSON.stringify(Object.assign({ ok: true, state: db }, extra || {}));
   const find = (i) => db.items.find((x) => x.id === i);
@@ -55,16 +60,24 @@ if (!window.NBNative) {
     scan() { window.nbOnPair(JSON.stringify({ ok: false, message: '(PC preview) Scanning only works in the phone app.' })); },
     pairManual() { window.nbOnPair(JSON.stringify({ ok: false, message: '(PC preview) Pairing only works in the phone app.' })); },
     feed: () => JSON.stringify(feed),
-    feedRefresh() { window.NB_MOCK_CALLS.push(['feedRefresh']); setTimeout(() => window.nbOnFeed && window.nbOnFeed(JSON.stringify(feed)), 50); },
+    feedRefresh(k) { window.NB_MOCK_CALLS.push(['feedRefresh', k]); refreshIdeas(k); },
+    feedReload(k) { window.NB_MOCK_CALLS.push(['feedReload', k]); refreshIdeas(k); },
     feedMore(k) {
       window.NB_MOCK_CALLS.push(['feedMore', k]);
       const f = feed.feeds[k], pics = ['outfit1', 'wall1', 'outfit2', 'wall2', 'pfp1', 'icons1'];
       const n = f.pins.length;
       for (let i = 0; i < 12; i++) f.pins.push(pin(100 + n + i, pics[(n + i) % pics.length], 600, 700 + ((n + i) % 4) * 90, `More ${n + i}`));
       f.more = f.pins.length < 40;
-      setTimeout(() => window.nbOnFeed && window.nbOnFeed(JSON.stringify(feed)), 300);
+      setTimeout(() => window.nbOnFeed && window.nbOnFeed(JSON.stringify({ ...feed, key: k })), 300);
     },
-    feedSave(url, board) { window.NB_MOCK_CALLS.push(['feedSave', url, board]); },
+    feedSave(url, board) {
+      window.NB_MOCK_CALLS.push(['feedSave', url, board]);
+      setTimeout(() => {
+        const ok = !window.NB_MOCK_SAVE_ERROR;
+        if (ok) for (const f of Object.values(feed.feeds)) for (const p of f.pins) if (p.url === url) p.saved = true;
+        window.nbOnIdeaSaved?.(JSON.stringify({ url, ok, message: ok ? 'Saved' : 'Couldn’t save this idea. Try again.' }));
+      }, 150);
+    },
     feedHide(i) { window.NB_MOCK_CALLS.push(['feedHide', i]); for (const f of Object.values(feed.feeds)) f.pins = f.pins.filter((p) => p.id !== i); },
     openPin(url) { window.NB_MOCK_CALLS.push(['openPin', url]); },
     unpair() { db.sync = { paired: false }; return JSON.stringify(db); }

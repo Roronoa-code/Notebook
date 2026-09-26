@@ -176,6 +176,32 @@ public class Library {
         return id;
     }
 
+    // Imports a bounded file already downloaded by the native Ideas client. The source is a
+    // temporary file owned by Notebook, so the user's original media is never touched.
+    synchronized String importDownloaded(File source, String name, String mime, String boardId, String sourceUrl) throws IOException, JSONException {
+        String kind = mime != null && mime.toLowerCase(Locale.ROOT).startsWith("video/") ? "video" : mime != null && mime.toLowerCase(Locale.ROOT).startsWith("image/") ? "photo" : null;
+        if (kind == null || source == null || !source.isFile()) throw new IOException("Pinterest did not provide a supported photo or video.");
+        String cleanName = name == null || name.trim().isEmpty() ? (kind.equals("video") ? "Pinterest video.mp4" : "Pinterest picture.jpg") : name.replaceAll("[\\r\\n]+", " ").trim();
+        String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+        if (ext == null) { int dot = cleanName.lastIndexOf('.'); ext = dot > 0 ? cleanName.substring(dot + 1) : (kind.equals("video") ? "mp4" : "jpg"); }
+        ext = ext.toLowerCase(Locale.ROOT);
+        if (ext.equals("jpeg")) ext = "jpg";
+        if (!ext.matches("[a-z0-9]{1,8}")) ext = kind.equals("video") ? "mp4" : "jpg";
+        String id = UUID.randomUUID().toString(), rel = "media/" + id + "." + ext;
+        File dest = new File(root, rel), tmp = new File(root, rel + ".part");
+        try { copy(source, tmp); if (!tmp.renameTo(dest)) throw new IOException("Couldn't copy that file."); }
+        catch (IOException e) { tmp.delete(); throw e; }
+        int dot = cleanName.lastIndexOf('.');
+        JSONObject it = new JSONObject().put("id", id).put("kind", kind).put("title", dot > 0 ? cleanName.substring(0, dot) : cleanName).put("file", rel)
+            .put("thumb", JSONObject.NULL).put("originalName", cleanName).put("size", dest.length()).put("source", sourceUrl == null ? JSONObject.NULL : sourceUrl)
+            .put("importedAt", now()).put("updatedAt", now()).put("deletedAt", JSONObject.NULL)
+            .put("boards", validBoards(boardId == null || boardId.isEmpty() ? null : new JSONArray().put(boardId)));
+        makeThumb(it);
+        prepend(it);
+        save();
+        return id;
+    }
+
     // Small preview for the grid. Photos are turned upright using their EXIF orientation.
     void makeThumb(JSONObject it) {
         try {

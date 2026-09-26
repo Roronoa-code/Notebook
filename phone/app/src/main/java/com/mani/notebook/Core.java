@@ -12,6 +12,7 @@ import java.util.concurrent.locks.ReentrantLock;
 final class Core {
     private static Library lib;
     private static SyncClient sync;
+    private static PhoneIdeas ideas;
     static final ReentrantLock syncLock = new ReentrantLock();
     static volatile Runnable onLibraryChanged; // the open screen listens here to refresh after a background sync
 
@@ -24,6 +25,11 @@ final class Core {
     static synchronized SyncClient sync(Context ctx) throws Exception {
         if (sync == null) sync = new SyncClient(ctx.getApplicationContext(), library(ctx));
         return sync;
+    }
+
+    static synchronized PhoneIdeas ideas(Context ctx) throws Exception {
+        if (ideas == null) ideas = new PhoneIdeas(ctx.getApplicationContext(), library(ctx), sync(ctx));
+        return ideas;
     }
 
     // Once paired, the phone checks in with the PC about every 15 minutes whenever it has a network, even with the app closed.

@@ -133,8 +133,8 @@ public class MainActivity extends Activity {
                 if (rel.contains("..")) throw new IOException("bad path");
                 return new WebResourceResponse(mime(rel), "utf-8", getAssets().open(rel));
             }
-            if (path.startsWith("/feed/")) { // Ideas pictures: the phone's copy, or fetched from the PC
-                File f = Core.sync(this).feedImage(path.substring(6).replace(".jpg", ""));
+            if (path.startsWith("/feed/")) { // Ideas pictures: native cache, Pinterest, or the PC cache
+                File f = Core.ideas(this).feedImage(path.substring(6).replaceFirst("\\.[a-z0-9]+$", ""));
                 if (f == null) throw new IOException("missing");
                 return fileResponse(f, req.getRequestHeaders());
             }
@@ -216,6 +216,22 @@ public class MainActivity extends Activity {
     }
 
     private void toast(String msg) { js("nbOnToast", msg); }
+
+    private String feedError(String want, Exception e) {
+        String key = want == null || want.trim().isEmpty() ? "all" : want;
+        try {
+            JSONObject out = new JSONObject(Core.ideas(this).feedJson());
+            out.put("key", key).put("error", e.getMessage() == null ? "Ideas are unavailable right now." : e.getMessage());
+            return out.toString();
+        } catch (Exception ignored) {
+            try {
+                return new JSONObject().put("feeds", new JSONObject()).put("key", key)
+                    .put("error", e.getMessage() == null ? "Ideas are unavailable right now." : e.getMessage()).toString();
+            } catch (Exception impossible) {
+                return "{\"feeds\":{},\"key\":\"all\",\"error\":\"Ideas are unavailable right now.\"}";
+            }
+        }
+    }
 
     // Runs a library change, then returns the new state (or a plain-English error) to the page.
     private interface Change { String run() throws Exception; }
@@ -355,35 +371,31 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String getPref(String key) { return getSharedPreferences("ui", MODE_PRIVATE).getString(key, ""); }
         @JavascriptInterface public void setPref(String key, String value) { getSharedPreferences("ui", MODE_PRIVATE).edit().putString(key, value).apply(); }
 
-        // Ideas: the feeds the PC prepared, fetching new ones, saving or hiding a pin, opening it in Pinterest.
-        @JavascriptInterface public String feed() { try { return Core.sync(MainActivity.this).feedJson(); } catch (Exception e) { return error(e); } }
+        // Ideas: native Pinterest feeds work away from the PC; the PC cache is only a fallback.
+        @JavascriptInterface public String feed() { try { return Core.ideas(MainActivity.this).feedJson(); } catch (Exception e) { return error(e); } }
         @JavascriptInterface public void feedRefresh(String want) {
-            runOnUiThread(() -> withLocalNetwork(() -> feedWorker.execute(() -> {
-                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow(want == null || want.isEmpty() ? null : want, false)); }
-                catch (Exception e) { js("nbOnFeed", error(e)); }
-            })));
+            feedWorker.execute(() -> { try { js("nbOnFeed", Core.ideas(MainActivity.this).refresh(want, false, false)); } catch (Exception e) { js("nbOnFeed", feedError(want, e)); } });
+        }
+        @JavascriptInterface public void feedReload(String want) {
+            feedWorker.execute(() -> { try { js("nbOnFeed", Core.ideas(MainActivity.this).refresh(want, true, false)); } catch (Exception e) { js("nbOnFeed", feedError(want, e)); } });
         }
         // The next page of a feed (the phone asks while a few screens of pins are still below).
         @JavascriptInterface public void feedMore(String want) {
-            runOnUiThread(() -> withLocalNetwork(() -> feedWorker.execute(() -> {
-                try { js("nbOnFeed", Core.sync(MainActivity.this).refreshFeedNow(want, true)); }
-                catch (Exception e) { js("nbOnFeed", error(e)); }
-            })));
+            feedWorker.execute(() -> { try { js("nbOnFeed", Core.ideas(MainActivity.this).refresh(want, false, true)); } catch (Exception e) { js("nbOnFeed", feedError(want, e)); } });
         }
         @JavascriptInterface public void feedSave(String url, String boardId) {
-            if (!url.matches("https://www\\.pinterest\\.com/pin/\\d+/")) return;
             feedWorker.execute(() -> {
-                try {
-                    Core.sync(MainActivity.this).feedAction("save", new JSONObject().put("url", url).put("boardId", boardId == null || boardId.isEmpty() ? JSONObject.NULL : boardId));
-                    toast("Saving on your PC. It arrives with the next sync.");
-                    ui.removeCallbacks(syncSoon);
-                    ui.postDelayed(syncSoon, 25000); // the PC needs a moment to download it
-                } catch (Exception e) { toast("Saved for later: it goes to your PC when it can reach it."); }
+                try { js("nbOnIdeaSaved", Core.ideas(MainActivity.this).save(url, boardId)); pushState(); }
+                catch (Exception e) { try { js("nbOnIdeaSaved", new JSONObject().put("url", url == null ? "" : url).put("ok", false).put("message", e.getMessage() == null ? "That pin could not be saved. Try again." : e.getMessage()).toString()); } catch (Exception ignored) { } }
             });
         }
         @JavascriptInterface public void feedHide(String id) {
-            if (!id.matches("\\d{1,25}")) return;
-            feedWorker.execute(() -> { try { Core.sync(MainActivity.this).feedAction("hide", new JSONObject().put("id", id)); } catch (Exception ignored) { /* sent with the next sync */ } });
+            if (id == null || !id.matches("\\d{1,25}")) return;
+            feedWorker.execute(() -> {
+                try { Core.ideas(MainActivity.this).hide(id); } catch (Exception ignored) { }
+                // Keep the PC's negative signal when possible; feed browsing never waits for it.
+                try { Core.sync(MainActivity.this).feedAction("hide", new JSONObject().put("id", id)); } catch (Exception ignored) { /* queued for the next sync */ }
+            });
         }
         @JavascriptInterface public void openPin(String url) {
             if (!url.matches("https://www\\.pinterest\\.com/pin/\\d+/")) return;

@@ -96,7 +96,46 @@ const { chromium } = require('playwright-core');
     await page.waitForTimeout(400);
     assert.ok(await page.locator('#boardgrid .card:not(.idea)').count() > 0, 'Saved shows the board’s items again');
 
+    // Discovery works without pairing, keeps a way back, and refresh is explicit.
+    await page.evaluate(() => { const st = JSON.parse(NBNative.state()); st.sync = { paired: false }; window.nbOnState(JSON.stringify(st)); });
+    await page.locator('#nav-home').click();
+    await page.locator('#tab-ideas').click();
+    await page.locator('#homegrid .idea-query').fill('warm bedroom');
+    await page.evaluate(() => {
+      document.querySelector('#homegrid .idea-query').setSelectionRange(2, 4);
+      setTimeout(() => window.nbOnFeed(JSON.stringify({ ...JSON.parse(NBNative.feed()), key: 'all' })), 20);
+    });
+    await page.waitForTimeout(150);
+    assert.deepEqual(await page.evaluate(() => ({ focused: document.activeElement.matches('.idea-query'), value: document.activeElement.value, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd })),
+      { focused: true, value: 'warm bedroom', start: 2, end: 4 }, 'background results keep search focus and selection');
+    await page.locator('#homegrid .idea-query').fill('blue room');
+    await page.locator('#homegrid .idea-query').press('Enter');
+    await page.waitForFunction(() => document.querySelector('#homegrid .ideacols')?.dataset.key === 'search:blue room');
+    assert.ok((await calls()).some((c) => c[0] === 'feedRefresh' && c[1] === 'search:blue room'), 'public discovery without a PC');
+    await page.locator('#homegrid [data-a="ideasNow"]').click();
+    await page.waitForFunction(() => window.NB_MOCK_CALLS.some((c) => c[0] === 'feedReload' && c[1] === 'search:blue room'));
+    await page.locator('#homegrid .card.idea').first().click();
+    await page.locator('#formsheet [data-a="ideaRelated"]').click();
+    await page.waitForFunction(() => document.querySelector('#homegrid .ideacols')?.dataset.key === 'pin:900301');
+    await page.evaluate(() => window.nbBack());
+    await page.waitForFunction(() => document.querySelector('#homegrid .ideacols')?.dataset.key === 'search:blue room');
+    await page.locator('#homegrid [data-a="ideasBack"]').click();
+    await page.waitForFunction(() => document.querySelector('#homegrid .ideacols')?.dataset.key === 'all');
+
+    // A failed native download must not turn the card into a saved item.
+    await page.evaluate(() => { window.NB_MOCK_SAVE_ERROR = true; });
+    await pinCard('900004').click();
+    await page.locator('#formsheet [data-a="ideaSave"]').click();
+    await page.waitForFunction(() => document.querySelector('#toastbox')?.textContent.includes('Couldn’t save'));
+    assert.equal(await pinCard('900004').evaluate((el) => el.classList.contains('saved')), false);
+    await pinCard('900004').click();
+    assert.equal(await page.locator('#formsheet [data-a="ideaSave"]').isEnabled(), true, 'failure can be retried');
+    await page.evaluate(() => window.nbBack());
+    await page.setViewportSize({ width: 320, height: 700 });
+    assert.equal(await page.locator('#homegrid .ideas-search').evaluate((el) => el.scrollWidth > el.clientWidth), false, 'search fits a small phone');
+    await page.screenshot({ path: path.resolve(__dirname, '../test-output/phone-ideas-independent.png') });
+
     assert.deepEqual(errors, []);
-    console.log('Phone ideas passed: For you on Home (two steady columns, next pages before the end), Ideas on a board, Save (to All or the board), Not for me, Open in Pinterest.');
+    console.log('Phone ideas passed: steady pagination, board saves, hides, unpaired search, related pins, nested Back, forced refresh, failed-save retry and 320px layout.');
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exitCode = 1; });

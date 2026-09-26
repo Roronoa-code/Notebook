@@ -248,12 +248,21 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid #F2F2F2; outli
 .panelbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 16px 12px; }
 .boardbar { padding-top: 14px; }
 .ideacols { column-span: all; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.ideas-tools { column-span: all; display: flex; flex-direction: column; gap: 10px; padding: 4px 0 16px; }
+.ideas-search { display: flex; gap: 8px; }
+.ideas-search .field { min-width: 0; flex: 1; }
+.ideas-search .btn { padding: 0 16px; }
+.ideas-controls { display: flex; justify-content: space-between; gap: 8px; }
+.ideas-controls .btn { font-size: 12px; height: 44px; padding: 0 14px; }
+.ideas-heading { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.idea-saving { position: absolute; bottom: 8px; left: 8px; border-radius: 999px; background: #141414; padding: 6px 10px; font-size: 12px; }
 .ideacol { min-width: 0; }
 .ideanote, .ideas-more { column-span: all; margin: 0 4px 14px; color: var(--text-3); font-size: 13px; line-height: 1.45; }
 .ideas-more { min-height: 18px; text-align: center; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
 .idea .ideatick { position: absolute; right: 8px; bottom: 8px; width: 26px; height: 26px; border-radius: 50%; background: #F2F2F2; color: #0A0A0A; display: flex; align-items: center; justify-content: center; }
-.ideasheet { display: flex; gap: 14px; align-items: center; }
-.ideasheet img { width: 64px; max-height: 96px; border-radius: var(--r-field); object-fit: cover; flex-shrink: 0; background: #1C1C1C; }
+.idea-sheet-header { display: flex; align-items: center; justify-content: space-between; }
+.ideasheet { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ideasheet img { width: 100%; max-height: 34vh; max-height: 34svh; border-radius: var(--r-field); object-fit: contain; flex-shrink: 0; background: #1C1C1C; }
 .ideat { font-size: 15px; font-weight: 600; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .formsheet .btn:disabled { opacity: .5; }
 

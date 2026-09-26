@@ -13,6 +13,8 @@ const BASE = 'https://www.pinterest.com';
 const STALE = 3 * 60 * 60 * 1000; // looked at after this long, a feed is refreshed
 const PER_BATCH = 60;              // new pins checked per load
 const KEEP = 300;                  // pins kept per feed
+const TRANSIENT_KEEP = 12;         // direct search/related feeds live only in this session
+const PHONE_WAIT = 20000;
 const SAME = 0.92;                 // this alike (fingerprints) counts as the same picture: one you have, or one already shown
 const DOUBT = 0.5;                 // the quick AI detector's score from which a pin needs a second opinion
 const TYPE_WORD = { outfit: 'outfit', wallpaper: 'wallpaper', icon: 'app icon', 'profile picture': 'pfp' };
@@ -44,7 +46,7 @@ function pinsIn(data, out = [], depth = 0) {
 
 // What Notebook keeps of a pin. Promoted pins are dropped here.
 function pinFrom(o) {
-  if (!o || isAd(o) || !/^\d+$/.test(String(o.id))) return null;
+  if (!o || isAd(o) || !/^\d+$/.test(String(o.id)) || !o.images || typeof o.images !== 'object') return null;
   const big = o.images['474x'] || o.images['736x'] || o.images['236x'], small = o.images['236x'] || big;
   const sig = big && signatureOf(big.url);
   if (!sig || !small || !small.url) return null;
@@ -164,34 +166,72 @@ class Feed {
     this.imgDir = path.join(dir, 'img');
     this.state = { v: 1, feeds: {}, hidden: [], hiddenVecs: [] };
     try { const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); if (s.v === 1) this.state = { ...this.state, ...s }; } catch { /* first time */ }
-    for (const f of Object.values(this.state.feeds)) f.busy = false;
+    for (const k of Object.keys(this.state.feeds)) if (/^(?:search:|pin:)/.test(k)) delete this.state.feeds[k];
+    for (const f of Object.values(this.state.feeds)) { f.busy = false; f.pending = new Map(); }
     this.vecs = new Map(); // picture fingerprint by pin, for this session
     this.queue = Promise.resolve();
     this.waiting = new Set();
     this.fetching = new Map();
   }
 
-  feed(key) { return this.state.feeds[key] || (this.state.feeds[key] = { at: 0, pins: [], sources: [], signedIn: null, error: null, busy: false }); }
+  normaliseKey(key) {
+    const raw = String(key == null ? '' : key);
+    if (raw === 'all') return raw;
+    if (raw.startsWith('search:')) {
+      const query = raw.slice(7).trim();
+      return query && query.length <= 120 ? `search:${query}` : null;
+    }
+    if (/^pin:\d{1,25}$/.test(raw)) return raw;
+    const lib = this.getLib();
+    return lib && lib.data.boards.some((b) => b.id === raw) ? raw : null;
+  }
+
+  isTransient(key) { return key.startsWith('search:') || key.startsWith('pin:'); }
+  isNormal(key) { return key === 'all' || !this.isTransient(key); }
+
+  trimTransient(keepKey) {
+    const entries = Object.entries(this.state.feeds).filter(([k]) => this.isTransient(k));
+    if (entries.length <= TRANSIENT_KEEP) return;
+    const active = (k, f) => k === keepKey || f.busy || f.checking || [...this.waiting].some((j) => j.startsWith(k + ':'));
+    entries.sort((a, b) => (a[1].seen || a[1].at || 0) - (b[1].seen || b[1].at || 0));
+    for (const [k, f] of entries) {
+      if (Object.keys(this.state.feeds).filter((x) => this.isTransient(x)).length <= TRANSIENT_KEEP) break;
+      if (!active(k, f)) delete this.state.feeds[k];
+    }
+  }
+
+  feed(key) {
+    const k = this.normaliseKey(key) || String(key);
+    const f = this.state.feeds[k] || (this.state.feeds[k] = { at: 0, pins: [], sources: [], signedIn: null, error: null, busy: false });
+    if (!Array.isArray(f.pins)) f.pins = [];
+    if (!Array.isArray(f.sources)) f.sources = [];
+    if (!(f.pending instanceof Map)) f.pending = new Map();
+    this.trimTransient(k);
+    return f;
+  }
   savedIds() { const lib = this.getLib(); return new Set(lib ? lib.data.items.filter((i) => !i.deletedAt).map((i) => pinIdOf(i.source)).filter(Boolean) : []); }
-  validKey(key) { const lib = this.getLib(); return key === 'all' || !!(lib && lib.data.boards.some((b) => b.id === key)); }
+  validKey(key) { return !!this.normaliseKey(key); }
 
   // A feed as the page (or the phone) shows it. Loads it first if it's empty or stale.
   get(key, { load = true } = {}) {
-    if (!this.validKey(key)) return null;
-    const f = this.feed(key), saved = this.savedIds();
+    const k = this.normaliseKey(key);
+    if (!k) return null;
+    const f = this.feed(k), saved = this.savedIds();
     if (load) f.seen = Date.now();
-    if (load && !f.busy && (!f.pins.length || Date.now() - f.at > STALE)) this.load(key, 'fresh');
-    return { key, at: f.at, busy: f.busy || [...this.waiting].some((j) => j.startsWith(key + ':')), signedIn: f.signedIn, error: f.error, more: f.sources.some((s) => s.bookmark),
+    const failedRecently = f.failedAt && Date.now() - f.failedAt < STALE;
+    const queued = [...this.waiting].some((j) => j.startsWith(k + ':'));
+    if (load && !f.busy && !f.checking && !queued && !failedRecently && (!f.at || Date.now() - f.at > STALE)) this.load(k, 'fresh');
+    return { key: k, at: f.at, busy: f.busy || f.checking > 0 || [...this.waiting].some((j) => j.startsWith(k + ':')), signedIn: f.signedIn, error: f.error, more: f.sources.some((s) => s.bookmark),
       pins: f.pins.map((p) => ({ id: p.id, url: p.url, title: p.title, w: p.w, h: p.h, video: p.video, sig: p.sig, saved: saved.has(p.id) })) };
   }
 
   // Queues a load: 'fresh' replaces the feed, 'more' adds the next page. One at a time, never twice.
   load(key, mode) {
-    const job = key + ':' + mode;
-    if (this.waiting.has(job) || !this.validKey(key)) return this.queue;
+    const k = this.normaliseKey(key), job = k && k + ':' + mode;
+    if (!k || this.waiting.has(job)) return this.queue;
     this.waiting.add(job);
-    this.onChange(key);
-    this.queue = this.queue.then(() => this.build(key, mode)).catch((err) => this.log.error('feed', err)).finally(() => { this.waiting.delete(job); this.onChange(key); });
+    this.onChange(k);
+    this.queue = this.queue.then(() => this.build(k, mode)).catch((err) => this.log.error('feed', err)).finally(() => { this.waiting.delete(job); this.onChange(k); });
     return this.queue;
   }
 
@@ -199,11 +239,15 @@ class Feed {
     const lib = this.getLib();
     if (!lib || !this.validKey(key)) return;
     const f = this.feed(key);
+    const generation = mode === 'fresh' ? (f.generation || 0) + 1 : (f.generation || 0);
+    if (mode === 'fresh') f.generation = generation;
     f.busy = true; this.onChange(key);
     try {
-      const items = lib.data.items.filter((i) => !i.deletedAt && i.kind !== 'note' && (key === 'all' || i.boards.includes(key)));
+      const items = lib.data.items.filter((i) => !i.deletedAt && i.kind !== 'note' && (key === 'all' || this.isTransient(key) || i.boards.includes(key)));
       let sources;
       if (mode === 'more') sources = f.sources.filter((s) => s.bookmark);
+      else if (key.startsWith('search:')) sources = [{ kind: 'search', arg: key.slice(7) }];
+      else if (key.startsWith('pin:')) sources = [{ kind: 'related', arg: key.slice(4) }];
       else {
         const board = key === 'all' ? null : lib.data.boards.find((b) => b.id === key);
         const seeds = shuffle([...new Set(items.map((i) => pinIdOf(i.source)).filter(Boolean))]).slice(0, key === 'all' ? 2 : 3);
@@ -212,17 +256,31 @@ class Feed {
       }
       if (!sources.length) return;
       this.prepare().catch(() => {}); // the models load while Pinterest answers
-      const pages = await Promise.all(sources.map((s) => this.source.page(s).then((p) => ({ s, p }), (err) => ({ s, err }))));
-      for (const x of pages) if (x.err) this.log.error('feed', `${x.s.kind} ${x.err.message}`);
-      if (pages.every((x) => x.err)) { f.error = WHY[pages[0].err.kind] || WHY.offline; return; }
-      if (pages.every((x) => !x.p.pins.length) && sources.length > 1) { f.error = WHY.empty; return; }
+      let pages = await Promise.all(sources.map((s) => this.source.page(s).then((p) => ({ s, p }), (err) => ({ s, err }))));
       const home = pages.find((x) => x.s.kind === 'home');
+      // Signed-out home feeds are empty. Search is still available without a Pinterest account.
+      if (key === 'all' && home && home.p && home.p.signedOut && pages.every((x) => !x.p || !x.p.pins || !x.p.pins.length)) {
+        const fallback = { kind: 'search', arg: 'aesthetic mood board' };
+        if (!pages.some((x) => x.s.kind === fallback.kind && x.s.arg === fallback.arg)) {
+          pages = [...pages, await this.source.page(fallback).then((p) => ({ s: fallback, p }), (err) => ({ s: fallback, err }))];
+        }
+      }
+      for (const x of pages) if (x.err) this.log.error('feed', `${x.s.kind} ${x.err.message}`);
+      const failed = pages.filter((x) => x.err), got = pages.some((x) => x.p && x.p.pins && x.p.pins.length);
+      if (failed.length === pages.length) { f.error = WHY[failed[0].err.kind] || WHY.offline; f.failedAt = Date.now(); return; }
+      if (!got) { f.error = failed.length ? (WHY[failed[0].err.kind] || WHY.offline) : WHY.empty; f.failedAt = Date.now(); return; }
       if (home && home.p) f.signedIn = !home.p.signedOut;
-      const next = pages.map(({ s, p }) => ({ ...s, bookmark: p ? p.bookmark : null }));
+      const sourceKey = (s) => `${s.kind}:${s.arg || ''}`;
+      const previous = new Map(f.sources.map((s) => [sourceKey(s), s]));
+      const next = pages.map(({ s, p }) => {
+        if (!p) return previous.get(sourceKey(s)) || { ...s };
+        const bookmark = p.bookmark && p.bookmark !== s.bookmark && !(s.seenBookmarks || []).includes(p.bookmark) ? p.bookmark : null;
+        return { ...s, bookmark, seenBookmarks: bookmark ? [...(s.seenBookmarks || []), bookmark].slice(-24) : s.seenBookmarks };
+      });
       // Take turns from each source, skipping pins already shown, hidden or saved.
       const skip = new Set([...(mode === 'more' ? f.pins.map((p) => p.id) : []), ...this.state.hidden, ...this.savedIds()]);
       const sigs = new Set(mode === 'more' ? f.pins.map((p) => p.sig) : []);
-      const lists = pages.map((x) => (x.p ? x.p.pins : [])), cands = [];
+      const lists = pages.map((x) => (x.p && Array.isArray(x.p.pins) ? x.p.pins : [])), cands = [];
       for (let i = 0; cands.length < PER_BATCH && lists.some((l) => i < l.length); i++) {
         for (const l of lists) { const p = l[i]; if (p && !skip.has(p.id) && !sigs.has(p.sig)) { skip.add(p.id); sigs.add(p.sig); cands.push(p); } }
       }
@@ -240,28 +298,55 @@ class Feed {
         if (c.vec) this.vecs.set(c.sig, c.vec);
       });
       const emb = await this.embeddings(lib);
-      const mine = items.map((i) => emb[i.id]).filter(Boolean);
-      const profile = key === 'all' ? mine.slice(-400) : mine;
+      const ordered = key === 'all' ? items.map((item, index) => ({ item, index })).sort((a, b) => {
+        const at = Date.parse(a.item.importedAt || ''), bt = Date.parse(b.item.importedAt || '');
+        return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0) || a.index - b.index;
+      }).map((x) => x.item) : items;
+      const mine = ordered.map((i) => emb[i.id]).filter(Boolean);
+      let profile = key.startsWith('search:') ? [] : key === 'all' ? mine.slice(0, 400) : mine;
+      if (key.startsWith('pin:')) {
+        const seed = key.slice(4);
+        profile = items.filter((i) => pinIdOf(i.source) === seed).map((i) => emb[i.id]).filter(Boolean);
+        if (!profile.length) {
+          const p = Object.values(this.state.feeds).flatMap((x) => x.pins).find((x) => x.id === seed);
+          const v = p && this.vecs.get(p.sig);
+          if (v) profile = [v];
+        }
+      }
+      const owned = key.startsWith('search:') ? [] : key.startsWith('pin:') ? profile : mine;
       // Already in your notebook (the same picture): not an idea.
-      const ranked = (list, shown) => rank(list.filter((c) => !c.drop && !(c.vec && mine.some((u) => u.length === c.vec.length && dot(u, c.vec) > SAME))), profile, this.state.hiddenVecs, shown)
+      const ranked = (list, shown) => rank(list.filter((c) => !c.drop && !(c.vec && owned.some((u) => u.length === c.vec.length && dot(u, c.vec) > SAME))), profile, this.state.hiddenVecs, shown)
         .map(({ vec, drop, score, bytes, doubt, ...p }) => p);
       const shownOf = (pins) => pins.map((p) => ({ vec: this.vecs.get(p.sig) }));
       const clear = cands.filter((c) => !c.doubt), doubtful = cands.filter((c) => c.doubt && !c.drop);
       const early = ranked(clear, mode === 'more' ? shownOf(f.pins) : []);
-      f.pins = (mode === 'more' ? [...f.pins, ...early] : early).slice(0, KEEP);
+      f.pins = mode === 'more' ? [...f.pins, ...early] : early;
       f.error = null;
+      delete f.failedAt;
       if (mode === 'fresh') f.at = Date.now();
       f.sources = next;
       // Doubtful pins get their second opinion without holding up the next page; the ones that pass go below.
       if (doubtful.length) {
+        for (const c of doubtful) f.pending.set(c.id, generation);
         f.checking = (f.checking || 0) + 1;
         pool(doubtful, 3, async (c) => { if (await this.aiHide(c.small, c.bytes)) c.drop = true; })
-          .then(() => { const have = new Set(f.pins.map((p) => p.id)); f.pins = [...f.pins, ...ranked(doubtful.filter((c) => !have.has(c.id)), shownOf(f.pins))].slice(0, KEEP); })
+          .then(() => {
+            if (f.generation !== generation) return;
+            const have = new Set(f.pins.map((p) => p.id));
+            const hidden = new Set(this.state.hidden);
+            f.pins = [...f.pins, ...ranked(doubtful.filter((c) => !have.has(c.id) && !hidden.has(c.id)), shownOf(f.pins))];
+          })
           .catch((err) => this.log.error('feed', err))
-          .finally(() => { f.checking--; this.onChange(key); this.save().catch((err) => this.log.error('feed', err)); });
+          .finally(() => {
+            for (const c of doubtful) if (f.pending.get(c.id) === generation) f.pending.delete(c.id);
+            f.checking = Math.max(0, (f.checking || 1) - 1);
+            this.onChange(key);
+            this.save().catch((err) => this.log.error('feed', err));
+          });
       }
     } catch (err) {
       f.error = WHY.broken;
+      f.failedAt = Date.now();
       throw err;
     } finally {
       f.busy = false;
@@ -273,11 +358,28 @@ class Feed {
   async hide(pinId) {
     pinId = String(pinId);
     let sig = null;
-    for (const f of Object.values(this.state.feeds)) { const p = f.pins.find((x) => x.id === pinId); if (p) sig = p.sig; f.pins = f.pins.filter((x) => x.id !== pinId); }
+    let pin = null;
+    const impacted = [];
+    let cached = null;
+    for (const [key, f] of Object.entries(this.state.feeds)) {
+      const p = f.pins.find((x) => x.id === pinId), pending = f.pending instanceof Map && f.pending.has(pinId);
+      if (!p && !pending) continue;
+      if (p) { sig = sig || p.sig; pin = pin || p; }
+      if (!cached && p && p.sig) cached = await fsp.readFile(path.join(this.imgDir, p.sig + '.jpg')).catch(() => null);
+      f.pins = f.pins.filter((x) => x.id !== pinId);
+      impacted.push(key);
+    }
     this.state.hidden = [...this.state.hidden.filter((x) => x !== pinId), pinId].slice(-3000);
-    const vec = sig && this.vecs.get(sig);
-    if (vec) this.state.hiddenVecs = [...this.state.hiddenVecs, vec].slice(-200);
+    let vec = sig && this.vecs.get(sig);
     await this.save();
+    for (const key of impacted) this.onChange(key);
+    if (!vec && pin && sig) {
+      let bytes = cached;
+      if (!bytes) { try { bytes = await this.source.bytes(pin.small); } catch {} }
+      if (bytes) vec = await this.embed(bytes).catch(() => null);
+      if (vec) this.vecs.set(sig, vec);
+    }
+    if (vec) { this.state.hiddenVecs = [...this.state.hiddenVecs, vec].slice(-200); await this.save(); }
   }
 
   // The file for a pin's picture (downloaded the first time it's shown), or null. `big`: the sharper
@@ -305,24 +407,40 @@ class Feed {
   // Ideas is instant. (Other boards load when first opened.)
   warm() {
     for (const [k, f] of Object.entries(this.state.feeds)) {
-      if (this.validKey(k) && !f.busy && Date.now() - f.at > STALE && (k === 'all' || Date.now() - (f.seen || 0) < 7 * 864e5)) this.load(k, 'fresh');
+      if (this.isNormal(k) && this.validKey(k) && !f.busy && (!f.failedAt || Date.now() - f.failedAt > STALE) && Date.now() - f.at > STALE && (k === 'all' || Date.now() - (f.seen || 0) < 7 * 864e5)) this.load(k, 'fresh');
     }
   }
 
   // Every feed for the phone (All and each board), stale ones refreshed in the background for next time.
   // `want`: the feed the phone is looking at ('all' or a board): loaded now if it has none yet, and with
   // `more`, its next page (waiting up to 20 seconds). That feed is sent whole; the others' first 150 pins.
-  async forPhone(want, more = false) {
-    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-    if (want && this.validKey(want)) {
-      const had = this.feed(want).pins.length;
-      if (more && had && this.feed(want).sources.some((s) => s.bookmark)) await Promise.race([this.load(want, 'more'), wait(20000)]);
-      else { this.get(want); if (!had) await Promise.race([this.queue, wait(15000)]); } // a first set, if it's quick
+  async forPhone(want, more = false, force = false) {
+    const waitFor = async (promise, ms) => {
+      let timer;
+      const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(true), ms); });
+      const timedOut = await Promise.race([Promise.resolve(promise).then(() => false, () => false), timeout]);
+      clearTimeout(timer);
+      return timedOut;
+    };
+    const requested = want == null ? null : this.normaliseKey(want);
+    let timedOut = false;
+    if (requested) {
+      const f = this.feed(requested), had = f.pins.length;
+      if (force) timedOut = await waitFor(this.load(requested, 'fresh'), PHONE_WAIT);
+      else if (more && had && f.sources.some((s) => s.bookmark)) timedOut = await waitFor(this.load(requested, 'more'), PHONE_WAIT);
+      else {
+        this.get(requested);
+        if (!had) timedOut = await waitFor(this.queue, 15000); // a first set, if it's quick
+      }
     }
     const lib = this.getLib();
     const keys = ['all', ...(lib ? lib.data.boards.filter((b) => b.phone !== false).map((b) => b.id) : [])];
+    if (requested && this.isTransient(requested)) keys.push(requested);
     const feeds = {};
-    for (const k of keys) { const f = this.get(k, { load: false }); if (f) feeds[k] = { at: f.at, signedIn: f.signedIn, error: f.error, more: f.more, pins: f.pins.slice(0, k === want ? KEEP : 150) }; }
+    for (const k of keys) {
+      const f = this.get(k, { load: false });
+      if (f) feeds[k] = { at: f.at, signedIn: f.signedIn, error: f.error, busy: f.busy || (k === requested && timedOut), more: f.more, pins: k === requested ? f.pins : f.pins.slice(0, 150) };
+    }
     this.warm();
     return { feeds };
   }
@@ -336,15 +454,15 @@ class Feed {
 
   async write() {
     const { feeds, hidden, hiddenVecs } = this.state;
-    // The feeds themselves stay the same objects (a load still running keeps adding to them); only the
-    // written copy leaves out the busy flag, and feeds of deleted boards go.
-    for (const k of Object.keys(feeds)) if (!this.validKey(k)) delete feeds[k];
-    const keep = Object.fromEntries(Object.entries(feeds).map(([k, { busy, checking, ...f }]) => [k, f]));
+    // Direct search/related feeds are session-only. Normal feeds keep their newest 300 pins and the
+    // source bookmarks that already advanced past them, so a restart can continue from the right page.
+    for (const k of Object.keys(feeds)) if (this.isNormal(k) && !this.validKey(k)) delete feeds[k];
+    const keep = Object.fromEntries(Object.entries(feeds).filter(([k]) => this.isNormal(k)).map(([k, { busy, checking, generation, pending, ...f }]) => [k, { ...f, pins: f.pins.slice(-KEEP) }]));
     await fsp.mkdir(this.dir, { recursive: true });
     await fsp.writeFile(this.file + '.tmp', JSON.stringify({ v: 1, feeds: keep, hidden, hiddenVecs }));
     await fsp.rename(this.file + '.tmp', this.file);
-    // Pictures no feed shows any more are removed.
-    const used = new Set(Object.values(keep).flatMap((f) => f.pins.flatMap((p) => [p.sig + '.jpg', p.sig + '-big.jpg'])));
+    // Pictures no in-memory feed shows any more are removed.
+    const used = new Set(Object.values(feeds).flatMap((f) => f.pins.flatMap((p) => [p.sig + '.jpg', p.sig + '-big.jpg'])));
     const files = await fsp.readdir(this.imgDir).catch(() => []);
     await Promise.all(files.filter((x) => x.endsWith('.jpg') && !used.has(x)).map((x) => fsp.rm(path.join(this.imgDir, x), { force: true })));
   }

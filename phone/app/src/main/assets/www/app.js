@@ -143,7 +143,7 @@
     tick();
   }
   const homeList = () => (S.tab === 'notes' ? live().filter((x) => x.kind === 'note') : live());
-  // Home's grid: Recent, Notes, or For you (ideas from Pinterest, picked by the PC).
+  // Home's grid: Recent, Notes, or For you (Pinterest ideas, also available without the PC).
   const homeGrid = () => (S.tab === 'ideas' ? I.gridHTML('all') : gridHTML(SO.apply(homeList(), 'all'), S.tab === 'notes' ? 'No notes yet. Tap + and choose New note.' : 'Nothing here yet. Tap + to add photos, videos or a note.', null, 'all'));
 
   function pillsHTML() {
@@ -342,7 +342,7 @@
     actions: () => A, db: () => DB, turnStack
   });
   const SO = NBSort({ N, esc });
-  const I = NBIdeas({ N, S, $, esc, toast, paired: () => !!(DB.sync || {}).paired, boardName: () => (S.screen === 'board' ? (boards().find((b) => b.id === S.board) || {}).name : ''), rerender: () => { dataVer++; refresh(); } });
+  const I = NBIdeas({ N, S, $, esc, toast, boardName: () => (S.screen === 'board' ? (boards().find((b) => b.id === S.board) || {}).name : ''), rerender: () => { dataVer++; refresh(); }, reveal: () => { if (S.screen === 'home') M.setLift(true); } });
   const { animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect } = M;
   const builders = { home: homeHTML, board: boardHTML, item: itemHTML, sync: syncHTML, search: searchHTML, bin: binHTML };
   const sigOf = () => boards().map((b) => b.id + ':' + b.name).join('|');
@@ -370,8 +370,14 @@
 
   // After any library change: update whatever screen is showing, in place.
   function refresh() {
+    const query = document.activeElement?.matches('.idea-query') ? document.activeElement : null;
+    const focus = query && { base: query.closest('form').dataset.base, start: query.selectionStart, end: query.selectionEnd };
     refreshScreen();
     if (S.select) markSelection();
+    if (focus) {
+      const next = [...document.querySelectorAll('.ideas-search')].find((form) => form.dataset.base === focus.base)?.querySelector('input');
+      if (next) { next.focus({ preventScroll: true }); next.setSelectionRange(focus.start, focus.end); }
+    }
   }
   function refreshScreen() {
     if (currentEl) currentEl.dataset.ver = dataVer;
@@ -501,7 +507,7 @@
   const currentBoard = () => (S.screen === 'board' ? S.board : '');
   const A = {
     home: () => go('home', null, tabKind('home')),
-    boardBack: () => go('home', null, 'pop'),
+    boardBack: () => { if (!I.back()) go('home', null, 'pop'); },
     sync: () => go('sync', null, tabKind('sync')),
     search: () => go('search', null, tabKind('search')),
     selCancel: () => endSelect(),
@@ -559,6 +565,8 @@
     ideaSave: () => { I.save(S.screen === 'board' ? S.board : ''); closeForm(); },
     ideaHide: () => { closeForm(); I.hide(); },
     ideaOpen: () => { I.openPin(); closeForm(); },
+    ideaRelated: () => { closeForm(); I.related(); },
+    ideasBack: () => I.back(),
     ideasNow: () => I.now(),
     closePops,
     // Sort: a small sheet of choices; the cards glide to their new places.
@@ -638,6 +646,7 @@
     if (SO.closeMenu()) return true;
     if (S.sheet) { closeForm(); return true; }
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
+    if (I.back()) return true;
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }
     if (S.screen === 'item') { A.back(); return true; }
     if (S.screen === 'board') { A.boardBack(); return true; }

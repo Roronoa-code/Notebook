@@ -9,7 +9,8 @@ const { _electron: electron } = require('playwright-core');
 const { makeSamples } = require('./make-samples');
 
 const APP = path.resolve(__dirname, '..');
-const OUT = path.join(APP, 'test-output', 'features');
+// Separate runs must not remove a live test library while another window is using it.
+const OUT = path.join(APP, 'test-output', 'features-' + process.pid);
 const LIB = path.join(OUT, 'Notebook Library');
 let passed = 0;
 const ok = (msg) => { passed++; console.log('  ok  ' + msg); };
@@ -203,7 +204,9 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.waitForFunction((id) => !document.querySelector(`#ideas .idea[data-pin="${id}"]`), gone);
   const again = await page.evaluate(() => nb.feed('all'));
   assert.ok(!again.feed.pins.some((p) => p.id === gone), 'a hidden pin stays hidden');
-  const feedFile = JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'feed', 'feeds.json'), 'utf8'));
+  const savedFeed = () => JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'feed', 'feeds.json'), 'utf8'));
+  for (let i = 0; i < 50 && !savedFeed().hidden.includes(gone); i++) await page.waitForTimeout(100);
+  const feedFile = savedFeed();
   assert.ok(feedFile.hidden.includes(gone), 'remembered after a restart');
   ok('Not for me hides a pin for good');
 
@@ -217,6 +220,21 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.keyboard.press('Escape');
   await page.locator('.ideaview').waitFor({ state: 'detached' });
   ok('clicking a pin opens a close-up straight away (sharper picture, next with →, Esc closes)');
+
+  // Direct search and related pins stay inside Notebook, with a return to the original feed.
+  await page.locator('.ideas-search input').fill('blue room');
+  await page.locator('.ideas-search input').press('Enter');
+  await page.locator('.ideas-breadcrumb').waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('#ideas .idea').length > 0);
+  await page.locator('#ideas .idea .idea-open').first().click();
+  await page.locator('.idea-related').click();
+  await page.waitForFunction(() => document.querySelector('.ideas-breadcrumb')?.textContent.includes('More like'));
+  await page.locator('.ideas-breadcrumb button').click();
+  await page.waitForFunction(() => document.querySelector('.ideas-breadcrumb')?.textContent.includes('blue room'));
+  await page.locator('.ideas-breadcrumb button').click();
+  await page.locator('.ideas-breadcrumb').waitFor({ state: 'detached' });
+  await page.locator('#ideas .idea .idea-save').first().waitFor();
+  ok('search and More like this stay in Notebook; Back returns through discovery to For you');
 
   // Save: with no downloader tools in the test, it says so and the button goes back to Save.
   const card = page.locator('#ideas .idea').first();
@@ -232,6 +250,10 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.waitForFunction(() => document.querySelectorAll('#ideas .idea').length >= 6, null, { timeout: 20000 });
   const boardFeed = await page.evaluate((id) => nb.feed(id), board.id);
   assert.equal(boardFeed.feed.key, board.id, 'the board has its own feed');
+  await page.waitForFunction(() => [...document.querySelectorAll('#ideas .idea')].slice(0, 4).every((el) => {
+    const img = el.querySelector('img');
+    return img?.complete && img.naturalWidth > 0 && !el.getAnimations().some((a) => a.playState === 'running');
+  }));
   await page.screenshot({ path: path.join(OUT, 'ideas.png') });
   await page.locator('.segbtn', { hasText: 'Saved' }).click();
   await page.locator('#grid > .card').first().waitFor();

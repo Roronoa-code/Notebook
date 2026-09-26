@@ -340,7 +340,13 @@ class SyncServer {
   async ideas(req, res, route) {
     const feed = this.feed;
     if (!feed) return send(res, 404, { error: 'Ideas aren’t available on this PC.' });
-    if (route === '/api/feed' && req.method === 'GET') { const q = new URL(req.url, 'http://x').searchParams; return send(res, 200, await feed.forPhone(q.get('want'), q.get('more') === '1')); }
+    if (route === '/api/feed' && req.method === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams;
+      const hasWant = q.has('want'), rawWant = q.get('want'), more = q.get('more') === '1', fresh = q.get('fresh') === '1';
+      if (more && fresh) throw new SyncError('Ask for more ideas or a fresh feed, not both.', 400);
+      if (hasWant && !feed.normaliseKey(rawWant)) throw new SyncError('That feed isn’t valid.', 400);
+      return send(res, 200, await feed.forPhone(hasWant ? rawWant : null, more, fresh));
+    }
     const img = /^\/api\/feed\/img\/([0-9a-f]{32})$/.exec(route);
     if (img && req.method === 'GET') {
       const file = await feed.image(img[1]);

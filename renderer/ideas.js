@@ -14,16 +14,37 @@
   const saving = new Set(); // pin addresses being saved
   let shown = 0;            // how many of the feed's pins are on the page
   let asking = false;       // a next page has been asked for
+  let context = null, trail = [], draft = '', restoreTop = null, restoreCount = 0;
 
-  const keyNow = () => NB.currentBoardId() || (NB.S.board === 'all' ? 'all' : null);
+  const baseKey = () => NB.currentBoardId() || (NB.S.board === 'all' ? 'all' : null);
+  const keyNow = () => {
+    const base = baseKey();
+    if (context !== base) { context = base; trail = []; draft = ''; restoreTop = null; }
+    return trail.length ? trail[trail.length - 1].key : base;
+  };
   const active = () => on && !!keyNow() && !NB.smart.suggestion();
+
+  function browse(k, title) {
+    if (k === keyNow()) return;
+    if (!trail.length) trail.push({ key: baseKey(), title: '', top: $('page').scrollTop, shown });
+    else Object.assign(trail[trail.length - 1], { top: $('page').scrollTop, shown });
+    trail.push({ key: k, title, top: 0 });
+    key = null; restoreTop = 0; restoreCount = 0; NB.S.anim = true; NB.refreshGrid();
+  }
+  function back() {
+    if (trail.length < 2) return false;
+    trail.pop(); restoreTop = trail[trail.length - 1].top; restoreCount = trail[trail.length - 1].shown || 0;
+    if (trail.length === 1) trail = [];
+    key = null; NB.S.anim = true; NB.refreshGrid();
+    return true;
+  }
 
   // Saved | For you (or Ideas on a board), in the header.
   function tabs() {
     if (!keyNow() || NB.smart.suggestion()) return null;
     const pick = (want) => () => { if (on === want) return; on = want; NB.S.anim = true; NB.refreshGrid(); $('page').scrollTo({ top: 0 }); };
     const tab = (label, want) => h('button', { type: 'button', class: 'segbtn' + (on === want ? ' on' : ''), 'aria-pressed': String(on === want), onclick: pick(want) }, label);
-    return h('div', { class: 'seg', role: 'group', 'aria-label': 'Show' }, tab('Saved', false), tab(keyNow() === 'all' ? 'For you' : 'Ideas', true));
+    return h('div', { class: 'seg', role: 'group', 'aria-label': 'Show' }, tab('Saved', false), tab(baseKey() === 'all' ? 'For you' : 'Ideas', true));
   }
 
   // The line under the title while Ideas are showing, with "New ideas".
@@ -33,6 +54,10 @@
     const line = h('div', { class: 'count micro' }, n ? h('b', null, n) : '', n ? ` idea${n === 1 ? '' : 's'}` : '', busy ? (n ? ' · finding more…' : 'Finding ideas…') : '');
     const fresh = h('button', { type: 'button', class: 'btn small', disabled: !!busy, onclick: () => { nb.feedRefresh(keyNow()).then(got); } }, icon('restore'), 'New ideas');
     const out = [line, h('div', { class: 'ctx-actions' }, fresh)];
+    const input = h('input', { type: 'search', class: 'search', 'aria-label': 'Search Pinterest ideas', placeholder: 'Search Pinterest ideas', maxlength: 120, value: draft, oninput: (e) => { draft = e.target.value; } });
+    out.push(h('form', { class: 'ideas-search', onsubmit: (e) => { e.preventDefault(); const q = input.value.trim().replace(/\s+/g, ' '); if (q) browse('search:' + q, q); } },
+      h('div', { class: 'search-wrap' }, icon('search'), input), h('button', { type: 'submit', class: 'btn small' }, 'Search')));
+    if (trail.length > 1) out.push(h('div', { class: 'ideas-breadcrumb' }, h('button', { type: 'button', class: 'btn small', onclick: back }, 'Back to ideas'), h('span', null, trail[trail.length - 1].title)));
     if (data && data.key === keyNow() && data.error && data.pins.length) out.push(h('p', { class: 'hint ideas-hint' }, 'No new ideas just now. ' + data.error));
     if (data && data.key === 'all' && data.signedIn === false) {
       out.push(h('p', { class: 'hint ideas-hint' }, 'Sign in to Pinterest (in the Pinterest panel) and your Pinterest home feed is mixed in too. ',
@@ -60,8 +85,15 @@
     const fresh = data && res.feed.pins.length && data.pins.length && res.feed.pins[0].id !== data.pins[0].id;
     data = res.feed;
     if (fresh) clear(true);
+    if (restoreTop !== null) shown = Math.max(shown, restoreCount);
     draw();
-    if (active()) NB.refreshContext();
+    if (restoreTop !== null && data.pins.length) { $('page').scrollTop = restoreTop; restoreTop = null; }
+    if (active()) {
+      const input = document.activeElement, editing = input?.matches('.ideas-search input');
+      const selection = editing ? [input.selectionStart, input.selectionEnd] : null;
+      NB.refreshContext();
+      if (editing) { const next = document.querySelector('.ideas-search input'); next?.focus({ preventScroll: true }); if (next) next.setSelectionRange(...selection); }
+    }
   }
   nb.onFeedChanged(({ key: k }) => { if (active() && k === key) nb.feed(k).then(got); });
 
@@ -125,7 +157,7 @@
     if (!active() || !data || !data.pins.length || !cols.length) return;
     const pg = $('page');
     if (pg.scrollHeight - pg.scrollTop - pg.clientHeight < pg.clientHeight * 2.5 && shown < data.pins.length) { shown += PAGE; draw(); return; }
-    if (data.pins.length - shown < BUFFER && data.more && !asking) { asking = true; nb.feedMore(key).then(got); }
+    if (data.pins.length - shown < BUFFER && data.more && !data.error && !asking) { asking = true; nb.feedMore(key).then(got); }
     sentinel.textContent = asking && shown >= data.pins.length ? 'Finding more…' : '';
   }
 
@@ -166,6 +198,7 @@
           h('span', { class: 'micro' }, 'From Pinterest'),
           h('h3', { class: 'display' }, p.title || 'Untitled pin'),
           h('button', { type: 'button', class: 'btn accent idea-save', onclick: () => saveIt(p, box) }),
+          h('button', { type: 'button', class: 'btn idea-related', onclick: () => { close(); browse('pin:' + p.id, 'More like ' + (p.title || 'this pin')); } }, 'More like this'),
           h('button', { type: 'button', class: 'btn', onclick: () => { close(); NB.links.openAt(p.url); } }, icon('pin'), 'Open in Pinterest'),
           h('button', { type: 'button', class: 'btn', onclick: () => { close(); const el = cards.get(p.id); if (el) hideIt(p, el); else nb.feedHide(p.id); } }, icon('x'), 'Not for me'),
           h('p', { class: 'hint' }, '← → for the next idea')),
@@ -217,6 +250,9 @@
   let frame = 0;
   $('page').addEventListener('scroll', () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; ahead(); }); }, { passive: true });
   new ResizeObserver(() => { if (active() && cards.size) ensureCols(); }).observe($('ideas'));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && active() && !document.querySelector('.ideaview') && !e.target.closest('input, textarea, [contenteditable]') && back()) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
 
-  NB.ideas = { tabs, info, sync, active, leave: () => { on = false; }, redeal: () => { if (active() && cards.size) { cols = []; ensureCols(); } } };
+  NB.ideas = { tabs, info, sync, active, leave: () => { on = false; trail = []; }, redeal: () => { if (active() && cards.size) { cols = []; ensureCols(); } } };
 })();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Only used to reach Notebook on your own PC over the home Wi-Fi. -->
+    <!-- Pinterest Ideas use HTTPS; library sync only reaches the PC over the home network. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <!-- Keeps background sync scheduled after the phone restarts. -->

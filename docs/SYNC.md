@@ -97,13 +97,13 @@ The phone then:
 
 ### Ideas (the Pinterest-style feed)
 
-The PC prepares the feeds; the phone only shows them. All need the token.
+These endpoints share the PC's ranked feeds with paired phones. All need the token. The phone also fetches public Pinterest ideas directly over HTTPS, without pairing; that browsing does not use this LAN protocol or transfer Pinterest login cookies.
 
-- `GET /api/feed` (optionally `?want=<boardId or all>`: the feed the phone is showing, made now if it has none, waiting up to 15 seconds; with `&more=1` as well, the PC first fetches that feed's next page, waiting up to 20 seconds) returns `{ "feeds": { "all": { "at": ms, "signedIn": bool|null, "error": string|null, "more": bool, "pins": [...] }, "<boardId>": {...} } }`. Each pin is `{ id, url, title, w, h, video, sig, saved }`: `url` is `https://www.pinterest.com/pin/<id>/`, `sig` is 32 hex characters naming its picture. `error` is a plain-English reason the last fetch failed (the pins are then the ones from before); `more` says a next page can be asked for. The wanted feed comes whole (up to 300 pins), the others with their first 150. Feeds older than a few hours are refreshed on the PC in the background for next time.
+- `GET /api/feed` optionally takes `want=<key>`: `all`, a board ID, `search:<query>` (1–120 characters after trimming), or `pin:<id>` (1–25 digits). URL-encode the key. An empty feed is made now, waiting up to 15 seconds. `more=1` waits up to 20 seconds for the next page; `fresh=1` explicitly refreshes even a recently fetched feed. Do not combine `more` and `fresh`; malformed keys are rejected with 400. The response is `{ "feeds": { "all": { "at": ms, "signedIn": bool|null, "error": string|null, "more": bool, "busy": bool, "pins": [...] }, "<key>": {...} } }`. Each pin is `{ id, url, title, w, h, video, sig, saved }`: `url` is `https://www.pinterest.com/pin/<id>/`, `sig` is 32 hex characters naming its picture. `error` explains a failed fetch while retaining earlier pins; `busy` means work is still pending; `more` means another page is available. The requested feed contains the whole current browsing session, the other ordinary feeds their first 150 pins. Normal feeds retain their last 300 pins on disk; discovery feeds are temporary. Stale ordinary feeds refresh in the background.
 - `GET /api/feed/img/<sig>` streams the pin's picture (`image/jpeg`), or 404.
 - `POST /api/feed/save` with `{ "url": "<pin url>", "boardId": "<id>"|null }` makes the PC download and save the pin (onto that board); it arrives on the phone with a later sync. 400 for anything that isn't a pin address.
 - `POST /api/feed/hide` with `{ "id": "<digits>" }`: "Not for me". The pin leaves every feed and similar ones rank lower.
-- The phone keeps the last feeds and their first pictures, so it can show them away from home. Saves and hides made while the PC can't be reached wait and go with the next sync.
+- Older phone versions can still queue PC saves and hides for the next sync. The independent phone feed saves media into the phone's own library, which then uses the existing item/media sync. Phone discovery caches are separate from the PC snapshots, so a background sync cannot replace a search in progress. Cached pictures remain readable offline.
 
 ### Error log
 
