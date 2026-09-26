@@ -47,5 +47,5 @@ Acceptance ledger:
   SHA-256: `2F28115DE4EB7186B48FC508A42A1AE1FB696E1251D32ACC8E786DB43CF464BC`.
 - Windows **2.5.0** installer built and packaged checks passed: `dist/Notebook Setup 2.5.0.exe`.
   SHA-256: `66D3410E9D944ECC002E014743103F039BC1DFCA65416789ACA2B93D435ADC91`.
-- The Windows update has **not been installed over the owner's running app**. No forced quit, user-library edits, account-cookie transfer or remote push was performed.
+- The owner then requested installation of everything. Windows **2.5.0** installed successfully (installer exit 0); installed executable and `app.asar` hashes match the tested package. Library metadata was unchanged by installation. Notebook restarted in its previous background mode. Settings and library metadata were checkpointed at `%LOCALAPPDATA%/Temp/notebook-before-250-20260926-022228` before the installer closed the old app. Phone **0.15.0 (38)** was confirmed still installed. No account-cookie transfer or remote push was performed.
 - Public Pinterest endpoints can change or rate-limit requests. Errors retain cached results and offer retry; independent phone discovery is not the same personalised feed as the signed-in Pinterest app.
