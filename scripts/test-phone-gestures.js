@@ -25,6 +25,119 @@ const { chromium } = require('playwright-core');
     }
     const release = () => cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 
+    // Every floating sheet uses a real backdrop and the same interrupted drag behaviour.
+    const backdropTap = async () => {
+      await page.locator('#popscrim').click({ position: { x: 6, y: 120 } });
+      await page.locator('#popscrim').waitFor({ state: 'hidden' });
+    };
+    await page.locator('#addbtn').click();
+    assert.ok(await page.locator('#popscrim').evaluate(el => el.getBoundingClientRect().height === innerHeight), 'backdrop covers the screen');
+    await backdropTap();
+    assert.equal(await page.locator('#addsheet').isVisible(), false, 'outside tap closes Add');
+    await page.locator('[data-a="cover"]').click();
+    await backdropTap();
+    assert.equal(await page.locator('#coversheet').isVisible(), false, 'outside tap closes Cover');
+
+    // The cover chooser is a real scrollable sheet. Its drag handle must dismiss it without stealing
+    // vertical scrolling from the tile list, and both the visible Done button and Android Back must work.
+    await page.evaluate(() => {
+      window.coverTestOriginal = NBNative.state();
+      const db = JSON.parse(coverTestOriginal), photo = db.items.find(i => i.kind === 'photo');
+      for (let i = 0; i < 100; i++) db.items.push({ ...photo, id: `extra-${i}`, title: `Background ${i + 1}` });
+      nbOnState(JSON.stringify(db));
+    });
+    await page.locator('[data-a="cover"]').click();
+    await page.waitForTimeout(350);
+    const viewportHeight = await page.evaluate(() => innerHeight);
+    const coverMetrics = await page.locator('#coversheet').evaluate((el) => {
+      const tiles = el.querySelector('#tiles'), r = el.getBoundingClientRect();
+      const first = tiles.children[0].getBoundingClientRect(), nextRow = tiles.children[4].getBoundingClientRect();
+      return { bottom: r.bottom, height: r.height, tileHeight: tiles.clientHeight, tileScrollHeight: tiles.scrollHeight, touch: getComputedStyle(el).touchAction, rowGap: nextRow.top - first.bottom };
+    });
+    assert.ok(coverMetrics.bottom <= viewportHeight + 1, 'cover chooser stays inside the viewport');
+    assert.ok(coverMetrics.tileScrollHeight > coverMetrics.tileHeight, 'cover tiles have a scrollable body');
+    assert.equal(coverMetrics.touch, 'pan-y', 'cover chooser leaves vertical scrolling enabled');
+    assert.ok(coverMetrics.rowGap >= 7, 'large image libraries keep separate thumbnail rows without overlap');
+    const tileBox = await page.locator('#tiles').boundingBox();
+    await drag(190, tileBox.y + tileBox.height * .8, tileBox.y + tileBox.height * .2, 12, 20);
+    await release();
+    await page.waitForTimeout(350);
+    assert.ok(await page.locator('#tiles').evaluate((el) => el.scrollTop > 20), 'cover tiles scroll under a real touch drag');
+    assert.equal(await page.locator('#coversheet').isVisible(), true, 'scrolling cover tiles keeps the chooser open');
+    await page.locator('#tiles').evaluate(async (el) => { let last = -1; for (let i = 0; i < 20 && last !== el.scrollTop; i++) { last = el.scrollTop; await new Promise(r => setTimeout(r, 100)); } });
+    const beforePick = await page.locator('#tiles').evaluate((el) => el.scrollTop);
+    const visibleTile = await page.locator('#tiles').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return [...el.children].find(b => { const t = b.getBoundingClientRect(); return t.top > r.top + 2 && t.bottom < r.bottom - 2; }).dataset.v;
+    });
+    await page.locator(`#tiles .tile[data-v="${visibleTile}"]`).click();
+    assert.ok(Math.abs(await page.locator('#tiles').evaluate((el) => el.scrollTop) - beforePick) < 1, 'choosing a cover keeps the tile position');
+    await page.locator('#coversheet [data-a="closePops"]').click();
+    await page.locator('#coversheet').waitFor({ state: 'hidden' });
+    await page.locator('[data-a="cover"]').click();
+    await page.waitForTimeout(350);
+    assert.equal(await page.evaluate(() => nbBack()), true, 'Android Back closes the cover chooser');
+    await page.locator('#coversheet').waitFor({ state: 'hidden' });
+    await page.locator('[data-a="cover"]').click();
+    await page.waitForTimeout(350);
+    const coverBox = await page.locator('#coversheet').boundingBox();
+    await drag(190, coverBox.y + 20, coverBox.y + 140, 8, 30);
+    await release();
+    await page.locator('#coversheet').waitFor({ state: 'hidden' });
+    await page.waitForTimeout(320);
+    await page.evaluate(() => { NBNative.setPref('coverId', ''); nbOnState(coverTestOriginal); });
+
+    await page.locator('#nav-sync').click();
+    await page.locator('[data-a="manual"]').click();
+    await backdropTap();
+    assert.equal(await page.locator('#formsheet').isVisible(), false, 'outside tap closes forms');
+    assert.equal(await page.evaluate(() => nbBack()), true);
+    await page.locator('#nav-home[aria-current="page"]').waitFor();
+
+    await page.locator('#addbtn').click();
+    await page.waitForTimeout(350);
+    let pop = await page.locator('#addsheet').boundingBox();
+    await drag(190, pop.y + 20, pop.y + 50, 6, 60);
+    const heldPop = await page.locator('#addsheet').evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m42);
+    assert.ok(heldPop > 20 && heldPop < 40, 'sheet follows the finger');
+    await release(); await page.waitForTimeout(380);
+    assert.equal(await page.locator('#addsheet').isVisible(), true, 'short slow drag returns');
+    assert.equal(await page.locator('#addsheet').evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m42), 0);
+    pop = await page.locator('#addsheet').boundingBox();
+    await drag(190, pop.y + 20, pop.y + 130, 8, 30);
+    await release();
+    await page.locator('#addsheet').waitFor({ state: 'hidden' });
+    await page.waitForTimeout(320);
+    // Reopen halfway through closing: no reset to the start of the entrance animation.
+    await page.locator('#addbtn').click(); await page.waitForTimeout(350);
+    const reversal = await page.evaluate(async () => {
+      const button = document.querySelector('#addbtn'), sheet = document.querySelector('#addsheet');
+      button.click(); await new Promise(r => setTimeout(r, 60));
+      const before = new DOMMatrix(getComputedStyle(sheet).transform).m42;
+      button.click(); const after = new DOMMatrix(getComputedStyle(sheet).transform).m42;
+      return { before, after };
+    });
+    assert.ok(Math.abs(reversal.before - reversal.after) < 1, 'reopening continues from the visible position');
+    await page.waitForTimeout(380); await backdropTap();
+    // A cancelled gesture always returns, including one beyond the dismissal distance.
+    await page.locator('#addbtn').click(); await page.waitForTimeout(350);
+    pop = await page.locator('#addsheet').boundingBox();
+    await drag(190, pop.y + 20, pop.y + 130, 8, 30);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await page.waitForTimeout(380);
+    assert.equal(await page.locator('#addsheet').isVisible(), true, 'cancellation keeps the sheet');
+    await page.evaluate(() => nbBack()); await page.locator('#addsheet').waitFor({ state: 'hidden' });
+
+    await page.locator('#nav-search').click(); await page.waitForTimeout(500);
+    await page.evaluate(() => nbBack()); await page.locator('#nav-home[aria-current="page"]').waitFor();
+    await page.locator('#nav-sync').click(); await page.waitForTimeout(500);
+    await page.locator('[data-a="openBin"]').click(); await page.locator('#bingrid').waitFor();
+    await page.evaluate(() => nbBack()); await page.locator('#syncbody').waitFor();
+    await page.evaluate(() => nbBack()); await page.locator('#nav-home[aria-current="page"]').waitFor();
+    await page.locator('#homesort .sortpill').click();
+    await page.evaluate(() => nbBack()); await page.locator('.sortmenu').waitFor({ state: 'detached' });
+    await page.waitForTimeout(500);
+
     const rest = await liftY();
     // Slow, short drag: the panel follows the finger, then springs back down.
     await drag(190, 700, 600, 10, 40);

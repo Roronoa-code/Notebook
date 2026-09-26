@@ -2,6 +2,8 @@
 // this file only draws and asks the app to make changes. Screens update in place, never full redraws.
 (() => {
   const N = window.NBNative;
+  const motionStyle = getComputedStyle(document.documentElement);
+  const EASE = motionStyle.getPropertyValue('--ease').trim(), FAST = parseFloat(motionStyle.getPropertyValue('--t-fast')), NORMAL = parseFloat(motionStyle.getPropertyValue('--t-normal'));
   const LIB = window.NB_LIB ?? '/lib/';
   const url = (rel) => (rel ? LIB + rel : '');
 
@@ -69,7 +71,7 @@
       toast.undo = null;
       const t = box.firstElementChild;
       if (!t || matchMedia('(prefers-reduced-motion: reduce)').matches) { box.innerHTML = ''; return; }
-      t.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px) scale(.96)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' })
+      t.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px) scale(.96)' }], { duration: 220, easing: EASE, fill: 'forwards' })
         .onfinish = () => { if (box.firstElementChild === t) box.innerHTML = ''; }; // fades up and away
     }, undo ? 5000 : 2600);
   }
@@ -169,7 +171,7 @@
         <div id="coverslot">${coverHTML()}</div>
         <div class="stackwrap" id="stack">${pillsHTML()}</div>
         <div class="micro status"><span id="count" style="color:#F2F2F2">${String(live().length).padStart(2, '0')} items saved</span><br><span id="synced">${esc(statusText())}</span></div>
-        <button type="button" class="iconbtn glass coverbtn" data-a="cover" aria-label="Change cover">${svg(P.photo, 18, 1.9)}</button>
+        <button type="button" class="iconbtn glass coverbtn" data-a="cover" aria-label="Change background">${svg(P.photo, 18, 1.9)}</button>
       </div>
       <div class="lift" id="lift">
         <button type="button" class="grip" data-a="lift" aria-label="Lift items up"></button>
@@ -194,7 +196,7 @@
         <div class="coverfade"></div>
         <button type="button" class="iconbtn glass" data-a="boardBack" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px">${svg(P.back)}</button>
         <button type="button" class="iconbtn glass" data-a="editBoard" aria-label="Rename or delete board" style="position:absolute;top:calc(var(--st) + 10px);right:16px">${svg(P.edit, 18)}</button>
-        <div style="position:absolute;left:22px;right:22px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
+        <div style="position:absolute;left:16px;right:16px;bottom:18px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="poster" id="boardname" style="font-size:60px">${esc(b.name)}</span><span class="micro" id="boardcount">${plural(list.length, 'item')}</span></div>
       </div>
       <div class="panelbar boardbar"><div class="seg glass slide" id="boardseg" style="--i:${S.btab === 'ideas' ? 1 : 0}"><button type="button" class="${S.btab === 'ideas' ? '' : 'on'}" data-a="btab" data-v="saved" id="btab-saved">Saved</button><button type="button" class="${S.btab === 'ideas' ? 'on' : ''}" data-a="btab" data-v="ideas" id="btab-ideas">Ideas</button></div><span id="boardsort" style="margin-left:auto">${S.btab === 'ideas' ? '' : SO.pillHTML(b.id)}</span></div>
       <div class="grid anim" id="boardgrid">${boardGrid(b.id)}</div>
@@ -249,9 +251,9 @@
     const list = binned();
     return `<div class="screen" style="padding-top:calc(var(--st) + 70px)">
       <button type="button" class="iconbtn glass" data-a="binBack" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px">${svg(P.back)}</button>
-      <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:8px">
+      <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:8px">
         <div style="display:flex;align-items:baseline;gap:12px"><span class="poster" style="font-size:64px">Bin</span><span class="micro" id="bincount">${plural(list.length, 'item')}</span></div>
-        <div style="font-size:14px;color:#9A9A9A">Things stay here until you delete them. Tap one to put it back.</div>
+        <div style="font-size:14px;color:var(--text-3)">Things stay here until you delete them. Tap one to put it back.</div>
         <button type="button" class="btn danger" data-a="emptyBin" id="emptybin" style="align-self:flex-start"${list.length ? '' : ' hidden'}>${svg(P.bin, 16)}<span>Empty Bin</span></button>
       </div>
       <div class="grid" id="bingrid">${gridHTML(list, 'The Bin is empty.')}</div>
@@ -275,9 +277,9 @@
       <button type="button" class="addrow" data-a="addCamera">${svg(P.camera, 20, 1.9)}Take a photo</button>
       <button type="button" class="addrow" data-a="addNote">${svg(P.note, 20, 1.9)}New note</button>
     </div>
-    <div class="popsheet frost" id="coversheet" hidden style="padding:16px;flex-direction:column;gap:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between"><span class="lbl">Cover</span>
-        <div class="seg" style="background:rgba(255,255,255,.06)"><button type="button" data-a="dots" id="seg-dots">Dotted</button><button type="button" data-a="plain" id="seg-plain">Photo</button></div></div>
+    <div class="popsheet frost" id="coversheet" hidden>
+      <div class="pophead" data-pop-drag><span class="lbl">Background</span><button type="button" class="btn popdone" data-a="closePops">Done</button></div>
+      <div class="seg coverseg" style="background:rgba(255,255,255,.06)"><button type="button" data-a="dots" id="seg-dots">Dotted</button><button type="button" data-a="plain" id="seg-plain">Photo</button></div>
       <div class="tiles" id="tiles"></div>
     </div>
     <div class="popsheet frost formsheet" id="formsheet" hidden></div>
@@ -287,29 +289,10 @@
 
   function tilesHTML() {
     const tiles = [{ id: '', label: 'MANI' }].concat(live().filter((x) => x.kind === 'photo' && x.file).map((x) => ({ id: x.id, label: x.title, img: url(x.thumb || x.file) })));
-    return tiles.map((t) => { const on = S.coverId === t.id; return `<button type="button" class="tile${on ? ' on' : ''}" aria-pressed="${on}" aria-label="Use ${esc(t.label)} as cover" data-a="coverPick" data-v="${t.id}">${t.img ? `<img src="${t.img}" alt="">` : '<span class="manitile">MANI</span>'}</button>`; }).join('');
+    return tiles.map((t) => { const on = S.coverId === t.id; return `<button type="button" class="tile${on ? ' on' : ''}" aria-pressed="${on}" aria-label="Use ${esc(t.label)} as cover" data-a="coverPick" data-v="${t.id}">${t.img ? `<img src="${t.img}" alt="" loading="lazy" decoding="async">` : '<span class="manitile">MANI</span>'}</button>`; }).join('');
   }
 
-  // Pop-ups rise in (CSS) and sink away (here) instead of vanishing.
-  // Every floating sheet (and its backdrop) comes and goes the same way; one dragged down leaves from
-  // wherever the finger let go of it.
-  function showSheet(el, on) {
-    if (on) {
-      el.getAnimations().forEach((x) => x.cancel());
-      delete el.dataset.leaving;
-      el.inert = false;
-      el.style.transform = '';
-      if (el.hidden) el.hidden = false;
-      return;
-    }
-    if (el.hidden || el.dataset.leaving) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.hidden = true; el.style.transform = ''; return; }
-    el.dataset.leaving = '1';
-    el.inert = true;
-    const y = new DOMMatrix(getComputedStyle(el).transform).m42;
-    const a = el.animate([{ opacity: 1, transform: `translateY(${y}px)` }, { opacity: 0, transform: el.id === 'popscrim' ? 'none' : `translateY(${y + 24}px) scale(.97)` }], { duration: 180, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
-    a.onfinish = () => { if (el.dataset.leaving) { el.hidden = true; delete el.dataset.leaving; el.style.transform = ''; } el.inert = false; a.cancel(); };
-  }
+  const showSheet = (el, on) => M.showSheet(el, on);
   const closePops = () => { if (S.sheet) closeForm(); S.add = S.cover = false; updateChrome(); };
 
   function updateChrome() {
@@ -323,7 +306,7 @@
       nav.getAnimations().forEach((x) => x.cancel());
       if (!hide) nav.hidden = false;
       if (!calm) {
-        const a = nav.animate([{ opacity: 1, translate: '-50% 0' }, { opacity: 0, translate: '-50% 28px' }], { duration: hide ? 240 : 380, easing: 'cubic-bezier(.22,1,.36,1)', direction: hide ? 'normal' : 'reverse', fill: hide ? 'forwards' : 'none' });
+        const a = nav.animate([{ opacity: 1, translate: '-50% 0' }, { opacity: 0, translate: '-50% 28px' }], { duration: hide ? 240 : 380, easing: EASE, direction: hide ? 'normal' : 'reverse', fill: hide ? 'forwards' : 'none' });
         if (hide) a.onfinish = () => { if (nav.dataset.away) nav.hidden = true; a.cancel(); };
       } else nav.hidden = hide;
     }
@@ -506,7 +489,7 @@
       full.decode().then(() => { img.src = full.src; }, () => { img.src = full.src; });
     }
     NBMedia.wire(root);
-    NBViewer.wire(root, { id: it.id, list: swipeList(), peek: peekHTML, go: swapItem, close: () => A.back(), under: () => underEl || homeEl, carry });
+    NBViewer.wire(root, { id: it.id, list: swipeList(), peek: peekHTML, go: swapItem, close: () => A.leaveItem(), under: () => underEl || homeEl, carry });
   }
 
   // ---------- small forms (new board, rename, type pairing code): forms.js ----------
@@ -524,7 +507,7 @@
     selCancel: () => endSelect(),
     stackIds: (ids) => { if (call('stack', JSON.stringify(ids), currentBoard())) toast('Stacked. Flick it sideways to go through them.'); },
     selStack: () => { const ids = [...S.select]; if (call('stack', JSON.stringify(ids), currentBoard())) { endSelect(); toast(`Stacked ${ids.length}. Flick it sideways to go through them.`); } },
-    unstack: () => { const it = byId(S.item); if (it && call('unstack', it.id)) { toast('Taken out of the stack'); A.back(); } },
+    unstack: () => { const it = byId(S.item); if (it && call('unstack', it.id)) { toast('Taken out of the stack'); A.leaveItem(); } },
     openBin: () => go('bin', null, 'push'),
     binBack: () => go('sync', null, 'pop'),
     binItem: (v) => { S.binItem = v; openForm('binItem'); },
@@ -540,7 +523,10 @@
     },
     add: () => { S.add = !S.add; S.cover = false; S.sheet = null; updateChrome(); },
     cover: () => { S.cover = !S.cover; S.add = false; updateChrome(); },
-    coverPick: (v) => { S.coverId = v || ''; N.setPref('coverId', S.coverId); homeEl.querySelector('#coverslot').innerHTML = coverHTML(); $('#tiles').innerHTML = tilesHTML(); },
+    coverPick: (v) => {
+      S.coverId = v || ''; N.setPref('coverId', S.coverId); homeEl.querySelector('#coverslot').innerHTML = coverHTML();
+      $('#tiles').querySelectorAll('.tile').forEach((el) => { const on = el.dataset.v === S.coverId; el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); });
+    },
     dots: () => { S.coverDots = true; N.setPref('coverDots', '1'); homeEl.querySelector('#coverslot').innerHTML = coverHTML(); updateChrome(); },
     plain: () => { S.coverDots = false; N.setPref('coverDots', '0'); homeEl.querySelector('#coverslot').innerHTML = coverHTML(); updateChrome(); },
     tab: (v) => {
@@ -553,10 +539,10 @@
       homeEl.querySelector('#homesort').innerHTML = v === 'ideas' ? '' : SO.pillHTML('all');
       const swap = () => {
         grid.classList.remove('anim'); grid.innerHTML = homeGrid();
-        grid.animate([{ opacity: 0, transform: `translateX(${-dir * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.75,.25,1)' });
+        grid.animate([{ opacity: 0, transform: `translateX(${-dir * 28}px)` }, { opacity: 1, transform: 'none' }], { duration: NORMAL, easing: EASE });
       };
       grid.getAnimations().forEach((x) => x.cancel());
-      grid.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 28}px)` }], { duration: 140, easing: 'ease-in', fill: 'forwards' }).onfinish = (e) => { e.target.cancel(); swap(); };
+      grid.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${dir * 28}px)` }], { duration: FAST, easing: EASE, fill: 'forwards' }).onfinish = (e) => { e.target.cancel(); swap(); };
     },
     lift: () => setLift(!S.lift),
     btab: (v) => {
@@ -567,7 +553,7 @@
       $('#boardsort').innerHTML = v === 'ideas' ? '' : SO.pillHTML(S.board);
       const g = $('#boardgrid');
       g.classList.remove('anim'); g.innerHTML = boardGrid(S.board);
-      g.animate([{ opacity: 0, transform: `translateX(${v === 'ideas' ? 28 : -28}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,.75,.25,1)' });
+      g.animate([{ opacity: 0, transform: `translateX(${v === 'ideas' ? 28 : -28}px)` }, { opacity: 1, transform: 'none' }], { duration: NORMAL, easing: EASE });
     },
     idea: (v) => { const html = I.sheetHTML(v); if (!html) return; S.sheet = 'idea'; S.add = false; S.cover = false; $('#formsheet').innerHTML = html; updateChrome(); tick(); },
     ideaSave: () => { I.save(S.screen === 'board' ? S.board : ''); closeForm(); },
@@ -592,7 +578,8 @@
     addCamera: () => { S.add = false; updateChrome(); N.camera(currentBoard()); },
     addNote: () => { const r = call('addNote', currentBoard()); if (r) go('item', { item: r.id, prev: S.screen }); },
     open: (v) => go('item', { item: v, prev: S.screen }, 'zoom'),
-    back: () => { flushSave(); const to = S.prev === 'item' ? 'home' : S.prev; if (S.screen === 'item') go(to, null, 'unzoom'); else go(to, null, S.screen === 'board' ? 'pop' : 'fade'); },
+    back: () => { if (S.screen !== 'item' || !NBViewer.back()) A.leaveItem(); },
+    leaveItem: () => { flushSave(); const to = S.prev === 'item' ? 'home' : S.prev; if (S.screen === 'item') go(to, null, 'unzoom'); else go(to, null, S.screen === 'board' ? 'pop' : 'fade'); },
     bin: () => {
       flushSave();
       const id = S.item;
@@ -643,7 +630,7 @@
     const el = e.target.closest('[data-a]');
     if (el && A[el.dataset.a]) A[el.dataset.a](el.dataset.v, el);
   });
-  app.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.classList.contains('field')) saveForm(); });
+  app.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.nbBack(); else if (e.key === 'Enter' && e.target.classList.contains('field')) saveForm(); });
 
   // Android back gesture: close a panel or step back before leaving the app.
   window.nbBack = () => {
@@ -652,7 +639,7 @@
     if (S.sheet) { closeForm(); return true; }
     if (S.add || S.cover) { S.add = S.cover = false; updateChrome(); return true; }
     if (S.screen === 'home' && S.lift) { setLift(false); return true; }
-    if (S.screen === 'item') { if (!NBViewer.back()) A.back(); return true; }
+    if (S.screen === 'item') { A.back(); return true; }
     if (S.screen === 'board') { A.boardBack(); return true; }
     if (S.screen === 'bin') { A.binBack(); return true; }
     if (S.screen !== 'home') { A.home(); return true; }

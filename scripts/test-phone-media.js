@@ -51,7 +51,7 @@ const { chromium } = require('playwright-core');
     assert.equal(await expanded(), 'false', 'details start closed (every picture the same)');
     assert.equal(await page.locator('.media-body').isVisible(), false);
 
-    // Zoom in place: double-tap enlarges around the finger; the sheet and Back step aside.
+    // Zoom in place: the sheet steps aside, but a visible Back keeps the way out discoverable.
     let [x, y] = await centre();
     await tap(x, y); await page.waitForTimeout(80); await tap(x, y);
     await page.waitForTimeout(700);
@@ -66,8 +66,9 @@ const { chromium } = require('playwright-core');
     assert.ok(panned.x > before.x + 20, 'one finger pans the enlarged photo');
     assert.ok(box.x <= 1 && box.y <= 1, `settles with no gap past the picture's edge (left ${box.x.toFixed(1)}, top ${box.y.toFixed(1)})`);
     assert.equal(await title(), firstTitle, 'panning never moved to another picture');
-    // Back zooms out first, and stays on the picture.
-    assert.equal(await page.evaluate(() => window.nbBack()), true);
+    // The visible Back follows the same order as Android Back.
+    assert.equal(await page.locator('.lbback').evaluate((el) => getComputedStyle(el).opacity), '1', 'Back remains visible while zoomed');
+    await page.locator('.lbback').click();
     await page.waitForTimeout(700);
     assert.deepEqual(await matrix(), { s: 1, x: 0, y: 0 }, 'Back zooms out');
     assert.equal(await page.locator('.media-screen').count(), 1, 'and stays on the picture');
@@ -93,7 +94,8 @@ const { chromium } = require('playwright-core');
 
     // Swipe sideways: the neighbour slides in beside it, following the finger.
     [x, y] = await centre();
-    await drag([x + 80, y], [x - 60, y], { steps: 8, lift: false });
+    await drag([x + 30, y], [x - 30, y], { steps: 8, ms: 60, lift: false });
+    assert.ok((await matrix()).x < -35, 'dragging towards the next picture follows the finger without edge resistance');
     assert.equal(await page.locator('.peek').count() >= 1, true, 'the next picture shows beside it');
     const peekX = await page.locator('.peek').last().evaluate((el) => el.getBoundingClientRect().left);
     assert.ok(peekX < W, 'the next picture is coming in from the right');
@@ -204,7 +206,7 @@ const { chromium } = require('playwright-core');
     await page.locator('.dhead').click();
     await page.waitForTimeout(700);
     await page.locator('#note').fill('Media test caption');
-    assert.equal(await page.evaluate(() => window.nbBack()), true);
+    await page.locator('.lbback').click();
     await page.waitForTimeout(700);
     assert.equal(await expanded(), 'false', 'Back closes the details');
     assert.equal(await page.locator('.media-screen').count(), 1, 'without leaving the picture');

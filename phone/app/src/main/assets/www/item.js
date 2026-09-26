@@ -7,7 +7,7 @@ window.NBItem = function NBItem({ S, esc, svg, P, url, vb, sanitize, byId, board
     const chips = boards().map((b) => { const on = (it.boards || []).includes(b.id); return `<button type="button" class="chip${on ? ' on' : ''}" aria-pressed="${on}" data-a="boardToggle" data-v="${b.id}">${esc(b.name)}</button>`; }).join('');
     let stage;
     if (it.kind === 'note') {
-      stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn" style="height:40px">Tidy up</button></div>
+      stage = `<div class="notestage"><div class="notebar"><button type="button" class="btn accent" data-a="tidy" id="tidybtn">Tidy up</button></div>
         <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Note" data-placeholder="Start typing, then tap Tidy up to turn it into a heading and bullet points.">${sanitize(it.html)}</div></div>`;
     } else if (it.kind === 'video') {
       // Our own quiet player: plays on a loop with the sound off; tap to pause, drag the line to seek.
@@ -28,10 +28,10 @@ window.NBItem = function NBItem({ S, esc, svg, P, url, vb, sanitize, byId, board
     // A photo or video: its sheet is a title bar that opens (tap or drag it) into the note, boards and
     // actions; Done closes the sheet. A note: the sheet is always there, and Done closes the note.
     const sheet = it.kind === 'note'
-      ? `<div class="sheet frost compact"><div class="handle"></div>${fields}<div class="media-actions">${bin}<button type="button" class="btn white" data-a="back">Done</button></div></div>`
+      ? `<div class="sheet frost compact"><div class="media-fields">${fields}</div><div class="media-actions">${bin}<button type="button" class="btn white" data-a="back">Done</button></div></div>`
       : `<div class="sheet frost"><div class="media-details"><button type="button" class="dhead" aria-expanded="false"><span>${esc(it.title)}</span><small>Details & boards</small></button>
         <div class="media-body"><div class="media-fields">${fields}</div><div class="media-actions">${bin}<button type="button" class="btn white" data-close-details>Done</button></div></div></div></div>`;
-    return `<div class="screen${it.kind !== 'note' ? ' media-screen' : ''}" style="overflow:hidden">
+    return `<div class="screen ${it.kind !== 'note' ? 'media-screen' : 'note-screen'}" style="overflow:hidden">
       ${stage}
       <button type="button" class="iconbtn glass lbback" data-a="back" aria-label="Back" style="position:absolute;top:calc(var(--st) + 10px);left:16px;z-index:4">${svg(P.back)}</button>
       ${it.kind === 'note' ? '<span class="glass kindpill">Note</span>' : ''}

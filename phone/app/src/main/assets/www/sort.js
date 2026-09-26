@@ -57,8 +57,10 @@ window.NBSort = function NBSort({ N, esc }) {
   function closeMenu() {
     if (!menu) return false;
     const m = menu; menu = null;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { m.remove(); return true; }
+    const style = getComputedStyle(document.documentElement);
     m.classList.add('out'); // on its way out: not tappable
-    m.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-4px) scale(.97)' }], { duration: 140, easing: 'ease-in', fill: 'forwards' }).onfinish = () => m.remove();
+    m.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-4px) scale(.97)' }], { duration: parseFloat(style.getPropertyValue('--t-fast')), easing: style.getPropertyValue('--ease').trim(), fill: 'forwards' }).onfinish = () => m.remove();
     return true;
   }
 

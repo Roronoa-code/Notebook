@@ -2,7 +2,7 @@
 // on the state, so they never fight:
 //   viewing      sideways: the previous / next picture of the grid it came from · down: back into its
 //                card · up: Details & boards · pinch or double-tap: zoom (photos)
-//   zoomed       one finger pans, two pinch, double-tap zooms back out; the sheet and Back step aside
+//   zoomed       one finger pans, two pinch, double-tap or Back zooms back out; the sheet steps aside
 //   details open the picture sits small above the sheet; drag down, tap it or Done to close the sheet
 // Android Back: zoomed → zoom out, details open → close them, otherwise back to the grid.
 // Everything settles with the same spring, and a new touch catches it wherever it is.
@@ -60,11 +60,11 @@ window.NBViewer = (() => {
       scrim.style.opacity = k ? Math.max(0, 1 - k / 320).toFixed(3) : '';
       const chrome = k ? Math.max(0, 1 - k / 50).toFixed(3) : '';
       sheet.style.opacity = chrome; back.style.opacity = chrome;
-      // Zoomed in, the sheet and Back step aside (and come back once it's zoomed out).
+      // Keep Back available while zoomed so getting out never depends on discovering a gesture.
       const zoomed = z.s > 1.01;
       if (zoomed !== root.classList.contains('zoomed')) {
         root.classList.toggle('zoomed', zoomed);
-        for (const el of [sheet, back]) {
+        for (const el of [sheet]) {
           el.getAnimations().forEach((a) => a.cancel());
           if (!reduced()) el.animate([{ opacity: zoomed ? 1 : 0 }, { opacity: zoomed ? 0 : 1 }], { duration: 180, easing: 'ease-out', fill: zoomed ? 'forwards' : 'none' });
           else el.style.visibility = zoomed ? 'hidden' : '';
@@ -201,7 +201,7 @@ window.NBViewer = (() => {
         const t = limits(z.s, g.z.x + dx, g.z.y + dy);
         z.x = t.x + (g.z.x + dx - t.x) * 0.3; z.y = t.y + (g.z.y + dy - t.y) * 0.3; // a little give past the edges
       } else if (g.mode === 'swipe') {
-        m.w = g.m.w + (near[Math.sign(dx) || 1] ? dx : dx * 0.3);
+        m.w = g.m.w + (near[-Math.sign(dx) || 1] ? dx : dx * 0.3);
       } else if (g.mode === 'dismiss') {
         m.dx = dx * 0.8; m.dy = Math.max(-20, dy);
       } else if (g.mode === 'sheet') {

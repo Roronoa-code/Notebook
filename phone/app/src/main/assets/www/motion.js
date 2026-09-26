@@ -7,7 +7,28 @@ window.NBMotion = (ctx) => {
 
   // Transform and opacity stay on compositor layers; clipping a whole frosted screen repaints it.
   // The same timing as the stylesheet's --ease and --t-screen.
-  const EASE = 'cubic-bezier(.22,1,.36,1)', DUR = 440;
+  const tokens = getComputedStyle(document.documentElement);
+  const EASE = tokens.getPropertyValue('--ease').trim(), DUR = parseFloat(tokens.getPropertyValue('--t-screen'));
+  const FAST = parseFloat(tokens.getPropertyValue('--t-fast')), NORMAL = parseFloat(tokens.getPropertyValue('--t-normal'));
+
+  // Reversing a sheet starts at the position currently on screen, including a held drag.
+  function showSheet(el, on) {
+    if (on ? !el.hidden && !el.dataset.leaving : el.hidden || el.dataset.leaving) return;
+    const scrim = el.id === 'popscrim', style = getComputedStyle(el);
+    const from = el.hidden ? { opacity: 0, transform: scrim ? 'none' : 'translateY(28px) scale(.97)' }
+      : { opacity: style.opacity, transform: style.transform };
+    el.getAnimations().forEach((a) => a.cancel());
+    el.style.transform = '';
+    if (on) { delete el.dataset.leaving; el.hidden = false; }
+    else el.dataset.leaving = '1';
+    el.inert = !on;
+    const finish = () => { if (!on) { el.hidden = true; delete el.dataset.leaving; } el.inert = false; };
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+    const y = new DOMMatrix(from.transform === 'none' ? undefined : from.transform).m42;
+    const to = on ? { opacity: 1, transform: 'none' } : { opacity: 0, transform: scrim ? 'none' : `translateY(${y + 28}px) scale(.97)` };
+    const a = el.animate([from, to], { duration: on ? NORMAL : FAST, easing: EASE, fill: 'both' });
+    a.onfinish = () => { finish(); a.cancel(); };
+  }
 
   // An open photo or video is an overlay on the screen underneath: the picture itself grows out of
   // its card (and shrinks back into it), the backdrop fades, and nothing else moves.
@@ -29,7 +50,7 @@ window.NBMotion = (ctx) => {
     const media = mediaOf(el), scrim = el.querySelector('.scrim');
     const card = cardOf(under), r = card && card.getBoundingClientRect();
     const o = { duration: DUR, easing: EASE };
-    scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.8, easing: 'ease-out' });
+    scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.8, easing: EASE });
     el.querySelector('.sheet').animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], o);
     // Back fades in once the backdrop covers the screen underneath (never on top of its header).
     el.querySelector('.lbback').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { ...o, delay: DUR * 0.35, fill: 'backwards' });
@@ -56,7 +77,7 @@ window.NBMotion = (ctx) => {
     const from = media ? media.style.transform || 'none' : 'none';
     stillVideo(el);
     scrim.animate([{ opacity: getComputedStyle(scrim).opacity }, { opacity: 0 }], o);
-    chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: 160, fill: 'forwards' }));
+    chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: FAST, fill: 'forwards' }));
     let a;
     if (media && onScreen(r)) {
       card.style.visibility = 'hidden';
@@ -87,8 +108,8 @@ window.NBMotion = (ctx) => {
       if (!near(r1) && (!r0 || !near(r0))) continue;
       if (r0) {
         const dx = r0.left - r1.left, dy = r0.top - r1.top;
-        if (Math.abs(dx) + Math.abs(dy) > 1) c.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: 420, easing: EASE });
-      } else c.animate([{ opacity: 0, transform: 'scale(.86)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 80, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: 'backwards' });
+        if (Math.abs(dx) + Math.abs(dy) > 1) c.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: DUR, easing: EASE });
+      } else c.animate([{ opacity: 0, transform: 'scale(.86)' }, { opacity: 1, transform: 'none' }], { duration: DUR, delay: 80, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: 'backwards' });
     }
   }
 
@@ -96,9 +117,9 @@ window.NBMotion = (ctx) => {
   function lightboxBin(el) {
     const media = mediaOf(el), scrim = el.querySelector('.scrim');
     stillVideo(el);
-    const o = { duration: 380, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' };
-    scrim.animate([{ opacity: getComputedStyle(scrim).opacity }, { opacity: 0 }], { duration: 380, easing: 'ease-out', fill: 'forwards' });
-    chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: 160, fill: 'forwards' }));
+    const o = { duration: DUR, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' };
+    scrim.animate([{ opacity: getComputedStyle(scrim).opacity }, { opacity: 0 }], { duration: DUR, easing: EASE, fill: 'forwards' });
+    chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: FAST, fill: 'forwards' }));
     const a = (media || scrim).animate([{ transform: media ? media.style.transform || 'none' : 'none', opacity: 1 }, { transform: 'translateY(45vh) scale(.25) rotate(-10deg)', opacity: 0 }], o);
     a.onfinish = () => el.remove();
     el.style.pointerEvents = 'none';
@@ -163,11 +184,11 @@ window.NBMotion = (ctx) => {
     } else if (kind === 'tabR' || kind === 'tabL') {
       // Along the bottom bar: the next screen comes from the side you moved towards.
       const d = kind === 'tabR' ? 1 : -1;
-      el.animate([{ opacity: 0, transform: `translateX(${d * 16}%)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE });
-      outAnim = oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-d * 10}%)` }], { duration: 300, easing: 'cubic-bezier(.4,0,.6,1)' });
+      el.animate([{ opacity: 0, transform: `translateX(${d * 16}%)` }, { opacity: 1, transform: 'none' }], { duration: DUR, easing: EASE });
+      outAnim = oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-d * 10}%)` }], { duration: NORMAL, easing: EASE });
     } else {
-      el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: EASE });
-      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
+      el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: NORMAL, easing: EASE });
+      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FAST, easing: EASE });
     }
     oldEl.style.pointerEvents = 'none';
     outAnim.onfinish = () => { if (oldEl !== ctx.home()) oldEl.remove(); else oldEl.style.visibility = 'hidden'; oldEl.style.pointerEvents = ''; }; // Home is kept, just hidden
@@ -384,39 +405,52 @@ window.NBMotion = (ctx) => {
   // enough and it closes, otherwise it settles back. Typing in a field is left alone.
   function wirePops(els, close) {
     for (const el of els) {
+      // Scrollable sheets must leave their body to the browser. Only an explicit drag handle may dismiss
+      // them; Add keeps its whole short sheet as the handle because it has no scrollable body.
+      const handle = el.querySelector('[data-pop-drag]') || (el.id === 'addsheet' ? el : null);
+      if (!handle) continue;
       let y0 = null, dy = 0, dragging = false, samples = [];
-      el.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('input, textarea') || el.dataset.leaving) return;
-        el.getAnimations().forEach((a) => a.finish());
-        y0 = e.clientY; dy = 0; dragging = false; samples = [[e.clientY, e.timeStamp]];
-      });
-      el.addEventListener('pointermove', (e) => {
+      const start = (y, time) => {
+        const from = getComputedStyle(el).transform;
+        el.getAnimations().forEach((a) => a.cancel());
+        el.style.transform = from;
+        dy = new DOMMatrix(from).m42;
+        y0 = y - dy; dragging = false; samples = [[y, time]];
+      };
+      const move = (y, e) => {
         if (y0 === null) return;
         if (!dragging) {
-          if (Math.abs(e.clientY - y0) < 8) return;
-          if (e.clientY < y0) { y0 = null; return; } // upwards: not a dismiss
-          dragging = true; y0 = e.clientY; el.setPointerCapture(e.pointerId);
+          if (Math.abs(y - y0) < 8) return;
+          if (y < y0) { end(true); return; } // upwards: not a dismiss
+          dragging = true;
+          if (e.pointerId !== undefined) handle.setPointerCapture(e.pointerId);
         }
-        dy = e.clientY - y0;
-        samples.push([e.clientY, e.timeStamp]); if (samples.length > 5) samples.shift();
+        if (e.cancelable) e.preventDefault();
+        dy = y - y0;
+        samples.push([y, e.timeStamp]); if (samples.length > 5) samples.shift();
         el.style.transform = `translateY(${(dy < 0 ? dy * 0.2 : dy).toFixed(1)}px)`;
-      });
-      const end = (e) => {
+      };
+      const end = (cancelled) => {
         if (y0 === null) return;
         y0 = null;
-        if (!dragging) return;
+        if (!dragging) { el.style.transform = ''; return; }
         dragging = false;
         swallowClick(); // the tap the browser adds after a drag isn't a tap on a row
         const a = samples[0], b = samples[samples.length - 1], v = b[1] > a[1] ? (b[0] - a[0]) / (b[1] - a[1]) : 0;
-        if (e.type === 'pointerup' && (dy > 70 || v > 0.5)) { close(); return; }
+        if (!cancelled && (dy > 70 || v > 0.5)) { close(); return; }
         const from = el.style.transform;
         el.style.transform = '';
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) el.animate([{ transform: from }, { transform: 'none' }], { duration: 320, easing: EASE });
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) el.animate([{ transform: from }, { transform: 'none' }], { duration: NORMAL, easing: EASE });
       };
-      el.addEventListener('pointerup', end);
-      el.addEventListener('pointercancel', end);
+      handle.addEventListener('pointerdown', (e) => {
+        if (!e.isPrimary || e.button !== 0 || el.dataset.leaving) return;
+        start(e.clientY, e.timeStamp);
+      });
+      handle.addEventListener('pointermove', (e) => move(e.clientY, e));
+      handle.addEventListener('pointerup', () => end(false));
+      handle.addEventListener('pointercancel', () => end(true));
     }
   }
 
-  return { flipGrid, wirePops, animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
+  return { showSheet, flipGrid, wirePops, animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
 };

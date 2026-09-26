@@ -209,8 +209,11 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const topId = await page.evaluate(() => document.querySelector('.stackcard .fanitem[tabindex="0"]').dataset.id);
   await until(() => onDisk().find((i) => i.id === topId).phone === false, 'switched off for the phone');
   await page.locator('.side [aria-label="Take out of stack"]').click();
+  await page.waitForFunction((id) => {
+    const it = NB.S.snap.items.find((i) => i.id === id);
+    return it && !it.stack && !document.querySelector('.grid .stackcard');
+  }, topId, { timeout: 5000 });
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(400);
   assert.equal(await page.locator('.grid .stackcard').count(), 0, 'a stack of one goes back to loose cards');
   assert.equal(await page.locator(`.grid .card[data-id="${topId}"] .offphone`).count(), 1, 'the card shows it is not on the phone');
   await page.locator(`.grid .card[data-id="${topId}"]`).click();

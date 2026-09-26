@@ -121,6 +121,35 @@ const { chromium } = require('playwright-core');
 
     await page.locator('[data-a="binBack"]').click();
     await page.locator('#syncbody').waitFor();
+
+    // A real library can have many boards. They must scroll without covering the note editor or Done.
+    await page.locator('#nav-home').click();
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { for (let i = 0; i < 28; i++) NBNative.addBoard(`Test board ${i}`); nbOnState(NBNative.state()); });
+    await page.locator('#addbtn').click();
+    await page.locator('[data-a="addNote"]').click();
+    await page.waitForTimeout(650);
+    const noteLayout = await page.evaluate(() => {
+      const editor = document.querySelector('.editor').getBoundingClientRect(), sheet = document.querySelector('.sheet.compact').getBoundingClientRect();
+      const fields = document.querySelector('.sheet.compact .media-fields'), done = document.querySelector('.sheet.compact [data-a="back"]').getBoundingClientRect();
+      return { editorH: editor.height, editorBottom: editor.bottom, sheetTop: sheet.top, scrollable: fields.scrollHeight > fields.clientHeight, doneBottom: done.bottom };
+    });
+    assert.ok(noteLayout.editorH > 160 && noteLayout.editorBottom <= noteLayout.sheetTop + 1, 'boards never cover the note editor');
+    assert.ok(noteLayout.scrollable && noteLayout.doneBottom <= 832, 'board list scrolls while Done stays visible');
+    const cdp = await page.context().newCDPSession(page);
+    const area = await page.locator('.sheet.compact .media-fields').boundingBox(), x = area.x + area.width / 2, y = area.y + area.height - 12;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 8; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - i * 20 }] });
+      await page.waitForTimeout(24);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(200);
+    assert.ok(await page.locator('.sheet.compact .media-fields').evaluate((el) => el.scrollTop > 40), 'a finger scrolls the note boards');
+    await page.locator('.sheet.compact [data-a="back"]').click();
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('.note-screen').isVisible(), false, 'Done returns to Home');
+    assert.equal(await page.locator('#nav-home').getAttribute('aria-current'), 'page');
     assert.deepEqual(errors, []);
     console.log('Phone library passed: mood-board cards, crops from the PC, search (title, note, note text, board), Bin put back, delete forever and empty Bin.');
   } finally { await browser.close(); }
