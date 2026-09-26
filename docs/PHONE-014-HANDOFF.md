@@ -44,6 +44,10 @@ The owner's physical phone is used only for the authorised APK installation and 
 
 ## Claude's handoff
 
+### Subsequent tile polish: 0.14.2
+
+The Home board tiles had 16px bottom padding, shifting every icon, name and count 8px above the tile centre. Balanced padding now centres all three; long names stay on one line with an ellipsis and their full accessible label. The board icon is a clearer four-panel symbol at 22px. Rendered checks at 320px and 384px measured zero vertical offset, including long labels (`test-output/board-tiles/after-*.png`). All five phone suites passed; unchanged desktop checks above were reused. Built and installed 0.14.2 (37) at the same authorised phone endpoint. APK SHA-256: `8DD85ECB4E57517AAED2A8B48F5F8BFC315060925E6FB53371CF09DBFF64A70B`.
+
 # Notebook handoff for Codex (26 Sept 2026)
 
 The only required work left is to finish the phone consistency pass, verify it, then build and install phone 0.14.0. Everything else is shipped or optional. HEAD is `71327d6`. The only modified file is `AGENTS.md`, which is the owner's own edit; don't overwrite it.

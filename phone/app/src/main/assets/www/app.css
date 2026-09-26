@@ -43,15 +43,15 @@ button { cursor: pointer; }
 .coverbtn { position: absolute; right: 18px; bottom: 22px; z-index: 12; }
 
 .stackwrap { position: absolute; left: 0; right: 0; top: calc(var(--hero) - 340px); height: 250px; touch-action: none; }
-.pill { position: absolute; left: 36px; right: 36px; top: 92px; height: 66px; display: flex; align-items: center; gap: 12px; padding: 0 24px 16px; border-radius: 999px; color: #F2F2F2; text-align: left;
+.pill { position: absolute; left: 36px; right: 36px; top: 92px; height: 66px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-radius: 999px; color: #F2F2F2; text-align: left;
   background: radial-gradient(ellipse 70% 90% at 50% 35%, rgba(255,255,255,var(--glow, .13)) 0%, rgba(255,255,255,0) 72%), rgba(18,18,18,.8);
   border: 1px solid rgba(255,255,255,.26); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 -8px 20px -6px rgba(0,0,0,.75);
   transition: scale var(--t-screen) var(--ease); will-change: transform, opacity; }
 .pill:active { scale: .97; }
 .pill.jig { animation: jelly var(--t-screen) ease-out; }
-.pill .nm { flex: 1; font-size: 15px; font-weight: 600; }
-.pill .ct { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
-.pill svg { flex-shrink: 0; }
+.pill .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 1.2; font-weight: 600; }
+.pill .ct { flex: none; white-space: nowrap; font-family: 'IBM Plex Mono', monospace; font-size: 10px; line-height: 1.2; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+.pill svg { display: block; flex-shrink: 0; }
 
 .lift { position: absolute; left: 0; right: 0; top: 0; height: calc(100% - var(--st) - 58px); background: var(--surface); border-radius: var(--r-sheet) var(--r-sheet) 0 0; border-top: 1px solid rgba(255,255,255,.07); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 -30px 60px -24px rgba(0,0,0,.55); transform: translateY(var(--hero)); will-change: transform; overflow: hidden; z-index: 4; scrollbar-width: none; }
 .lift::-webkit-scrollbar { display: none; }
