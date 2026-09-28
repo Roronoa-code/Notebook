@@ -33,3 +33,11 @@ The folder path contains `&`, which breaks `npm run`, so call node directly:
 - `node scripts/test-adfilter.js`: the Pinterest ad filter on its own. `node scripts/audit-app.js`: screenshots of every screen with a realistic test library (for looking over the design).
 - Build plan features: `node scripts/test-features.js` (recognition UI with a stand-in recogniser: filters, corrections surviving restart and re-scan, style list, suggestions; no models needed). With the models and tools in `D:\Notebook Tools`: `node scripts/test-recognition.js` (40-image accuracy, A1/A2 pass marks), `node scripts/eval-suggestions.js` (A3 groups and sets to rate), and with the internet `node scripts/test-links.js` (20 links, B1) and `node scripts/test-pinterest.js` (paste-to-save, retry list, Pinterest panel, B2). Test windows open on the second monitor (`NOTEBOOK_WINDOW_DISPLAY=second`).
 - Build the installer: `node node_modules/electron-builder/cli.js --win nsis`. Then run the UI check against it with `NOTEBOOK_EXE="…\dist\win-unpacked\Notebook.exe"`.
+
+## Reviewed owner preferences (25 September 2026)
+
+These scoped preferences supersede older conflicting preference summaries. Preserve the project’s architecture, commands, safety and release boundaries.
+
+<!-- preference:notebook-design -->
+- [Notebook] Keep Notebook a purposeful dark mood board with details on demand and continuous interactions.
+<!-- /preference:notebook-design -->

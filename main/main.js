@@ -1,6 +1,6 @@
 // The app shell: opens the window, keeps the app offline (apart from phone sync on the home
 // network), and answers requests from the page.
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, session, Menu, protocol, Tray, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeTheme, session, Menu, protocol, Tray, nativeImage, screen } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
@@ -10,6 +10,7 @@ const { setupFeatures } = require('./features');
 const { setupAutoBackup } = require('./autobackup');
 const { rawPreview, isRaw } = require('./raw');
 const errlog = require('./errlog');
+const ui = require('./ui')({ ipcMain, app, getWin: () => win });
 let features = null, autoBackup = null;
 
 // The page and the library files are both served from nb://notebook/ so the page can
@@ -102,11 +103,11 @@ function ensureTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png')).resize({ width: 16, height: 16, quality: 'best' });
   tray = new Tray(icon);
   tray.setToolTip('Notebook: ready for your phone');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Notebook', click: showWindow },
-    { type: 'separator' },
-    { label: 'Quit Notebook', click: () => { quitting = true; app.quit(); } }
-  ]));
+  tray.on('right-click', () => {
+    showWindow();
+    if (win.webContents.isLoading()) win.webContents.once('did-finish-load', () => send('ui:tray'));
+    else send('ui:tray');
+  });
   tray.on('click', showWindow);
 }
 
@@ -193,19 +194,19 @@ function handleSync(channel, fn) {
 }
 
 async function pickFolder(title, defaultPath, buttonLabel) {
-  const res = await dialog.showOpenDialog(win, { title, defaultPath, buttonLabel, properties: ['openDirectory', 'createDirectory'] });
+  const res = await ui.pick({ title, defaultPath, buttonLabel, folder: true });
   return res.canceled ? null : res.filePaths[0];
 }
 
 async function confirm(message, detail, okLabel) {
-  const res = await dialog.showMessageBox(win, { type: 'warning', buttons: [okLabel, 'Cancel'], defaultId: 1, cancelId: 1, noLink: true, message, detail });
-  return res.response === 0;
+  return ui.confirm(message, detail, okLabel);
 }
 
 function registerHandlers() {
   features = setupFeatures({ app, handle, getLib: () => lib, send, snapshot, getWin: () => win });
   sync.feed = features.feed; // the phone gets Ideas too
   autoBackup = setupAutoBackup({ handle, getLib: () => lib, readConfig, writeConfig, pickFolder, send });
+  handle('app:quit', () => { quitting = true; app.quit(); });
   handle('lib:state', async () => {
     const saved = readConfig().libraryPath;
     if (!lib && saved && fs.existsSync(saved)) await useLibrary(saved);
@@ -239,11 +240,10 @@ function registerHandlers() {
 
   handle('items:pick', async (kind, boardId) => {
     const ext = (kind === 'videos' ? VIDEO_EXT : PHOTO_EXT).map((e) => e.slice(1));
-    const res = await dialog.showOpenDialog(win, {
+    const res = await ui.pick({
       title: kind === 'videos' ? 'Add videos' : 'Add photos',
       defaultPath: readConfig().lastImportDir || app.getPath('pictures'),
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: kind === 'videos' ? 'Videos' : 'Photos', extensions: ext }]
+      buttonLabel: kind === 'videos' ? 'Add videos' : 'Add photos', folder: false, extensions: ext
     });
     if (res.canceled || !res.filePaths.length) return { cancelled: true };
     writeConfig({ lastImportDir: path.dirname(res.filePaths[0]) });
@@ -349,16 +349,11 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // With "Keep Notebook ready for your phone" on, closing hides the window so sync keeps working.
-  let told = false;
   win.on('close', (e) => {
     if (quitting || !keepReady()) return;
     e.preventDefault();
     win.hide();
     ensureTray();
-    if (!told && tray) {
-      told = true;
-      tray.displayBalloon({ title: 'Notebook is still running', content: 'Your phone can keep syncing. To quit, right-click the Notebook icon here and choose Quit Notebook.' });
-    }
   });
   win.on('closed', () => { win = null; });
   win.loadURL('nb://notebook/app/index.html');

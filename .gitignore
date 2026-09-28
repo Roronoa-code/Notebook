@@ -1,3 +1,11 @@
 node_modules/
 dist/
 test-output/
+promo/tiktok/out/
+
+# Local secrets and signing material never belong in the source repository.
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore

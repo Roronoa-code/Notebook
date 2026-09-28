@@ -11,7 +11,8 @@
   let data = null;         // that feed as last loaded
   const cards = new Map(); // pin id -> card
   let cols = [];
-  const saving = new Set(); // pin addresses being saved
+  const saving = new Map(); // pin addresses -> time saving began
+  let busySince = 0, busyKey = null;
   let shown = 0;            // how many of the feed's pins are on the page
   let asking = false;       // a next page has been asked for
   let context = null, trail = [], draft = '', restoreTop = null, restoreCount = 0;
@@ -40,11 +41,14 @@
   }
 
   // Saved | For you (or Ideas on a board), in the header.
-  function tabs() {
+  function tabs(previous) {
     if (!keyNow() || NB.smart.suggestion()) return null;
     const pick = (want) => () => { if (on === want) return; on = want; NB.S.anim = true; NB.refreshGrid(); $('page').scrollTo({ top: 0 }); };
     const tab = (label, want) => h('button', { type: 'button', class: 'segbtn' + (on === want ? ' on' : ''), 'aria-pressed': String(on === want), onclick: pick(want) }, label);
-    return h('div', { class: 'seg', role: 'group', 'aria-label': 'Show' }, tab('Saved', false), tab(baseKey() === 'all' ? 'For you' : 'Ideas', true));
+    const group = previous || h('div', { class: 'seg', role: 'group', 'aria-label': 'Show' }, tab('Saved', false), tab('Ideas', true));
+    [...group.children].forEach((button, i) => { button.classList.toggle('on', on === !!i); button.setAttribute('aria-pressed', String(on === !!i)); });
+    group.lastChild.textContent = baseKey() === 'all' ? 'For you' : 'Ideas';
+    return group;
   }
 
   // The line under the title while Ideas are showing, with "New ideas".
@@ -52,6 +56,7 @@
     const n = data && data.key === keyNow() ? data.pins.length : 0;
     const busy = data && data.busy;
     const line = h('div', { class: 'count micro' }, n ? h('b', null, n) : '', n ? ` idea${n === 1 ? '' : 's'}` : '', busy ? (n ? ' · finding more…' : 'Finding ideas…') : '');
+    NBEffects.set(line, busy ? 'searching' : null, busySince);
     const fresh = h('button', { type: 'button', class: 'btn small', disabled: !!busy, onclick: () => { nb.feedRefresh(keyNow()).then(got); } }, icon('restore'), 'New ideas');
     const out = [line, h('div', { class: 'ctx-actions' }, fresh)];
     const input = h('input', { type: 'search', class: 'search', 'aria-label': 'Search Pinterest ideas', placeholder: 'Search Pinterest ideas', maxlength: 120, value: draft, oninput: (e) => { draft = e.target.value; } });
@@ -83,6 +88,8 @@
     if (res.feed.key !== key) return;
     if (!res.feed.busy) asking = false;
     const fresh = data && res.feed.pins.length && data.pins.length && res.feed.pins[0].id !== data.pins[0].id;
+    if (res.feed.busy) { if (!busySince || busyKey !== key) busySince = Date.now(); busyKey = key; }
+    else { busySince = 0; busyKey = null; }
     data = res.feed;
     if (fresh) clear(true);
     if (restoreTop !== null) shown = Math.max(shown, restoreCount);
@@ -157,8 +164,9 @@
     if (!active() || !data || !data.pins.length || !cols.length) return;
     const pg = $('page');
     if (pg.scrollHeight - pg.scrollTop - pg.clientHeight < pg.clientHeight * 2.5 && shown < data.pins.length) { shown += PAGE; draw(); return; }
-    if (data.pins.length - shown < BUFFER && data.more && !data.error && !asking) { asking = true; nb.feedMore(key).then(got); }
+    if (data.pins.length - shown < BUFFER && data.more && !data.error && !asking) { asking = true; busySince ||= Date.now(); nb.feedMore(key).then(got); }
     sentinel.textContent = asking && shown >= data.pins.length ? 'Finding more…' : '';
+    NBEffects.set(sentinel, asking && shown >= data.pins.length ? 'searching' : null, busySince);
   }
 
   function card(p, index) {
@@ -179,15 +187,22 @@
   // A pin up close, inside Notebook (instant: its picture is already here; a sharper copy follows).
   // Save, Open in Pinterest, Not for me; ← → go through the ideas, Esc closes.
   function closeup(p) {
-    document.querySelector('.ideaview')?.remove();
+    NB.motion.find('.ideaview')?.closeIdea();
+    const focus = document.activeElement;
     const img = h('img', { src: `nb://notebook/feed/${p.sig}.jpg`, alt: p.title || 'A pin from Pinterest', width: p.w, height: p.h });
     const sharp = new Image();
     sharp.src = `nb://notebook/feed/${p.sig}-big.jpg`;
     sharp.decode().then(() => { if (img.isConnected) img.src = sharp.src; }, () => {});
     const box = h('div', { class: 'ideaview', role: 'dialog', 'aria-modal': 'true', 'aria-label': p.title || 'Idea', 'data-pin': p.id });
-    const close = () => { document.removeEventListener('keydown', keys, true); box.classList.add('out'); setTimeout(() => box.remove(), 180); };
+    const close = () => {
+      if (box.inert) return; box.inert = true; box.dataset.motionOpen = 'false';
+      document.removeEventListener('keydown', keys, true);
+      Promise.all([...box.children].map(el => NB.motion.hide(el))).then(() => { box.remove(); if (!NB.motion.find('.ideaview') && focus?.isConnected) focus.focus(); });
+    };
+    box.closeIdea = close;
     const step = (d) => { const i = data.pins.findIndex((x) => x.id === p.id), next = data.pins[i + d]; if (next) { document.removeEventListener('keydown', keys, true); closeup(next); } };
     const keys = (e) => {
+      if (NB.modalOpen()) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); step(e.key === 'ArrowRight' ? 1 : -1); }
     };
@@ -204,7 +219,7 @@
           h('p', { class: 'hint' }, '← → for the next idea')),
         h('button', { type: 'button', class: 'iconbtn spin iv-close', 'aria-label': 'Close', onclick: close }, icon('x'))));
     mark(box, p);
-    document.body.append(box);
+    document.body.append(box); [...box.children].forEach(el => NB.motion.show(el, focus));
     document.addEventListener('keydown', keys, true);
     box.querySelector('.idea-save').focus();
   }
@@ -218,11 +233,12 @@
     b.dataset.state = state;
     b.disabled = state !== 'save';
     b.replaceChildren(...(state === 'saved' ? [icon('check'), 'Saved'] : state === 'saving' ? ['Saving…'] : [icon('plus'), 'Save']));
+    NBEffects.set(b, state === 'saving' ? 'beam' : null, saving.get(p.url));
     el.classList.toggle('saved', state === 'saved');
   }
 
   async function saveIt(p, el) {
-    saving.add(p.url);
+    saving.set(p.url, Date.now());
     mark(el, p); mark(cards.get(p.id), p);
     const res = await nb.feedSave(p.url, NB.currentBoardId());
     if (res && res.error) { saving.delete(p.url); mark(el, p); mark(cards.get(p.id), p); toast(res.error, { error: true }); }
@@ -251,6 +267,7 @@
   $('page').addEventListener('scroll', () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; ahead(); }); }, { passive: true });
   new ResizeObserver(() => { if (active() && cards.size) ensureCols(); }).observe($('ideas'));
   document.addEventListener('keydown', (e) => {
+    if (NB.modalOpen()) return;
     if (e.key === 'Escape' && active() && !document.querySelector('.ideaview') && !e.target.closest('input, textarea, [contenteditable]') && back()) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 

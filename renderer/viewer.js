@@ -360,7 +360,7 @@
   }
 
   async function step(dir) {
-    if (V.cropping) return;
+    if (NB.modalOpen() || V.cropping) return;
     const list = NB.visibleItems();
     const next = list[list.findIndex((i) => i.id === V.id) + dir];
     if (!next) return;
@@ -370,8 +370,8 @@
   }
 
   function onKey(e) {
-    if (V.cropping) return; // the crop frame has its own keys
-    if (e.key === 'Escape' && document.querySelector('.ddlist:not(.out)')) return; // Esc closes the open dropdown first
+    if (NB.modalOpen() || V.cropping) return; // the crop frame has its own keys
+    if (e.key === 'Escape' && NB.motion.find('.ddlist')) return; // Esc closes the open dropdown first
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"], video');
     if (e.target.closest && e.target.closest('.vbar') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return; // moving through the video
@@ -383,12 +383,16 @@
   }
 
   async function close() {
-    if (!V.shell) return;
+    if (!V.shell || V.closing) return;
+    const shell = V.shell; V.closing = shell;
     V.cropping = null; V.crop = null;
     if (V.player) { V.player.stop(); V.player = null; }
     if (V.shell.contains(document.activeElement)) document.activeElement.blur(); // saves a title being edited
     await flush();
-    V.shell.remove();
+    if (V.closing !== shell) return;
+    await Promise.all([...shell.children].map(el => NB.motion.hide(el)));
+    if (V.closing !== shell || V.shell !== shell) return;
+    V.closing = null; shell.remove();
     V.shell = null; V.id = null;
     document.body.classList.remove('viewing');
     window.removeEventListener('keydown', onKey, true);
@@ -399,10 +403,12 @@
   NB.viewer = {
     isOpen: () => !!V.shell,
     open(id, opts = {}) {
+      if (V.closing) { V.closing = null; [...V.shell.children].forEach(el => NB.motion.show(el)); }
       if (!V.shell) {
         V.returnFocus = document.activeElement;
         V.shell = h('div', null, h('div', { class: 'scrim', onclick: close }), h('section', { class: 'viewer glass', role: 'dialog', 'aria-modal': 'true' }));
         document.getElementById('viewer-root').append(V.shell);
+        [...V.shell.children].forEach(el => NB.motion.show(el, V.returnFocus));
         document.body.classList.add('viewing');
         window.addEventListener('keydown', onKey, true);
       }

@@ -44,7 +44,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .addtile:active { transform: scale(.94); }
 .addtile.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
 .addtile.primary:hover { background: var(--accent); filter: brightness(1.08); }
-.search-wrap { position: relative; display: flex; align-items: center; }
+.search-wrap { position: relative; display: flex; align-items: center; border-radius: 999px; }
 .search-wrap svg { position: absolute; left: 14px; color: var(--muted); pointer-events: none; }
 .search { height: 42px; width: 100%; border-radius: 999px; border: 1px solid var(--line); background: var(--surface2); padding: 0 14px 0 40px; outline: none; transition: background .2s; }
 .search:focus-visible { background: #242424; outline: 2px solid var(--accent); }
@@ -135,15 +135,19 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .suggested { display: flex; flex-direction: column; gap: 2px; max-height: 32vh; overflow-y: auto; scrollbar-width: none; }
 .sughead { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
 .sughead .n { margin-left: auto; font: 500 11px var(--mono); color: var(--muted); }
-.sughead svg { width: 14px; height: 14px; color: var(--muted); transition: transform .3s var(--spring); }
+.sughead svg { width: 14px; height: 14px; color: var(--muted); transition: transform .24s cubic-bezier(.2,.8,.2,1); }
 .sughead[aria-expanded="true"] svg { transform: rotate(90deg); }
-.sugbody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .46s cubic-bezier(.2,.8,.2,1); }
+.sugbody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .24s cubic-bezier(.2,.8,.2,1); }
 .suggested.open .sugbody { grid-template-rows: 1fr; }
 .suginner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
-.sugbody .navrow { opacity: 0; transform: translateY(-8px); transition: opacity .16s, transform .3s cubic-bezier(.2,.8,.2,1), background .2s; }
-.suggested.open .sugbody .navrow { opacity: 1; transform: none; transition: opacity .28s calc(60ms + var(--i) * 35ms), transform .42s cubic-bezier(.2,.8,.2,1) calc(60ms + var(--i) * 35ms), background .2s; }
 .sughead:hover .navlabel, .sughead:focus-visible .navlabel { color: var(--ink); }
 .navrow.sug .sugname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.work-icon { position: relative; width: 18px; height: 18px; flex: 0 0 18px; }
+.work-icon > svg { display: block; transition: opacity .18s ease, transform .18s ease; }
+.work-icon > .nb-effect-orb { position: absolute; inset: 0; width: 18px; height: 18px; margin: 0; animation: workOrbIn .18s ease both; transition: opacity .18s ease, transform .18s ease; }
+.work-icon:has(canvas):not(.done) > svg { opacity: 0; transform: scale(.6); }
+.work-icon.done > .nb-effect-orb { animation: none; opacity: 0; transform: scale(.6); }
+@keyframes workOrbIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
 .sugbar { flex-basis: 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 .rename.small { height: 40px; width: 260px; font: 700 16px Figtree, sans-serif; text-transform: none; }
 .stylepop { left: auto; right: 44px; bottom: auto; top: 150px; width: 420px; }
@@ -300,7 +304,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .btn:disabled { opacity: .5; pointer-events: none; }
 
 /* toasts */
-.toasts { position: fixed; left: calc(50% + 158px); bottom: 28px; transform: translateX(-50%); z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toasts { position: fixed; left: calc(50% + 158px); bottom: 28px; transform: translateX(-50%); z-index: 80; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .toast { pointer-events: auto; min-height: 50px; max-width: 720px; padding: 8px 8px 8px 20px; border-radius: 26px; display: flex; align-items: center; gap: 14px; color: var(--ink); font-weight: 600; font-size: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 14px 30px -10px rgba(0,0,0,.6); animation: toastIn .5s var(--spring) backwards; }
 .toast:not(:has(button)) { padding-right: 20px; }
 .toast.error { background: rgba(48,14,14,.55); color: #FFD6D6; border-color: rgba(248,113,113,.4); }

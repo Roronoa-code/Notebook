@@ -14,25 +14,33 @@
     const board = NB.S.board !== 'all' && NB.S.board !== 'bin' ? NB.S.board : null;
     await nb.saveLink(url, board); // the result arrives through onLinkSaved
   }
-  nb.onLinkSaving(({ url }) => { setStatus(`Saving from ${/tiktok/i.test(url) ? 'TikTok' : 'Pinterest'}…`); });
+  nb.onLinkSaving(({ url }) => {
+    const msg = `Saving from ${/tiktok/i.test(url) ? 'TikTok' : 'Pinterest'}…`;
+    setStatus(msg);
+    toast(msg, { key: 'link-save:' + url, duration: 0 });
+    NBEffects.set($('link-input').closest('.linkwrap'), 'beam', Date.now());
+  });
   nb.onLinkSaved((r) => {
+    NBEffects.set($('link-input').closest('.linkwrap'), null);
     retry = r.retry || retry;
     renderCount();
     if (r.snap) NB.apply({ snap: r.snap });
     if (r.ok) {
       const n = r.added.length;
+      const source = /tiktok/i.test(r.url) ? 'TikTok' : 'Pinterest';
       const msg = r.already ? (r.already === 'bin' ? 'You saved that before: it’s in your Bin' : 'Already in your notebook')
-        : n > 1 ? `Saved ${n} photos from the slideshow, stacked together` : 'Saved to your notebook';
-      setStatus(msg); toast(msg);
+        : n > 1 ? `Added ${n} ${source} photos — stacked together` : `${source} added to your notebook`;
+      setStatus(msg); toast(msg, { key: 'link-save:' + r.url, success: !r.already, duration: 6000 });
     } else {
-      setStatus(r.error); toast(r.error, { error: true, action: { label: 'Links', run: openLinks } });
+      setStatus(r.error); toast(r.error, { key: 'link-save:' + r.url, error: true, action: { label: 'Links', run: openLinks } });
     }
-    if (document.querySelector('.linkspop')) drawLinks();
+    if (NB.motion.find('.linkspop')) drawLinks();
   });
 
   // Paste a link anywhere (not while typing somewhere) and it's saved straight away. A pasted picture
   // (a screenshot, or an image copied from a browser) is added the same way.
   document.addEventListener('paste', (e) => {
+    if (NB.modalOpen()) return;
     if (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]')) return;
     const media = [...e.clipboardData.files].filter((f) => /^(image|video)\//.test(f.type));
     if (media.length) { e.preventDefault(); NB.importBlobs(media); return; }
@@ -46,32 +54,41 @@
   // ---------- Links: retry list, check, update ----------
   function renderCount() { const n = $('links-count'); n.textContent = retry.length || ''; }
   async function openLinks() {
-    const old = document.querySelector('.linkspop');
-    if (old) { old.remove(); $('links-btn').setAttribute('aria-expanded', 'false'); return; }
+    const old = NB.motion.find('.linkspop');
+    if (old) { NB.motion.remove(old); $('links-btn').setAttribute('aria-expanded', 'false'); return; }
     const pop = h('div', { class: 'popover linkspop', role: 'dialog', 'aria-label': 'Saved links' });
     document.body.append(pop);
     $('links-btn').setAttribute('aria-expanded', 'true');
-    await drawLinks();
+    await drawLinks(); if (pop.isConnected && NB.motion.isOpen(pop)) NB.motion.show(pop, $('links-btn'));
   }
   async function drawLinks(note) {
-    const pop = document.querySelector('.linkspop');
+    const pop = NB.motion.find('.linkspop');
     if (!pop) return;
     const info = await nb.links();
+    if (!pop.isConnected || !NB.motion.isOpen(pop)) return;
     retry = info.retry || [];
     renderCount();
-    const busy = (btn, label) => { btn.disabled = true; btn.lastChild.textContent = label; };
+    const busy = (btn, label) => { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.dataset.idleLabel = btn.lastChild.textContent; btn.lastChild.textContent = label; NBEffects.set(btn.firstElementChild, 'working', Date.now()); };
+    const done = async (btn, note) => {
+      const slot = btn.firstElementChild;
+      slot.classList.add('done');
+      if (slot.querySelector('canvas') && !matchMedia('(prefers-reduced-motion: reduce)').matches) await new Promise(resolve => setTimeout(resolve, 180));
+      NBEffects.set(slot, null);
+      btn.lastChild.textContent = btn.dataset.idleLabel;
+      if (btn.isConnected) drawLinks(note);
+    };
     const check = h('button', { type: 'button', class: 'btn small', onclick: async () => {
       busy(check, 'Checking…');
       const r = await nb.checkLinks();
-      if (r.error) return drawLinks(r.error);
+      if (r.error) return done(check, r.error);
       const bad = r.results.filter((x) => !x.ok).length;
-      drawLinks(bad ? `${bad} of ${r.results.length} recent links can’t be read now. Try Update downloader.` : `All ${r.results.length} recent links still work.`);
-    } }, icon('check'), h('span', null, 'Check my links'));
+      done(check, bad ? `${bad} of ${r.results.length} recent links can’t be read now. Try Update downloader.` : `All ${r.results.length} recent links still work.`);
+    } }, h('span', { class: 'work-icon', 'aria-hidden': 'true' }, icon('check')), h('span', null, 'Check my links'));
     const update = h('button', { type: 'button', class: 'btn small', onclick: async () => {
       busy(update, 'Updating…');
       const r = await nb.updateDownloader();
-      drawLinks(r.error || `Downloader updated: yt-dlp ${r.update.versions.ytdlp}, gallery-dl ${r.update.versions.gallerydl}.`);
-    } }, icon('restore'), h('span', null, 'Update downloader'));
+      done(update, r.error || `Downloader updated: yt-dlp ${r.update.versions.ytdlp}, gallery-dl ${r.update.versions.gallerydl}.`);
+    } }, h('span', { class: 'work-icon', 'aria-hidden': 'true' }, icon('restore')), h('span', null, 'Update downloader'));
     pop.replaceChildren(...[ // (a null left in would show as the word "null")
       h('strong', null, 'Saving from links'),
       h('p', { class: 'hint' }, 'Paste a TikTok or Pinterest link anywhere and it’s saved to your notebook. Anything that fails waits here.'),
@@ -86,26 +103,28 @@
       info.versions ? h('p', { class: 'hint' }, `yt-dlp ${info.versions.ytdlp} · gallery-dl ${info.versions.gallerydl}. Nothing updates by itself.`) : null].filter(Boolean));
   }
   $('links-btn').addEventListener('click', openLinks);
-  document.addEventListener('mousedown', (e) => { const p = document.querySelector('.linkspop'); if (p && !p.contains(e.target) && !$('links-btn').contains(e.target)) { p.remove(); $('links-btn').setAttribute('aria-expanded', 'false'); } });
+  document.addEventListener('mousedown', (e) => { const p = NB.motion.find('.linkspop'); if (p && !p.contains(e.target) && !$('links-btn').contains(e.target)) { NB.motion.remove(p); $('links-btn').setAttribute('aria-expanded', 'false'); } });
 
   // ---------- Pinterest panel ----------
   const panel = $('pinpanel'), host = $('pinhost'), status = $('pinstatus');
   function setStatus(msg) { if (status) status.textContent = msg || ''; }
   const rect = () => { const r = host.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; };
-  let open = false, aside = false;
+  let open = false, aside = false, panelTurn = 0;
   async function openPanel(url) {
-    open = true;
+    const mine = ++panelTurn; open = true;
     document.body.classList.add('pinning');
-    panel.hidden = false;
+    const entering = NB.motion.show(panel, $('pin-btn'));
     $('pin-btn').classList.add('on');
     $('pin-btn').setAttribute('aria-pressed', 'true');
-    requestAnimationFrame(async () => { const s = await nb.pinOpen(rect(), url); pinState(s); });
+    await entering;
+    if (open && mine === panelTurn && !aside) pinState(await nb.pinOpen(rect(), url));
   }
   async function closePanel() {
     if (!open) return;
-    open = false;
+    const mine = ++panelTurn; open = false;
     await nb.pinClose();
-    panel.hidden = true;
+    if (mine !== panelTurn) return;
+    NB.motion.hide(panel);
     document.body.classList.remove('pinning');
     $('pin-btn').classList.remove('on');
     $('pin-btn').setAttribute('aria-pressed', 'false');
@@ -130,11 +149,11 @@
   $('pin-back').addEventListener('click', () => nb.pinBack());
   $('pin-home').addEventListener('click', () => nb.pinHome());
   $('pin-save').addEventListener('click', async () => { const r = await nb.pinSave(); if (r && r.error) setStatus(r.error); });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open && !aside) closePanel(); });
+  window.addEventListener('keydown', (e) => { if (!NB.modalOpen() && e.key === 'Escape' && open && !aside) closePanel(); });
 
   // Pinterest is drawn over the page, so anything opened on top of it (a menu, the Phone panel, an open
   // item, the shortcuts sheet) would be hidden behind it. Pinterest steps aside until that closes.
-  const OVERLAY = '.popover:not([hidden]), .viewer, .phone, .ddlist, .keys, .ideaview';
+  const OVERLAY = '.popover:not([hidden]), .viewer, .phone, .ddlist, .keys, .ideaview, dialog[open]';
   let checking = false;
   const check = () => {
     checking = false;

@@ -41,6 +41,7 @@
     });
     const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     const key = (e) => {
+      if (NB.modalOpen()) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(undefined); }
       else if (e.key === 'Enter' && !(e.target.closest && e.target.closest('button, input, textarea'))) { e.preventDefault(); save(); }
       else if (ARROWS[e.key] && document.activeElement === box) { e.preventDefault(); const [x, y] = ARROWS[e.key]; c = resize(c, e.shiftKey ? 'se' : 'move', x * 0.01, y * 0.01); draw(); }

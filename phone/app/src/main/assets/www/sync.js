@@ -1,5 +1,6 @@
 // The Sync screen: pairing with the PC, sync status, and what the app reports while syncing.
 window.NBSyncScreen = function NBSyncScreen({ S, $, db, esc, svg, P, ago, plural, live, binned, statusText, home, toast }) {
+  let phase = '', since = 0;
   function syncHTML() {
     return `<div class="screen" style="padding:calc(var(--st) + 20px) 20px calc(var(--sb) + 120px);display:flex;flex-direction:column;gap:16px">
       <div style="display:flex;flex-direction:column;gap:6px"><div class="poster" style="font-size:64px">Sync</div><div style="font-size:14px;color:#9A9A9A">Phone and PC, over your home Wi-Fi. Nothing goes online.</div></div>
@@ -23,7 +24,7 @@ window.NBSyncScreen = function NBSyncScreen({ S, $, db, esc, svg, P, ago, plural
     return `<div class="glass panel">
       <div style="display:flex;align-items:center;gap:14px"><span class="pcicon">${svg(P.pc, 24)}</span>
         <div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:600">${esc(s.pcName || 'Your PC')}</span><span style="font-size:13px;color:#9A9A9A">Paired · syncs on its own when you're home</span></div></div>
-      <div id="synctitle" style="font-size:40px;font-weight:200;letter-spacing:-.03em;line-height:1">${S.syncing ? 'Syncing…' : 'Up to date'}</div>
+      <div id="synctitle"${phase === 'connecting' && S.syncing ? ` data-nb-orb="connecting" data-nb-since="${since}" aria-busy="true"` : ''} style="font-size:40px;font-weight:200;letter-spacing:-.03em;line-height:1">${S.syncing ? (phase === 'connecting' ? 'Finding your PC…' : 'Syncing…') : 'Up to date'}</div>
       <div class="bar" id="syncbar"${S.syncing ? '' : ' hidden'}><div></div></div>
       <div id="syncmsg" class="syncmsg" hidden></div>
       <div class="twocol"><div class="stat"><span class="lbl">Last sync</span><span id="synclast">${ago(s.lastSync)}</span></div><div class="stat"><span class="lbl">On this phone</span><span>${plural(live().length, 'item')}</span></div></div>
@@ -40,7 +41,9 @@ window.NBSyncScreen = function NBSyncScreen({ S, $, db, esc, svg, P, ago, plural
   }
   window.nbOnSync = (json) => {
     const ev = JSON.parse(json);
+    if (phase !== ev.phase) { phase = ev.phase; since = Date.now(); }
     const title = $('#synctitle'), bar = $('#syncbar');
+    NBEffects.set(title, ev.phase === 'connecting' ? 'connecting' : null, since);
     if (ev.phase === 'error') {
       S.syncing = false;
       if (title) title.textContent = "Couldn't sync";

@@ -2,11 +2,12 @@
 (() => {
   const { h, icon } = NB;
   function shortcuts() {
-    if (document.querySelector('.keys')) return;
+    if (NB.motion.find('.keys')) return;
+    const focus = document.activeElement;
     const K = (...k) => h('span', { class: 'kbd' }, k.map((x) => h('kbd', null, x)));
     const row = (keys, what) => h('div', { class: 'krow' }, keys, h('span', null, what));
-    const close = () => { sheet.classList.add('out'); scrim.classList.add('out'); setTimeout(() => { sheet.remove(); scrim.remove(); }, 200); window.removeEventListener('keydown', key, true); };
-    const key = (e) => { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); close(); } };
+    const close = () => { NB.motion.remove(sheet); NB.motion.remove(scrim); if (focus?.isConnected) focus.focus(); window.removeEventListener('keydown', key, true); };
+    const key = (e) => { if (NB.modalOpen()) return; if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopPropagation(); close(); } };
     const scrim = h('div', { class: 'scrim keys-scrim', onclick: () => close() });
     const sheet = h('section', { class: 'keys popover', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts and gestures' },
       h('div', { class: 'keys-head' }, h('h2', { class: 'display' }, 'Shortcuts'), h('button', { type: 'button', class: 'iconbtn spin', 'aria-label': 'Close', onclick: () => close() }, icon('x'))),
@@ -31,7 +32,7 @@
           row(K('←', '→'), 'Previous or next'),
           row(K('Delete'), 'Move it to the Bin'),
           row(K('Esc'), 'Close'))));
-    document.body.append(scrim, sheet);
+    document.body.append(scrim, sheet); NB.motion.show(scrim); NB.motion.show(sheet, focus);
     window.addEventListener('keydown', key, true);
     sheet.querySelector('.iconbtn').focus();
   }

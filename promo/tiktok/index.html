@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notebook advert</title>
+<style>
+  @font-face { font-family: 'Figtree'; src: url(/renderer/fonts/figtree-latin-wght-normal.woff2) format('woff2'); font-weight: 300 900; }
+  @font-face { font-family: 'Bricolage Grotesque'; src: url(/renderer/fonts/bricolage-grotesque-latin-wght-normal.woff2) format('woff2'); font-weight: 200 800; }
+  @font-face { font-family: 'Anton'; src: url(/renderer/fonts/anton-latin-400-normal.woff2) format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'IBM Plex Mono'; src: url(/renderer/fonts/ibm-plex-mono-latin-500-normal.woff2) format('woff2'); font-weight: 500; }
+  body { margin: 0; background: #050505; color: #C8C8C8; font: 500 14px Figtree, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px; }
+  canvas { height: calc(100vh - 80px); aspect-ratio: 9 / 16; border-radius: 12px; }
+  .bar { display: flex; gap: 10px; align-items: center; width: min(640px, 90vw); }
+  input[type=range] { flex: 1; }
+  button { font: inherit; padding: 6px 14px; border-radius: 999px; border: 1px solid #333; background: #1C1C1C; color: #F2F2F2; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1440" height="2560"></canvas>
+<div class="bar"><button id="play" type="button">Play</button><input id="scrub" type="range" min="0" value="0" aria-label="Frame"><span id="time">0.00 s</span></div>
+<script src="motion-core.js"></script>
+<script src="film.js"></script>
+<script>
+(async () => {
+  const canvas = document.getElementById('stage');
+  await Promise.all(['800 40px Figtree', '700 40px "Bricolage Grotesque"', '400 40px Anton', '500 40px "IBM Plex Mono"'].map(f => document.fonts.load(f)));
+  const load = async (src) => { const img = new Image(); img.src = src; await img.decode(); return img; };
+  const assets = {grain: await load('/renderer/assets/grain-soft.png'), images: {}};
+  for (const item of Object.values(Film.ITEMS)) assets.images[item.file] = await load('/media/' + item.file);
+  const total = Film.DURATION * Film.FPS;
+  window.renderFrame = (frame) => { Film.draw(canvas, Film.evaluate(frame, Film.FPS), assets); return canvas.toDataURL('image/png').split(',')[1]; };
+  // Preview player: frames are chosen from the rAF timestamp; each frame's content depends only on its number.
+  const scrub = document.getElementById('scrub'), time = document.getElementById('time'), play = document.getElementById('play');
+  scrub.max = total - 1;
+  const show = (f) => { Film.draw(canvas, Film.evaluate(f, Film.FPS), assets); scrub.value = f; time.textContent = (f / Film.FPS).toFixed(2) + ' s'; };
+  let start = null, from = 0;
+  const tick = (ts) => { if (start === null) return; const f = Math.min(total - 1, from + Math.floor((ts - start) / 1000 * Film.FPS)); show(f); if (f < total - 1) requestAnimationFrame(tick); else { start = null; play.textContent = 'Play'; } };
+  play.onclick = () => { if (start !== null) { start = null; play.textContent = 'Play'; return; } from = +scrub.value >= total - 1 ? 0 : +scrub.value; start = performance.now(); play.textContent = 'Pause'; requestAnimationFrame(tick); };
+  scrub.oninput = () => { start = null; play.textContent = 'Play'; show(+scrub.value); };
+  show(0);
+  window.filmReady = true;
+})().catch(e => { document.body.textContent = 'Could not load: ' + e.message; window.filmError = e.message; });
+</script>
+</body>
+</html>

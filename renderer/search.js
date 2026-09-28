@@ -25,13 +25,18 @@
   function changed(q, redraw) {
     const { text } = parse(q);
     clearTimeout(timer);
+    const mine = ++seq;
+    const field = document.getElementById('search').closest('.search-wrap');
+    NBEffects.set(field, null);
     if (text.length < 2 || text === pictures.text) return;
     timer = setTimeout(async () => {
-      const mine = ++seq;
-      const r = await nb.searchPictures(text);
-      if (mine !== seq || !r || r.error || !Array.isArray(r.ids)) return;
-      pictures = { text, ids: new Set(r.ids) };
-      redraw();
+      NBEffects.set(field, 'beam', Date.now());
+      try {
+        const r = await nb.searchPictures(text);
+        if (mine !== seq || !r || r.error || !Array.isArray(r.ids)) return;
+        pictures = { text, ids: new Set(r.ids) };
+        redraw();
+      } finally { if (mine === seq) NBEffects.set(field, null); }
     }, 220);
   }
 

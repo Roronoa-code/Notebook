@@ -51,7 +51,8 @@
     const s = P.status;
     const panel = P.shell.querySelector('.phone');
     const hadFocus = panel.contains(document.activeElement) && document.activeElement.id;
-    const keep = h('input', { type: 'checkbox', id: 'keep-ready', checked: s.keepReady, onchange: (e) => call('syncKeepReady', e.target.checked) });
+    const keep = panel.querySelector('#keep-ready') || h('input', { type: 'checkbox', id: 'keep-ready', checked: s.keepReady, onchange: (e) => call('syncKeepReady', e.target.checked) });
+    keep.checked = s.keepReady;
     panel.replaceChildren(
       h('div', { class: 'phone-head' },
         h('h2', { class: 'ctx-title', id: 'phone-title' }, 'Phone'),
@@ -76,6 +77,7 @@
   }
 
   function onKey(e) {
+    if (NB.modalOpen()) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
   }
 
@@ -85,8 +87,12 @@
     P.shell = h('div', null, h('div', { class: 'scrim', onclick: close }),
       h('section', { class: 'phone glass', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'phone-title' }));
     document.getElementById('viewer-root').append(P.shell);
+    const shell = P.shell;
+    [...shell.children].forEach(el => NB.motion.show(el, P.returnFocus));
     window.addEventListener('keydown', onKey, true);
-    if (!(await call('syncOpen'))) { close(); return; }
+    const result = await call('syncOpen');
+    if (P.shell !== shell) return;
+    if (!result) { close(); return; }
     const first = document.getElementById('phone-close');
     if (first) first.focus();
   }
@@ -94,8 +100,9 @@
   function close() {
     if (!P.shell) return;
     clearTimeout(P.timer);
-    P.shell.remove();
-    P.shell = null;
+    const shell = P.shell; P.shell = null;
+    shell.inert = true;
+    Promise.all([...shell.children].map(el => NB.motion.hide(el))).then(() => shell.remove());
     window.removeEventListener('keydown', onKey, true);
     if (P.returnFocus && document.contains(P.returnFocus)) P.returnFocus.focus();
   }

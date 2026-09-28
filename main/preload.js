@@ -8,6 +8,13 @@ window.addEventListener('error', (e) => ipcRenderer.send('log:error', `${e.messa
 window.addEventListener('unhandledrejection', (e) => ipcRenderer.send('log:error', 'unhandled: ' + (e.reason && (e.reason.stack || e.reason.message) || String(e.reason))));
 
 contextBridge.exposeInMainWorld('nb', {
+  onTrayMenu: fn => ipcRenderer.on('ui:tray', () => fn()),
+  quit: call('app:quit'),
+  onUIRequest: fn => ipcRenderer.on('ui:request', (_e, request) => fn(request)),
+  replyUI: call('ui:reply'),
+  browseFiles: call('ui:browse'),
+  filePlaces: call('ui:places'),
+  createFolder: call('ui:mkdir'),
   state: call('lib:state'),
   useLibrary: call('lib:use'),
   revealLibrary: call('lib:reveal'),

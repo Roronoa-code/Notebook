@@ -3,7 +3,7 @@
 // unless you press Save or choose "Save to Notebook" on a pin. The rest of the app stays offline.
 const path = require('path');
 const fs = require('fs');
-const { WebContentsView, Menu, shell, app, ipcMain, session } = require('electron');
+const { WebContentsView, shell, app, ipcMain, session } = require('electron');
 const { attachAdFilter } = require('./adfilter');
 const { HIDE_AT, STRICT, VERSION: AI_VERSION } = require('./aidetect');
 
@@ -104,7 +104,11 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
   ipcMain.handle('pin:ai', (e, url) => (view && e.sender === view.webContents && /^https:\/\/i\.pinimg\.com\//.test(String(url)) ? checkPicture(String(url)) : { hide: false }));
   handle('pin:aiSetting', (on) => { if (typeof on === 'boolean') { ai.hide = on; saveAi(); if (view) view.webContents.reload(); } return { hide: ai.hide, hidden: hiddenSigs.size }; });
 
-  let view = null, loading = false;
+  let view = null, loading = false, contextPin = null;
+  ipcMain.on('pin:context-save', event => {
+    if (!view || event.sender !== view.webContents || !contextPin) return;
+    const pin = contextPin; contextPin = null; save(pin);
+  });
   // While another page is loading, there's nothing to save yet (so Save can never save the pin you just left).
   const state = () => ({ url: view ? view.webContents.getURL() : null, pin: view && !loading ? pinOf(view.webContents.getURL()) : null, canBack: !!(view && view.webContents.navigationHistory.canGoBack()) });
   const tell = () => send('pin:state', state());
@@ -121,16 +125,15 @@ function setupPinterest({ getWin, handle, send, save, aiScore }) {
       shell.openExternal(url); // anything else opens in your normal browser
       return { action: 'deny' };
     });
-    wc.on('did-start-navigation', (_e, _url, inPage, isMain) => { if (isMain && !inPage) { loading = true; tell(); } });
+    wc.on('did-start-navigation', (_e, _url, inPage, isMain) => { if (isMain) contextPin = null; if (isMain && !inPage) { loading = true; tell(); } });
     for (const ev of ['did-navigate', 'did-navigate-in-page', 'did-finish-load', 'did-fail-load']) wc.on(ev, () => { loading = false; tell(); });
     let saveTimer = null;
     const remember = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { const url = wc.getURL(); if (isPinterest(url)) fs.promises.writeFile(lastFile(), JSON.stringify({ url })).catch(() => {}); }, 1000); };
     wc.on('did-navigate', remember); wc.on('did-navigate-in-page', remember);
     // Right-click a pin: "Save to Notebook" saves that pin without opening it.
     wc.on('context-menu', (_e, p) => {
-      const pin = pinOf(p.linkURL) || pinOf(wc.getURL());
-      if (!pin) return;
-      Menu.buildFromTemplate([{ label: 'Save to Notebook', click: () => save(pin) }]).popup({ window: getWin() });
+      contextPin = pinOf(p.linkURL) || pinOf(wc.getURL());
+      if (contextPin) wc.send('pin:context', { x: p.x, y: p.y });
     });
     wc.loadURL(start || lastPage());
   }

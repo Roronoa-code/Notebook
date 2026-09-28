@@ -147,8 +147,8 @@
   function bar() {
     const el = document.getElementById('selbar');
     const n = picked.size;
-    el.hidden = !n;
-    if (!n) return;
+    if (!n) { if (NB.motion.isOpen(el)) NB.motion.hide(el); return; }
+    if (!NB.motion.isOpen(el)) NB.motion.show(el);
     const items = NB.S.snap.items.filter((i) => picked.has(i.id));
     const allOff = items.every((i) => i.phone === false);
     const ids = [...picked];

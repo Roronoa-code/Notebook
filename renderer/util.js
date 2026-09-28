@@ -94,21 +94,37 @@ NB.date = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'nume
 })();
 
 // Messages at the bottom of the screen, with an optional button such as Undo.
+const toastDisposers = new WeakMap();
 NB.toast = function toast(message, opts = {}) {
   const box = document.getElementById('toasts');
-  const el = NB.h('div', { class: 'toast' + (opts.error ? ' error' : '') }, NB.h('span', null, message));
-  const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 250); };
+  const previous = opts.key && [...box.children].find(el => el.dataset.toastKey === opts.key);
+  if (previous) toastDisposers.get(previous)?.();
+  const el = NB.h('div', { class: 'toast' + (opts.error ? ' error' : ''), 'data-toast-key': opts.key }, opts.success ? NB.icon('check') : null, NB.h('span', null, message));
+  let timer, started = 0, remaining = opts.duration ?? (opts.error ? 9000 : opts.action ? 6000 : 3800);
+  const unlisten = () => { document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', visible); window.removeEventListener('blur', visible); };
+  const dispose = () => { clearTimeout(timer); unlisten(); el.remove(); };
+  const close = () => { clearTimeout(timer); unlisten(); el.classList.add('out'); timer = setTimeout(dispose, 250); };
+  const visible = () => {
+    clearTimeout(timer);
+    if (started) remaining -= performance.now() - started;
+    started = 0;
+    if (!document.hidden && document.hasFocus() && opts.duration !== 0) { started = performance.now(); timer = setTimeout(close, Math.max(0, remaining)); }
+  };
+  toastDisposers.set(el, dispose);
   if (opts.action) el.append(NB.h('button', { type: 'button', onclick: () => { close(); opts.action.run(); } }, opts.action.label));
   box.append(el);
-  while (box.children.length > 3) box.firstElementChild.remove();
-  setTimeout(close, opts.error ? 9000 : opts.action ? 6000 : 3800);
+  while (box.children.length > 3) toastDisposers.get(box.firstElementChild)?.();
+  document.addEventListener('visibilitychange', visible);
+  window.addEventListener('focus', visible); window.addEventListener('blur', visible);
+  visible();
+  return el;
 };
 
 // A small menu of choices under `anchor` (e.g. "Add to board"), in the same look as the dropdowns.
 // options: [{ value, label }]. Closes on a pick, Esc or a click elsewhere.
 NB.menu = function menu(anchor, label, options, onPick) {
   const { h } = NB;
-  document.querySelectorAll('.ddlist.menu').forEach((m) => m.remove());
+  document.querySelectorAll('.ddlist.menu').forEach(m => m.closeMenu?.());
   let at = 0;
   const list = h('div', { class: 'ddlist menu', role: 'menu', 'aria-label': label, tabindex: '-1' },
     options.map((o, i) => h('div', { role: 'menuitem', class: 'ddopt', onpointerenter: () => { at = i; mark(); }, onclick: () => { close(); onPick(o.value); } }, o.label)));
@@ -117,7 +133,7 @@ NB.menu = function menu(anchor, label, options, onPick) {
   const below = innerHeight - r.bottom > Math.min(320, options.length * 36 + 16);
   Object.assign(list.style, { left: Math.min(r.left, innerWidth - 240) + 'px', minWidth: Math.max(180, r.width) + 'px', [below ? 'top' : 'bottom']: (below ? r.bottom + 6 : innerHeight - r.top + 6) + 'px' });
   list.classList.add(below ? 'down' : 'up');
-  const close = () => { list.classList.add('out'); setTimeout(() => list.remove(), 180); document.removeEventListener('pointerdown', outside, true); };
+  const close = () => { NB.motion.remove(list); document.removeEventListener('pointerdown', outside, true); };
   const outside = (e) => { if (!list.contains(e.target)) close(); };
   list.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); anchor.focus(); }
@@ -125,8 +141,8 @@ NB.menu = function menu(anchor, label, options, onPick) {
     else if (e.key === 'Enter') { e.preventDefault(); close(); onPick(options[at].value); }
   });
   document.body.append(list);
-  mark(); list.focus();
-  setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  list.closeMenu = close; NB.motion.show(list, anchor); mark(); list.focus();
+  document.addEventListener('pointerdown', outside, true);
 };
 
 // A dropdown in the app's own look (instead of Windows' menu). options: [{ value, label }].
@@ -140,8 +156,7 @@ NB.dropdown = function dropdown({ label, value, options, onChange }) {
     if (!list) return;
     const l = list; list = null;
     btn.setAttribute('aria-expanded', 'false');
-    l.classList.add('out');
-    setTimeout(() => l.remove(), 180);
+    NB.motion.remove(l);
     document.removeEventListener('pointerdown', outside, true);
   };
   const outside = (e) => { if (list && !list.contains(e.target) && !btn.contains(e.target)) close(); };
@@ -155,7 +170,7 @@ NB.dropdown = function dropdown({ label, value, options, onChange }) {
     const below = innerHeight - r.bottom > Math.min(320, options.length * 36 + 16);
     Object.assign(list.style, { left: r.left + 'px', minWidth: r.width + 'px', [below ? 'top' : 'bottom']: (below ? r.bottom + 6 : innerHeight - r.top + 6) + 'px' });
     list.classList.add(below ? 'down' : 'up');
-    document.body.append(list);
+    document.body.append(list); NB.motion.show(list, btn);
     btn.setAttribute('aria-expanded', 'true');
     mark();
     document.addEventListener('pointerdown', outside, true);

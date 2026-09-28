@@ -88,7 +88,7 @@
     <button class="btn small" type="button" id="lib-reveal"><svg class="i"><use href="#i-folder"/></svg>Show in File Explorer</button>
   </div>
   <label class="keep" for="auto-backup"><input type="checkbox" id="auto-backup"><span><span class="dname">Back up every week</span><span class="hint" id="auto-backup-info">Keeps the last 3 copies in a folder you choose, ideally on another drive.</span></span></label>
-  <div class="poplinks"><button class="linkbtn" type="button" id="lib-open">Open another library</button><button class="linkbtn" type="button" id="lib-keys">Keyboard shortcuts (?)</button></div>
+  <div class="poplinks"><button class="linkbtn" type="button" id="lib-quit">Quit Notebook</button><button class="linkbtn" type="button" id="lib-open">Open another library</button><button class="linkbtn" type="button" id="lib-keys">Keyboard shortcuts (?)</button></div>
 </div>
 
 <main class="page" id="page">
@@ -117,7 +117,13 @@
 <div class="drop" id="drop" hidden></div>
 <div class="tray glass" id="tray" hidden></div>
 
+<link rel="stylesheet" href="effects.css">
+<link rel="stylesheet" href="motion.css">
+<script src="vendor/thinking-orbs.js"></script>
+<script src="effects.js"></script>
 <script src="util.js"></script>
+<script src="motion.js"></script>
+<script src="picker.js"></script>
 <script src="viewer.js"></script>
 <script src="crop.js"></script>
 <script src="stacks.js"></script>

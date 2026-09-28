@@ -55,24 +55,24 @@
 
   // ---------- your style list ----------
   function stylesEditor() {
-    const old = document.querySelector('.stylepop');
-    if (old) { old.remove(); return; }
+    const old = NB.motion.find('.stylepop');
+    if (old) { NB.motion.remove(old); return; }
     let list = (snap().styles || []).slice();
     const pop = h('div', { class: 'popover stylepop', role: 'dialog', 'aria-label': 'Your styles' });
     const draw = () => {
       const input = h('input', { class: 'chip-input', placeholder: 'Add a style', maxlength: '24', 'aria-label': 'New style' });
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input.value.trim()) { list.push(input.value.trim().toLowerCase()); draw(); pop.querySelector('.chip-input').focus(); } if (e.key === 'Escape') pop.remove(); });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && input.value.trim()) { list.push(input.value.trim().toLowerCase()); draw(); pop.querySelector('.chip-input').focus(); } if (e.key === 'Escape') { e.stopPropagation(); NB.motion.remove(pop); } });
       pop.replaceChildren(h('strong', null, 'Your styles'), h('p', { class: 'hint' }, 'Outfits get their top two styles from this list. Add your own, or remove ones you never use.'),
         h('div', { class: 'tags' }, list.map((s, i) => h('button', { type: 'button', class: 'chip tog on', 'aria-label': `Remove ${s}`, onclick: () => { list.splice(i, 1); draw(); } }, h('span', null, cap(s)), icon('x'))), input),
         h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
-          h('button', { type: 'button', class: 'btn small', onclick: () => pop.remove() }, 'Cancel'),
+          h('button', { type: 'button', class: 'btn small', onclick: () => NB.motion.remove(pop) }, 'Cancel'),
           h('button', { type: 'button', class: 'btn small primary', onclick: async () => {
             const res = NB.apply(await nb.setStyles(list));
-            if (res) { pop.remove(); toast('Styles saved. Outfits are being looked at again for the new list.'); }
+            if (res) { NB.motion.remove(pop); toast('Styles saved. Outfits are being looked at again for the new list.'); }
           } }, 'Save')));
     };
     draw();
-    document.body.append(pop);
+    document.body.append(pop); NB.motion.show(pop, document.activeElement);
     pop.querySelector('.chip-input').focus();
   }
 
@@ -166,8 +166,8 @@
     const key = list.map((g) => [g.sig, g.name, g.ids.length, showing === g.sig].join(':')).join('|');
     if (key === rowsKey) return;
     rowsKey = key;
-    sug.rows.replaceChildren(...list.map((g, i) => h('button', {
-      type: 'button', class: 'navrow sug' + (showing === g.sig ? ' on' : ''), 'aria-pressed': String(showing === g.sig), style: { '--i': i }, onclick: () => show(g.sig)
+    sug.rows.replaceChildren(...list.map((g) => h('button', {
+      type: 'button', class: 'navrow sug' + (showing === g.sig ? ' on' : ''), 'aria-pressed': String(showing === g.sig), onclick: () => show(g.sig)
     }, icon(g.kind === 'set' ? 'photo' : 'stack'), h('span', { class: 'sugname' }, g.name), h('span', { class: 'n' }, g.ids.length))));
   }
   const suggestion = () => list.find((g) => g.sig === showing);

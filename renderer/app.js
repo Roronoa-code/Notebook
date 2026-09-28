@@ -34,6 +34,7 @@
   // Every change goes through here: show errors in plain English, otherwise redraw.
   NB.apply = function apply(res) {
     if (!res) return null;
+    if (res.cancelled) return res;
     if (res.error) { toast(res.error, { error: true }); return null; }
     if (res.snap) {
       S.snap = res.snap;
@@ -124,15 +125,20 @@
 
   function renderContext() {
     const box = $('context');
-    box.replaceChildren();
     const n = NB.visibleItems().length;
     const q = S.q.trim();
     const board = boardById(S.board);
     if (S.renaming && board) {
-      const input = h('input', { class: 'rename', value: board.name, 'aria-label': 'Board name', maxlength: '40' });
+      if (box.querySelector('.title-rename')) return;
+      const title = box.querySelector('.ctx-title');
+      const input = h('input', { class: 'rename title-rename', value: board.name, 'aria-label': 'Board name', maxlength: '40', style: {
+        left: title.offsetLeft + 'px', top: title.offsetTop + 'px', width: Math.min(box.clientWidth, title.offsetWidth) + 'px', height: title.offsetHeight + 'px', font: getComputedStyle(title).font
+      } });
+      title.style.visibility = 'hidden';
       let done = false;
       const finish = async (save) => {
-        if (done) return; done = true; S.renaming = false;
+        if (done) return; done = true;
+        title.style.visibility = ''; NB.motion.show(title); await NB.motion.remove(input); S.renaming = false;
         if (save && input.value.trim() && input.value.trim() !== board.name) {
           if (!(await NB.run('renameBoard', board.id, input.value))) renderContext();
         } else renderContext();
@@ -140,9 +146,12 @@
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') { e.stopPropagation(); finish(false); } });
       input.addEventListener('blur', () => finish(true));
       box.append(input);
+      NB.motion.show(input);
       requestAnimationFrame(() => { input.focus(); input.select(); });
       return;
     }
+    const previousTabs = box.querySelector('.seg');
+    box.replaceChildren();
     const g = NB.smart.suggestion();
     if (g) {
       box.append(h('h2', { class: 'ctx-title' + (renderContext.last === g.sig ? ' still' : '') }, g.name), h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`), NB.smart.suggestionBar(g));
@@ -152,7 +161,7 @@
     const titleKey = S.board + (S.snap.root || '');
     box.append(h('h2', { class: 'ctx-title' + (titleKey === renderContext.last ? ' still' : '') }, board ? board.name : S.board === 'bin' ? 'Bin' : 'All items'));
     renderContext.last = titleKey;
-    const tabs = NB.ideas.tabs();
+    const tabs = NB.ideas.tabs(previousTabs);
     if (tabs) box.append(tabs);
     if (NB.ideas.active()) { box.append(...NB.ideas.info()); return; }
     box.append(h('div', { class: 'count micro' }, h('b', null, n), ` item${n === 1 ? '' : 's'}`, S.board === 'bin' ? ' in the Bin' : '', q ? ` matching “${q}”` : ''));
@@ -162,20 +171,19 @@
       // On phone: off keeps this board (and anything only on it) on the PC; the phone drops it at the next sync.
       const onPhone = h('input', { type: 'checkbox', id: 'board-phone', class: 'switch', role: 'switch', checked: board.phone !== false });
       onPhone.addEventListener('change', async () => {
-        const res = await NB.run('setBoardOnPhone', board.id, onPhone.checked);
-        if (res) toast(onPhone.checked ? `“${board.name}” will show on your phone after the next sync` : `“${board.name}” will leave your phone at the next sync. It all stays here.`);
+        const checked = onPhone.checked; onPhone.disabled = true;
+        const res = await nb.setBoardOnPhone(board.id, checked);
+        onPhone.disabled = false;
+        if (res.error) { onPhone.checked = !checked; toast(res.error, { error: true }); return; }
+        if (res.snap) { S.snap = res.snap; renderBoards(); }
+        toast(checked ? `“${board.name}” will show on your phone after the next sync` : `“${board.name}” will leave your phone at the next sync. It all stays here.`);
       });
       const phoneRow = h('label', { class: 'row-switch board-phone', for: 'board-phone', title: 'Off: this board, and anything only on it, stays on your PC and leaves your phone at the next sync.' }, h('span', null, 'On phone'), onPhone);
-      // Deleting asks once more (a second click within a few seconds). Its items always stay in your notebook.
-      box.append(h('div', { class: 'ctx-actions' }, phoneRow, rename, h('button', { type: 'button', class: 'btn small danger', onclick: async (e) => {
-        const b = e.currentTarget;
-        if (!b.dataset.sure) {
-          b.dataset.sure = '1'; b.textContent = 'Click again to delete';
-          setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = 'Delete board'; } }, 3500);
-          return;
-        }
+      // The main process requests one in-app confirmation. Items remain in the library.
+      box.append(h('div', { class: 'ctx-actions' }, phoneRow, rename, h('button', { type: 'button', class: 'btn small danger', onclick: async () => {
         const name = board.name;
-        if (await NB.run('deleteBoard', board.id)) toast(`Deleted the board “${name}”. Its items are still in your notebook.`);
+        const res = await NB.run('deleteBoard', board.id);
+        if (res && !res.cancelled) toast(`Deleted the board “${name}”. Its items are still in your notebook.`);
       } }, 'Delete board')));
     }
     if (S.board !== 'bin') { const bar = NB.smart.filterBar(itemsFor(S.board)); if (bar) box.append(bar); }
@@ -277,7 +285,7 @@
     resize(e.deltaY < 0 ? 1 : -1);
   }, { passive: false });
   window.addEventListener('keydown', (e) => {
-    if (!e.ctrlKey || e.altKey || NB.viewer.isOpen() || (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]'))) return;
+    if (NB.modalOpen() || !e.ctrlKey || e.altKey || NB.viewer.isOpen() || (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]'))) return;
     const k = { '=': 1, '+': 1, '-': -1, '_': -1, 0: 0 }[e.key];
     if (k === undefined) return;
     e.preventDefault();
@@ -499,24 +507,27 @@
       closeLib();
     };
     $('bin-btn').onclick = () => go(S.board === 'bin' ? 'all' : 'bin');
-    $('lib-keys').onclick = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); NB.shortcuts(); };
+    $('lib-keys').onclick = () => { closeLib(); NB.shortcuts(); };
     $('search').addEventListener('input', (e) => {
       S.q = e.target.value; NB.ideas.leave(); renderContext(); renderGrid(); // searching shows your own things
       NB.search.changed(S.q, () => { renderContext(); renderGrid(); });
     });
     $('lib-btn').onclick = () => {
       const pop = $('lib-pop');
-      pop.hidden = !pop.hidden;
-      $('lib-btn').setAttribute('aria-expanded', String(!pop.hidden));
+      const open = !NB.motion.isOpen(pop);
+      if (open) NB.motion.show(pop, $('lib-btn')); else NB.motion.hide(pop);
+      $('lib-btn').setAttribute('aria-expanded', String(open));
     };
     $('lib-reveal').onclick = () => NB.run('revealLibrary');
     $('lib-open').onclick = async () => {
       const res = await NB.run('useLibrary', 'open');
-      if (res && !res.cancelled) { $('lib-pop').hidden = true; S.board = 'all'; S.anim = true; render(); toast('Opened ' + res.snap.root); }
+      if (res && !res.cancelled) { closeLib(); S.board = 'all'; S.anim = true; render(); toast('Opened ' + res.snap.root); }
     };
   }
 
-  const closeLib = () => { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); };
+  $('lib-quit').onclick = () => nb.quit();
+  nb.onTrayMenu(() => { NB.motion.show($('lib-pop'), $('lib-btn')); $('lib-btn').setAttribute('aria-expanded', 'true'); $('lib-quit').focus(); });
+  const closeLib = () => { NB.motion.hide($('lib-pop')); $('lib-btn').setAttribute('aria-expanded', 'false'); };
 
   async function restore() {
     closeLib();
@@ -538,7 +549,7 @@
     const inside = (e) => types(e).some((t) => t.startsWith('application/x-notebook-'));
     const hasFiles = (e) => !inside(e) && (types(e).includes('Files') || types(e).includes('text/uri-list'));
     window.addEventListener('dragenter', (e) => {
-      if (!hasFiles(e) || !S.snap) return;
+      if (NB.modalOpen() || !hasFiles(e) || !S.snap) return;
       depth++;
       drop.textContent = `Drop to add to ${NB.boardName(currentBoardId()) || 'All items'}`;
       drop.hidden = false;
@@ -548,7 +559,7 @@
     window.addEventListener('drop', async (e) => {
       e.preventDefault();
       depth = 0; drop.hidden = true;
-      if (!S.snap || inside(e)) return;
+      if (NB.modalOpen() || !S.snap || inside(e)) return;
       const files = [...e.dataTransfer.files];
       const paths = files.map((f) => nb.pathForFile(f)).filter(Boolean);
       const loose = files.filter((f) => !nb.pathForFile(f) && /^(image|video)\//.test(f.type));
@@ -563,7 +574,7 @@
   // ---------- keyboard ----------
   function wireKeys() {
     window.addEventListener('keydown', (e) => {
-      if (NB.viewer.isOpen() || NB.phone.isOpen() || !S.snap) return;
+      if (NB.modalOpen() || NB.viewer.isOpen() || NB.phone.isOpen() || !S.snap) return;
       const typing = e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]');
       if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
       else if (!typing && e.ctrlKey && e.key.toLowerCase() === 'a' && S.board !== 'bin' && !NB.ideas.active()) { e.preventDefault(); NB.stacks.pickAll(); }
@@ -572,13 +583,14 @@
       else if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newNote(); }
       else if (e.key === 'Escape') {
         if (NB.stacks.isPicking()) NB.stacks.clear();
-        else if (!$('lib-pop').hidden) { $('lib-pop').hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); }
+        else if (NB.motion.isOpen($('lib-pop'))) closeLib();
+        else if (NB.motion.find('.linkspop, .stylepop')) { NB.motion.remove(NB.motion.find('.linkspop, .stylepop')); $('links-btn').setAttribute('aria-expanded', 'false'); }
         else if (S.q) { S.q = ''; $('search').value = ''; renderContext(); renderGrid(); }
       }
     });
     document.addEventListener('mousedown', (e) => {
       const pop = $('lib-pop');
-      if (!pop.hidden && !pop.contains(e.target) && !$('lib-btn').contains(e.target)) { pop.hidden = true; $('lib-btn').setAttribute('aria-expanded', 'false'); }
+      if (NB.motion.isOpen(pop) && !pop.contains(e.target) && !$('lib-btn').contains(e.target)) closeLib();
     });
     window.addEventListener('resize', () => requestAnimationFrame(placeHighlight));
   }

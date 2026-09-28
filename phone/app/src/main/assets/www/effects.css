@@ -1,0 +1,271 @@
+/* Border Beam 1.4.1, Copyright (c) 2026 Jakub Antalik, MIT. See vendor/LIBRARIES-LICENSE.txt.
+   Generated Ocean/line preset from the reviewed source; host geometry is preserved. */
+
+@property --beam-x-nb-loading {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+@property --beam-w-nb-loading {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --beam-h-nb-loading {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --beam-spike-nb-loading {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --beam-spike2-nb-loading {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --beam-edge-nb-loading {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --beam-opacity-nb-loading {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+[data-beam="nb-loading"] {
+  position: relative;
+  border-radius: var(--nb-radius, 18px);
+  overflow: hidden;
+}
+
+[data-beam="nb-loading"][data-active] {
+  animation:
+    beam-travel-nb-loading 3.1s linear infinite,
+    beam-edge-fade-nb-loading 3.1s linear infinite,
+    beam-breathe-nb-loading 4.0s ease-in-out infinite,
+    beam-spike-nb-loading 4.1s ease-in-out infinite,
+    beam-spike2-nb-loading 5.3s ease-in-out infinite,
+    beam-fade-in-nb-loading 0.6s ease forwards;
+}
+
+[data-beam="nb-loading"][data-fading] {
+  animation:
+    beam-travel-nb-loading 3.1s linear infinite,
+    beam-edge-fade-nb-loading 3.1s linear infinite,
+    beam-breathe-nb-loading 4.0s ease-in-out infinite,
+    beam-spike-nb-loading 4.1s ease-in-out infinite,
+    beam-spike2-nb-loading 5.3s ease-in-out infinite,
+    beam-fade-out-nb-loading 0.5s ease forwards;
+}
+
+[data-beam="nb-loading"][data-active]::after,
+[data-beam="nb-loading"][data-fading]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: max(0px, calc(var(--nb-radius, 18px) - 1px));
+  padding: 1px;
+  clip-path: inset(0 round var(--nb-radius, 18px));
+  background: radial-gradient(
+        ellipse calc(24px * var(--beam-w-nb-loading)) calc(28px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) calc(100% + 2px),
+        rgba(255, 255, 255, 0.38) 0%,
+        rgba(255, 255, 255, 0.12) 30%,
+        transparent 65%
+      ), radial-gradient(ellipse calc(36px * var(--beam-w-nb-loading)) calc(36px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) calc(100% + 2px), rgb(100, 80, 220), transparent),
+       radial-gradient(ellipse calc(30px * var(--beam-w-nb-loading)) calc(32px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 39px) calc(100%), rgb(60, 120, 255), transparent),
+       radial-gradient(ellipse calc(33px * var(--beam-w-nb-loading)) calc(28px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 36px) calc(100% + 2px), rgb(80, 100, 200), transparent),
+       radial-gradient(ellipse calc(29px * var(--beam-w-nb-loading)) calc(34px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 54px) calc(100%), rgb(130, 70, 255), transparent),
+       radial-gradient(ellipse calc(27px * var(--beam-w-nb-loading)) calc(30px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 51px) calc(100% - 1px), rgb(70, 130, 255), transparent),
+       radial-gradient(ellipse calc(36px * var(--beam-w-nb-loading)) calc(24px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 21px) calc(100% + 1px), rgb(120, 80, 255), transparent),
+       radial-gradient(ellipse calc(30px * var(--beam-w-nb-loading)) calc(22px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 21px) calc(100%), rgb(90, 110, 230), transparent),
+       radial-gradient(ellipse calc(25px * var(--beam-w-nb-loading)) calc(28px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 66px) calc(100% + 1px), rgb(110, 90, 240), transparent),
+       radial-gradient(ellipse calc(23px * var(--beam-w-nb-loading)) calc(30px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 66px) calc(100% - 1px), rgb(140, 100, 255), transparent);
+  -webkit-mask:
+    radial-gradient(
+      ellipse calc(78px * var(--beam-w-nb-loading)) calc(60px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%,
+      white 0%, rgba(255, 255, 255, 0.5) 45%, transparent 100%
+    ),
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: source-in, xor;
+  mask:
+    radial-gradient(
+      ellipse calc(78px * var(--beam-w-nb-loading)) calc(60px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%,
+      white 0%, rgba(255, 255, 255, 0.5) 45%, transparent 100%
+    ),
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: intersect, exclude;
+  pointer-events: none;
+  z-index: 2;
+  opacity: calc(var(--beam-opacity-nb-loading) * var(--beam-edge-nb-loading) * 1.14 * var(--beam-stroke-opacity, 1) * var(--beam-strength, 1));
+  animation: beam-hue-shift-nb-loading 12s ease-in-out infinite;
+}
+
+[data-beam="nb-loading"][data-active]::before,
+[data-beam="nb-loading"][data-fading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--nb-radius, 18px);
+  background: radial-gradient(ellipse calc(33px * var(--beam-w-nb-loading)) calc(30px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) calc(100%), rgba(100, 80, 220, 0.48), transparent),
+    radial-gradient(ellipse calc(24px * var(--beam-w-nb-loading)) calc(26px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 39px) calc(100% - 3px), rgba(60, 120, 255, 0.42), transparent),
+    radial-gradient(ellipse calc(27px * var(--beam-w-nb-loading)) calc(24px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 36px) calc(100%), rgba(80, 100, 200, 0.48), transparent),
+    radial-gradient(ellipse calc(23px * var(--beam-w-nb-loading)) calc(28px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 54px) calc(100% - 2px), rgba(130, 70, 255, 0.42), transparent),
+    radial-gradient(ellipse calc(24px * var(--beam-w-nb-loading)) calc(24px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 51px) calc(100% - 1px), rgba(70, 130, 255, 0.50), transparent),
+    radial-gradient(ellipse calc(30px * var(--beam-w-nb-loading)) calc(20px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 21px) calc(100%), rgba(120, 80, 255, 0.45), transparent),
+    radial-gradient(ellipse calc(25px * var(--beam-w-nb-loading)) calc(var(--nb-radius, 18px) * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 21px) calc(100% - 2px), rgba(90, 110, 230, 0.40), transparent),
+    radial-gradient(ellipse calc(21px * var(--beam-w-nb-loading)) calc(24px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% + 66px) calc(100%), rgba(110, 90, 240, 0.45), transparent),
+    radial-gradient(ellipse calc(var(--nb-radius, 18px) * var(--beam-w-nb-loading)) calc(26px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100% - 66px) calc(100% - 1px), rgba(140, 100, 255, 0.52), transparent);
+  box-shadow: inset 0 0 9px 1px rgba(255, 255, 255, 0.1);
+  -webkit-mask-image:
+    radial-gradient(
+      ellipse calc(78px * var(--beam-w-nb-loading)) calc(60px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%,
+      white 0%, rgba(255, 255, 255, 0.5) 45%, transparent 100%
+    ),
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  -webkit-mask-composite: source-in, source-over;
+  mask-image:
+    radial-gradient(
+      ellipse calc(78px * var(--beam-w-nb-loading)) calc(60px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%,
+      white 0%, rgba(255, 255, 255, 0.5) 45%, transparent 100%
+    ),
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  mask-composite: intersect, add;
+  pointer-events: none;
+  z-index: 1;
+  opacity: calc(var(--beam-opacity-nb-loading) * var(--beam-edge-nb-loading) * 0.70 * var(--beam-inner-opacity, 1) * var(--beam-strength, 1));
+  clip-path: inset(0 round var(--nb-radius, 18px));
+  animation: beam-hue-shift-nb-loading 12s ease-in-out infinite;
+}
+
+[data-beam="nb-loading"] [data-beam-bloom] {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: max(0px, calc(var(--nb-radius, 18px) - 1px));
+  clip-path: inset(0 round var(--nb-radius, 18px));
+  padding: 0;
+  -webkit-mask: radial-gradient(
+    ellipse calc(84px * var(--beam-w-nb-loading)) calc(110px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%,
+    white 0%, rgba(255, 255, 255, 0.5) 35%, transparent 100%
+  );
+  -webkit-mask-composite: source-over;
+  mask: radial-gradient(
+    ellipse calc(84px * var(--beam-w-nb-loading)) calc(110px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%,
+    white 0%, rgba(255, 255, 255, 0.5) 35%, transparent 100%
+  );
+  mask-composite: add;
+  background: radial-gradient(ellipse calc(0.8px * var(--beam-spike-nb-loading) * var(--beam-spike-mul, 1)) calc(92px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 8% calc(100% - 2px), rgb(100, 120, 255), rgb(100, 120, 255) 30%, transparent 88%),
+       radial-gradient(ellipse calc(10px * var(--beam-spike2-nb-loading) * var(--beam-spike-mul, 1)) calc(35px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 22% calc(100% - 4px), rgba(130, 100, 220, 0.98), rgba(130, 100, 220, 0.49) 50%, transparent 95%),
+       radial-gradient(ellipse calc(2px * (2 - var(--beam-spike-nb-loading)) * var(--beam-spike-mul, 1)) calc(72px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 36% calc(100% - 3px), rgb(100, 80, 255), rgb(100, 80, 255) 40%, transparent 90%),
+       radial-gradient(ellipse calc(14px * var(--beam-spike2-nb-loading) * var(--beam-spike-mul, 1)) calc(28px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 50% calc(100% - 2px), rgba(80, 130, 220, 0.59), rgba(80, 130, 220, 0.29) 55%, transparent 96%),
+       radial-gradient(ellipse calc(1.2px * (2 - var(--beam-spike2-nb-loading)) * var(--beam-spike-mul, 1)) calc(85px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 64% calc(100% - 4px), rgb(60, 100, 255), rgb(60, 100, 255) 35%, transparent 89%),
+       radial-gradient(ellipse calc(7px * var(--beam-spike-nb-loading) * var(--beam-spike-mul, 1)) calc(45px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 78% calc(100% - 2px), rgba(90, 120, 200, 0.91), rgba(90, 120, 200, 0.45) 48%, transparent 94%),
+       radial-gradient(ellipse calc(0.6px * (2 - var(--beam-spike-nb-loading)) * var(--beam-spike-mul, 1)) calc(60px * var(--beam-h-nb-loading) * var(--beam-spike-mul, 1)) at 92% calc(100% - 3px), rgb(120, 90, 255), rgb(120, 90, 255) 42%, transparent 91%),
+       radial-gradient(ellipse calc(21px * var(--beam-spike-nb-loading)) calc(15px * var(--beam-spike2-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) calc(100% + 1px), rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 20%, rgba(255, 255, 255, 0.5) 50%, transparent 100%),
+       radial-gradient(ellipse calc(42px * var(--beam-w-nb-loading)) calc(40px * var(--beam-h-nb-loading)) at calc(var(--beam-x-nb-loading) * 100%) 100%, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.12) 25%, rgba(255, 255, 255, 0.03) 55%, transparent 80%);
+
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+}
+
+[data-beam="nb-loading"][data-active] [data-beam-bloom],
+[data-beam="nb-loading"][data-fading] [data-beam-bloom] {
+  display: block;
+  opacity: calc(var(--beam-opacity-nb-loading) * var(--beam-edge-nb-loading) * 0.80 * var(--beam-bloom-opacity, 1) * var(--beam-strength, 1));
+  animation: beam-hue-shift-bloom-nb-loading 8s ease-in-out infinite;
+}
+
+@keyframes beam-travel-nb-loading {
+  0%   { --beam-x-nb-loading: 0.06;  --beam-w-nb-loading: 0.5; }
+  10%  { --beam-x-nb-loading: 0.15;  --beam-w-nb-loading: 0.8; }
+  20%  { --beam-x-nb-loading: 0.25;  --beam-w-nb-loading: 1.1; }
+  30%  { --beam-x-nb-loading: 0.35;  --beam-w-nb-loading: 1.3; }
+  40%  { --beam-x-nb-loading: 0.44;  --beam-w-nb-loading: 1.45; }
+  50%  { --beam-x-nb-loading: 0.5;   --beam-w-nb-loading: 1.5; }
+  60%  { --beam-x-nb-loading: 0.56;  --beam-w-nb-loading: 1.45; }
+  70%  { --beam-x-nb-loading: 0.65;  --beam-w-nb-loading: 1.3; }
+  80%  { --beam-x-nb-loading: 0.75;  --beam-w-nb-loading: 1.1; }
+  90%  { --beam-x-nb-loading: 0.85;  --beam-w-nb-loading: 0.8; }
+  100% { --beam-x-nb-loading: 0.94;  --beam-w-nb-loading: 0.5; }
+}
+
+@keyframes beam-edge-fade-nb-loading {
+  0%    { --beam-edge-nb-loading: 0; }
+  12.5% { --beam-edge-nb-loading: 0; }
+  32.5% { --beam-edge-nb-loading: 1; }
+  67.5% { --beam-edge-nb-loading: 1; }
+  87.5% { --beam-edge-nb-loading: 0; }
+  100%  { --beam-edge-nb-loading: 0; }
+}
+
+@keyframes beam-breathe-nb-loading {
+  0%, 100% { --beam-h-nb-loading: 0.8; }
+  25%      { --beam-h-nb-loading: 1.25; }
+  55%      { --beam-h-nb-loading: 0.85; }
+  80%      { --beam-h-nb-loading: 1.3; }
+}
+
+@keyframes beam-spike-nb-loading {
+  0%   { --beam-spike-nb-loading: 0.8; }
+  25%  { --beam-spike-nb-loading: 1.3; }
+  50%  { --beam-spike-nb-loading: 0.9; }
+  75%  { --beam-spike-nb-loading: 1.4; }
+  100% { --beam-spike-nb-loading: 0.8; }
+}
+
+@keyframes beam-spike2-nb-loading {
+  0%   { --beam-spike2-nb-loading: 1.2; }
+  25%  { --beam-spike2-nb-loading: 0.7; }
+  50%  { --beam-spike2-nb-loading: 1.4; }
+  75%  { --beam-spike2-nb-loading: 0.8; }
+  100% { --beam-spike2-nb-loading: 1.2; }
+}
+
+@keyframes beam-fade-in-nb-loading {
+  to { --beam-opacity-nb-loading: 1; }
+}
+
+@keyframes beam-fade-out-nb-loading {
+  from { --beam-opacity-nb-loading: 1; }
+  to { --beam-opacity-nb-loading: 0; }
+}
+
+@keyframes beam-hue-shift-nb-loading {
+  0% { filter: hue-rotate(calc(var(--beam-hue-base, 0deg) - 13deg)) brightness(1.30) saturate(1.20); }
+  50% { filter: hue-rotate(calc(var(--beam-hue-base, 0deg) + 13deg)) brightness(1.30) saturate(1.20); }
+  100% { filter: hue-rotate(calc(var(--beam-hue-base, 0deg) - 13deg)) brightness(1.30) saturate(1.20); }
+}
+
+@keyframes beam-hue-shift-bloom-nb-loading {
+  0% { filter: blur(8px) hue-rotate(calc(var(--beam-hue-base, 0deg) - 23deg)) brightness(1.30) saturate(1.20); }
+  50% { filter: blur(8px) hue-rotate(calc(var(--beam-hue-base, 0deg) + 23deg)) brightness(1.30) saturate(1.20); }
+  100% { filter: blur(8px) hue-rotate(calc(var(--beam-hue-base, 0deg) - 23deg)) brightness(1.30) saturate(1.20); }
+}
+
+[data-beam="nb-loading"][data-paused],
+[data-beam="nb-loading"][data-paused]::after,
+[data-beam="nb-loading"][data-paused]::before,
+[data-beam="nb-loading"][data-paused] [data-beam-bloom] {
+  animation-play-state: paused !important;
+}
+
+.nb-effect-beam[data-beam="nb-loading"] { position: absolute; inset: 0; border-radius: var(--nb-radius, 18px); pointer-events: none; --beam-strength: .8; }
+.nb-effect-beam[data-paused], .nb-effect-beam[data-paused]::before, .nb-effect-beam[data-paused]::after, .nb-effect-beam[data-paused] [data-beam-bloom] { animation-play-state: paused !important; }
+.nb-effect-orb { display: inline-block; width: 20px; height: 20px; flex: 0 0 20px; margin-right: 7px; vertical-align: middle; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .nb-effect-beam { display: none !important; } }

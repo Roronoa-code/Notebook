@@ -10,8 +10,8 @@ android {
         applicationId = "com.mani.notebook"
         minSdk = 28
         targetSdk = 37
-        versionCode = 38
-        versionName = "0.15.0"
+        versionCode = 39
+        versionName = "0.15.1"
     }
 
     compileOptions {
