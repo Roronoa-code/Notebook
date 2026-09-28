@@ -6,6 +6,7 @@ const path = require('path');
 const { Readable } = require('stream');
 const { Library, PHOTO_EXT, VIDEO_EXT } = require('./library');
 const { SyncServer } = require('./sync-server');
+const { Gallery } = require('./gallery');
 const { setupFeatures } = require('./features');
 const { setupAutoBackup } = require('./autobackup');
 const { rawPreview, isRaw } = require('./raw');
@@ -69,6 +70,7 @@ if (!FIRST_INSTANCE) app.quit();
 app.on('second-instance', (_e, argv) => { if (!argv.includes('--background')) showWindow(); });
 
 const sync = new SyncServer({
+  secure: !TEST_MODE || process.env.NOTEBOOK_TEST_SECURE === '1',
   settingsFile: path.join(app.getPath('userData'), 'sync.json'),
   host: process.env.NOTEBOOK_SYNC_HOST || undefined, // the checks use 127.0.0.1 so Windows Firewall doesn't ask
   port: Number(process.env.NOTEBOOK_SYNC_PORT) || undefined,
@@ -81,6 +83,21 @@ const sync = new SyncServer({
   },
   onStatusChanged: () => send('sync:changed'),
   onKeepReady: (on) => applyKeepReady(on)
+});
+const gallery = new Gallery(path.join(app.getPath('userData'), 'gallery'));
+sync.gallery = gallery;
+ipcMain.handle('sync:copyLink', () => { const url=sync.pairUrl(); if(!url || !sync.securePort)return {error:'Show a new secure pairing code first.'}; require('electron').clipboard.writeText(url); return {ok:true}; });
+for (const [method, fn] of Object.entries({
+  status: () => ({ sessions: gallery.status(), secureError: sync.secureError }),
+  list: (device, cursor) => gallery.list(device, cursor),
+  media: (device, item, kind) => gallery.media(device, item, kind),
+  mutate: (device, action, items, from) => gallery.mutate(device, action, items, from),
+  history: device => gallery.history(device),
+  cancelReads: (device, previewsOnly) => gallery.cancelReads(device, previewsOnly),
+  reconcile: (device, id) => gallery.reconcile(device, id),
+  openPhone: (device, item) => gallery.command(device, 'open', { item }).promise
+})) ipcMain.handle('gallery:' + method, async (_e, ...args) => {
+  try { return { ok: true, value: await fn(...args) }; } catch (e) { return { error: e.message }; }
 });
 const keepReady = () => !!sync.settings.keepReady;
 
@@ -375,6 +392,8 @@ app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark';
   Menu.setApplicationMenu(null);
   protocol.handle('nb', async (request) => {
+    const remote = /^nb:\/\/notebook\/gallery\/([0-9a-f]{64})$/.exec(request.url);
+    if (remote) { const file = gallery.file(remote[1]); return file ? serveFile(file, request) : new Response('Phone unavailable', { status: 404 }); }
     // Pictures for Ideas: fetched from Pinterest by this PC the first time they're shown, then kept.
     const idea = /^nb:\/\/notebook\/feed\/([0-9a-f]{32})(-big)?\.jpg$/.exec(request.url);
     if (idea) { const file = features && await features.feed.image(idea[1], !!idea[2]); return file ? serveFile(file, request) : new Response('Not found', { status: 404 }); }

@@ -31,6 +31,7 @@ public class SyncClient {
     static final int DISCOVERY_PORT = 47822;
     static final String CANT_FIND = "Can't find your PC. Make sure it's switched on with Notebook running, and that your phone is on the same Wi-Fi.";
     private final Library lib;
+    private volatile String pairingPin;
     private final SharedPreferences p;
     private final File feedFile, feedDir;
 
@@ -41,6 +42,14 @@ public class SyncClient {
         this.feedDir = new File(ctx.getCacheDir(), "feed");
         if (!p.contains("deviceId")) p.edit().putString("deviceId", UUID.randomUUID().toString()).apply();
     }
+
+    boolean secure() { return !p.getString("pin", "").isEmpty(); }
+    String galleryBase() throws Exception { if (!secure()) throw new IOException("Scan the new QR code on your PC to enable secure Gallery cleanup."); return base(); }
+    HttpURLConnection galleryConnection(String base, String route, String session) throws IOException {
+        HttpURLConnection c = open("POST", base + "/api/gallery/" + route, p.getString("token", ""), 25000);
+        c.setRequestProperty("X-Gallery-Session", session); return c;
+    }
+    private String scheme() { return secure() ? "https://" : "http://"; }
 
     boolean paired() { return p.getString("token", null) != null; }
 
@@ -59,6 +68,9 @@ public class SyncClient {
         if (!"notebook".equals(u.getScheme()) || !"pair".equals(u.getHost())) throw new IOException("That isn't a Notebook pairing code. On your PC, open Notebook and choose Phone.");
         String hosts = u.getQueryParameter("h"), code = u.getQueryParameter("c"), pcId = u.getQueryParameter("id");
         int port = parsePort(u.getQueryParameter("p"));
+        pairingPin = u.getQueryParameter("f");
+        if (pairingPin != null && !pairingPin.matches("[0-9a-f]{64}")) throw new IOException("Invalid secure QR code");
+        String protocol = pairingPin == null ? "http://" : "https://";
         if (hosts == null || code == null) throw new IOException("That pairing code is incomplete. Show a new one on the PC.");
         JSONObject body = new JSONObject().put("code", code.trim().toUpperCase()).put("deviceId", p.getString("deviceId", "")).put("deviceName", Build.MANUFACTURER.substring(0, 1).toUpperCase() + Build.MANUFACTURER.substring(1) + " " + Build.MODEL);
         IOException last = null;
@@ -66,8 +78,8 @@ public class SyncClient {
             host = host.trim();
             if (host.isEmpty()) continue;
             try {
-                JSONObject res = new JSONObject(request("POST", "http://" + host + ":" + port + "/api/pair", body.toString(), null, 5000));
-                p.edit().putString("token", res.getString("token")).putString("pcId", res.optString("pcId", pcId))
+                JSONObject res = new JSONObject(request("POST", protocol + host + ":" + port + "/api/pair", body.toString(), null, 5000));
+                p.edit().putString("pin", pairingPin == null ? "" : pairingPin).putString("token", res.getString("token")).putString("pcId", res.optString("pcId", pcId))
                     .putString("pcName", res.optString("pcName", "your PC")).putString("host", host).putInt("port", port).apply();
                 return;
             } catch (HttpError e) {
@@ -77,17 +89,17 @@ public class SyncClient {
             }
         }
         // None of the addresses answered: look for the PC on the network instead.
-        String[] found = discover(pcId);
+        String[] found = discover(pcId, pairingPin != null);
         if (found != null) {
-            JSONObject res = new JSONObject(request("POST", "http://" + found[0] + ":" + found[1] + "/api/pair", body.toString(), null, 5000));
-            p.edit().putString("token", res.getString("token")).putString("pcId", res.optString("pcId", pcId))
+            JSONObject res = new JSONObject(request("POST", protocol + found[0] + ":" + found[1] + "/api/pair", body.toString(), null, 5000));
+            p.edit().putString("pin", pairingPin == null ? "" : pairingPin).putString("token", res.getString("token")).putString("pcId", res.optString("pcId", pcId))
                 .putString("pcName", res.optString("pcName", "your PC")).putString("host", found[0]).putInt("port", Integer.parseInt(found[1])).apply();
             return;
         }
         throw new IOException(CANT_FIND, last);
     }
 
-    void unpair() { p.edit().remove("adopted").remove("token").remove("pcId").remove("pcName").remove("host").remove("port").remove("lastSync").apply(); }
+    void unpair() { p.edit().remove("pin").remove("adopted").remove("token").remove("pcId").remove("pcName").remove("host").remove("port").remove("lastSync").apply(); }
 
     private static int parsePort(String s) {
         try { return s == null ? 47821 : Integer.parseInt(s); } catch (NumberFormatException e) { return 47821; }
@@ -98,11 +110,11 @@ public class SyncClient {
     private String base() throws Exception {
         String host = p.getString("host", null);
         int port = p.getInt("port", 47821);
-        if (host != null && ping("http://" + host + ":" + port)) return "http://" + host + ":" + port;
-        String[] found = discover(p.getString("pcId", null)); // the PC's address changed (e.g. router restarted)
+        if (host != null && ping(scheme() + host + ":" + port)) return scheme() + host + ":" + port;
+        String[] found = discover(p.getString("pcId", null), secure()); // the PC's address changed (e.g. router restarted)
         if (found != null) {
             p.edit().putString("host", found[0]).putInt("port", Integer.parseInt(found[1])).apply();
-            String b = "http://" + found[0] + ":" + found[1];
+            String b = scheme() + found[0] + ":" + found[1];
             if (ping(b)) return b;
         }
         throw new IOException(CANT_FIND);
@@ -118,7 +130,7 @@ public class SyncClient {
     }
 
     // Shout "is Notebook here?" on the Wi-Fi and wait briefly for the PC to answer with its address.
-    private String[] discover(String pcId) {
+    private String[] discover(String pcId, boolean secure) {
         try (DatagramSocket s = new DatagramSocket()) {
             s.setBroadcast(true);
             s.setSoTimeout(1500);
@@ -132,7 +144,7 @@ public class SyncClient {
                 JSONObject o = new JSONObject(new String(r.getData(), 0, r.getLength(), StandardCharsets.UTF_8));
                 if (!"Notebook".equals(o.optString("app"))) continue;
                 if (pcId != null && !pcId.isEmpty() && !pcId.equals(o.optString("pcId"))) continue;
-                return new String[]{r.getAddress().getHostAddress(), String.valueOf(o.optInt("port", 47821))};
+                return new String[]{r.getAddress().getHostAddress(), String.valueOf(o.optInt(secure ? "securePort" : "port", secure ? 47841 : 47821))};
             }
         } catch (Exception ignored) { /* nobody answered */ }
         return null;
@@ -278,7 +290,7 @@ public class SyncClient {
         if (f.exists()) return f;
         String host = p.getString("host", null), token = p.getString("token", null);
         if (host == null || token == null || System.currentTimeMillis() < feedOfflineUntil) return null;
-        try { fetchImage("http://" + host + ":" + p.getInt("port", 47821), token, sig); }
+        try { fetchImage(scheme() + host + ":" + p.getInt("port", 47821), token, sig); }
         catch (Exception e) { feedOfflineUntil = System.currentTimeMillis() + 60000; return null; } // away from home: stop trying for a minute
         return f.exists() ? f : null;
     }
@@ -346,8 +358,8 @@ public class SyncClient {
         HttpError(int status, String msg) { super(msg); this.status = status; }
     }
 
-    private static HttpURLConnection open(String method, String url, String token, int readTimeout) throws IOException {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+    private HttpURLConnection open(String method, String url, String token, int readTimeout) throws IOException {
+        HttpURLConnection c = PairedHttp.open(url, token == null ? pairingPin : p.getString("pin", ""));
         c.setRequestMethod(method);
         c.setConnectTimeout(4000);
         c.setReadTimeout(readTimeout);
@@ -366,7 +378,7 @@ public class SyncClient {
         throw new HttpError(code, msg);
     }
 
-    private static String request(String method, String url, String json, String token, int readTimeout) throws IOException {
+    private String request(String method, String url, String json, String token, int readTimeout) throws IOException {
         HttpURLConnection c = open(method, url, token, readTimeout);
         try {
             if (json != null) {

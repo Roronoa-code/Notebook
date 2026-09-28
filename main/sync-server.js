@@ -2,6 +2,7 @@
 // so scripts/test-sync.js can run it for real. Paired phones and the PC's id live in a settings
 // file next to the app's config, never in the library.
 const http = require('http');
+const https = require('https');
 const dgram = require('dgram');
 const os = require('os');
 const fs = require('fs');
@@ -95,6 +96,7 @@ function startError(err) {
 class SyncServer {
   constructor(opts = {}) {
     this.settingsFile = opts.settingsFile;
+    this.secureEnabled = !!opts.secure;
     this.host = opts.host || '0.0.0.0';
     this.basePort = opts.port || PORT;
     this.discoveryPort = opts.discoveryPort || DISCOVERY_PORT;
@@ -147,7 +149,22 @@ class SyncServer {
       }
     }
     if (!this.port) { this.error = startError(lastErr); this.log.error('sync server', lastErr); }
-    else await this.startDiscovery();
+    else {
+      if (this.secureEnabled) {
+        try {
+          this.identity = await require('./secure-sync').identity(path.join(path.dirname(this.settingsFile), 'secure-sync'));
+          await new Promise((resolve, reject) => {
+            this.https = https.createServer(this.identity, (req, res) => this.handle(req, res).catch(() => res.destroy()));
+            this.https.headersTimeout = 30000; this.https.requestTimeout = 180000;
+            this.https.on('clientError', (_e, socket) => socket.destroy());
+            this.https.once('error', reject);
+            this.https.listen(this.port + 20, this.host, resolve);
+          });
+          this.securePort = this.port + 20; this.secureError = null;
+        } catch (e) { this.secureError = 'Secure pairing unavailable: ' + e.message; this.log.error('secure sync', e); }
+      }
+      await this.startDiscovery();
+    }
     this.onStatusChanged();
   }
 
@@ -177,7 +194,7 @@ class SyncServer {
       });
       udp.on('message', (msg, rinfo) => {
         if (msg.toString('utf8').trim() !== 'NOTEBOOK_DISCOVER' || !isPrivateAddress(rinfo.address) || !this.port) return;
-        const reply = Buffer.from(JSON.stringify({ app: 'Notebook', pcId: this.pcId, name: this.pcName, port: this.port }));
+        const reply = Buffer.from(JSON.stringify({ app: 'Notebook', pcId: this.pcId, name: this.pcName, port: this.port, ...(this.securePort ? { securePort: this.securePort } : {}) }));
         udp.send(reply, rinfo.port, rinfo.address, () => {});
       });
       udp.bind(this.discoveryPort, this.host, () => {
@@ -190,6 +207,9 @@ class SyncServer {
   }
 
   async stop() {
+    this.gallery?.close();
+    if (this.https) { const s = this.https; this.https = null; await new Promise(r => { s.close(r); s.closeAllConnections(); }); }
+    this.securePort = null;
     const server = this.http, udp = this.udp;
     this.http = null; this.udp = null; this.port = null;
     if (udp) await new Promise((r) => { try { udp.close(r); } catch { r(); } });
@@ -210,6 +230,7 @@ class SyncServer {
   }
 
   unpair(deviceId) {
+    this.gallery?.revoke(deviceId);
     this.settings.devices = this.settings.devices.filter((d) => d.deviceId !== deviceId);
     this.saveSettings();
     this.onStatusChanged();
@@ -223,7 +244,7 @@ class SyncServer {
 
   pairUrl() {
     if (!this.port || this.codeState() !== 'ready') return null;
-    return `notebook://pair?h=${candidateAddresses().join(',')}&p=${this.port}&c=${this.code.value}&id=${this.pcId}`;
+    return `notebook://pair?h=${candidateAddresses().join(',')}&p=${this.securePort || this.port}&c=${this.code.value}&id=${this.pcId}` + (this.securePort ? `&f=${this.identity.fingerprint}` : '');
   }
 
   // What the Phone panel shows.
@@ -234,7 +255,7 @@ class SyncServer {
     }
     const state = this.codeState();
     return {
-      running: !!this.port, port: this.port, error: this.error, discoveryError: this.discoveryError,
+      running: !!this.port, port: this.port, error: this.error, discoveryError: this.discoveryError, securePort: this.securePort, secureError: this.secureError,
       pcName: this.pcName, addresses: candidateAddresses(),
       codeState: state, code: state === 'ready' ? this.code.value : null, codeExpiresAt: state === 'ready' ? this.code.expiresAt : null,
       pairUrl: url, qr: url ? this.qrCache.qr : null,
@@ -249,7 +270,7 @@ class SyncServer {
     const hash = Buffer.from(sha256(m[1].toLowerCase()), 'hex');
     return this.settings.devices.find((d) => {
       const stored = Buffer.from(String(d.tokenSha256 || ''), 'hex');
-      return stored.length === hash.length && crypto.timingSafeEqual(stored, hash);
+      return (!d.secure || req.socket.encrypted) && stored.length === hash.length && crypto.timingSafeEqual(stored, hash);
     }) || null;
   }
 
@@ -267,7 +288,8 @@ class SyncServer {
     const token = crypto.randomBytes(32).toString('hex');
     const name = String(body.deviceName || 'Phone').trim().slice(0, 60) || 'Phone';
     this.settings.devices = this.settings.devices.filter((d) => d.deviceId !== deviceId);
-    this.settings.devices.push({ deviceId, name, tokenSha256: sha256(token), pairedAt: nowIso(), lastSyncAt: null });
+    this.gallery?.revoke(deviceId);
+    this.settings.devices.push({ deviceId, name, secure: !!req.socket.encrypted, tokenSha256: sha256(token), pairedAt: nowIso(), lastSyncAt: null });
     // The first phone switches on "Keep Notebook ready for your phone", unless it was turned off before.
     const firstKeepReady = this.settings.keepReady === undefined;
     if (firstKeepReady) this.settings.keepReady = true;
@@ -292,6 +314,7 @@ class SyncServer {
       }
       const device = this.deviceFor(req);
       if (!device) { res.setHeader('Connection', 'close'); return send(res, 401, { error: 'not paired' }); }
+      if (route.startsWith('/api/gallery/') && this.gallery) return await this.gallery.routes(req, res, device, route);
       if (!this.lib || !this.lib.data) return send(res, 503, { error: "Notebook on the PC hasn't opened a library yet." });
       if (route === '/api/ping' && req.method === 'GET') {
         return send(res, 200, { ok: true, pcId: this.pcId, pcName: this.pcName, items: this.lib.data.items.length });

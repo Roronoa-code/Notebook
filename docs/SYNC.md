@@ -115,3 +115,14 @@ These endpoints share the PC's ranked feeds with paired phones. All need the tok
 - Traffic is plain HTTP on the home network only, so it isn't encrypted against someone already on your Wi-Fi. That's the same trade-off as Deck Bridge.
 - Pairing needs the code shown on the PC screen, and the code expires after one use or 10 minutes.
 - Unpairing on the PC invalidates the token straight away.
+
+
+## Secure pairing and remote Gallery (Windows 2.6 / phone 0.16)
+
+The existing server, pairing code, device identity, bearer auth, discovery and private-network restriction are reused. An HTTPS listener runs at the selected HTTP port + 20. Its local certificate is saved under userData/secure-sync; QR links include `f=<SHA-256 DER certificate>` and the HTTPS port. The phone pins that exact certificate for every request, including ordinary library sync. Discovery may update an address, never the pin. Redirects and plaintext downgrade are rejected. A secure device token is not accepted on HTTP. Legacy manual-code/HTTP library clients keep working but cannot use Gallery.
+
+All Gallery routes require a securely paired device. POST `/api/gallery/session` registers a foreground sessionId and permission scope. Subsequent requests carry `X-Gallery-Session`. POST `/api/gallery/poll` reports ready/scope and long-polls up to 15 seconds for one command. POST `/api/gallery/stop` revokes the session. POST `/api/gallery/result/<requestId>` returns a result; PUT `/api/gallery/stream/<requestId>` returns bounded binary media for a pending request from that same device/session. No arbitrary file paths or arbitrary URLs are accepted.
+
+Commands: `list` (256-item keyset page), `thumb`, `preview`, `video`, `open` (native viewer), `trash`, `restore`, `reconcile`. Keys are volume:type:MediaStore-id; fingerprints contain MediaStore version, size, modification timestamp and generation. Mutations revalidate identities, permissions and state. Up to 200 distinct items per batch. PC and phone both persist the operation before launching Android consent. Duplicate operation IDs never relaunch it. Uncertain outcomes block new batches until an explicit read-only reconciliation. Disconnect/reconnect never automatically repeats a destructive command. Successful callbacks still require per-item state queries.
+
+Gallery has no entries in library.json, imports, normal sync payloads or Notebook's Bin. See GALLERY.md for storage, limits and the physical-device check.

@@ -39,13 +39,12 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
     // A few extra bytes after the picture make each file different, so none is skipped as a duplicate.
     .map(([name, from]) => { const to = path.join(samples, name); fs.writeFileSync(to, Buffer.concat([fs.readFileSync(from), Buffer.from(name)])); return to; });
 
+  await require('../main/library').Library.openOrCreate(LIB);
+  fs.mkdirSync(ENV.NOTEBOOK_USER_DATA, { recursive: true });
+  fs.writeFileSync(path.join(ENV.NOTEBOOK_USER_DATA, 'config.json'), JSON.stringify({ libraryPath: LIB }));
   let { app, page, web } = await launch();
-  await page.locator('#welcome').waitFor();
-  await app.evaluate(({ dialog }, paths) => { const q = paths.slice(); dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [q.shift()] }); }, [LIB]);
-  await page.click('#w-choose');
   await page.locator('.bcard').first().waitFor();
-  await app.evaluate(({ dialog }, paths) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: paths }); }, files);
-  await page.click('#add-photos');
+  await page.evaluate(async paths => NB.apply(await nb.importPaths(paths, null)), files);
   await page.locator('.grid .card').nth(4).waitFor();
   await idle(page);
   await page.waitForFunction(() => NB.S.snap.items.every((i) => i.ai && i.ai.type));
@@ -89,7 +88,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   const sorted = await page.locator('.grid > .card > .sr').allInnerTexts();
   assert.deepEqual(sorted, sorted.slice().sort((a, b) => a.localeCompare(b, 'en-GB', { numeric: true, sensitivity: 'base' })), 'A to Z');
   await page.locator('.sortbox .dd').click();
-  await page.locator('.ddlist:not(.out) .ddopt', { hasText: 'Date taken, newest' }).click();
+  await page.locator('.ddlist[data-motion-open="true"] .ddopt', { hasText: 'Date taken, newest' }).click();
   await page.locator('.grid > .dategroup').first().waitFor();
   const thisMonth = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
   assert.equal(await page.locator('.grid > .dategroup').last().innerText(), thisMonth, 'no date inside the picture: the day it was added');
@@ -97,7 +96,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await page.locator('.grid > .dategroup').first().waitFor();
   assert.match(await page.locator('.sortbox .dd').innerText(), /Date taken, newest/, 'remembered');
   await page.locator('.sortbox .dd').click();
-  await page.locator('.ddlist:not(.out) .ddopt', { hasText: 'Newest added' }).click();
+  await page.locator('.ddlist[data-motion-open="true"] .ddopt', { hasText: 'Newest added' }).click();
   assert.equal(await page.locator('.grid > .dategroup').count(), 0);
   ok('sort by name or date taken (a heading for each month; the day it was added when the picture has no date), remembered per board');
 
@@ -128,7 +127,7 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   await colourTags.first().click();
   await page.waitForFunction(([id, c]) => { const l = NB.S.snap.items.find((i) => i.id === id).labels; return l && Array.isArray(l.colours) && !l.colours.includes(c); }, [coat.id, firstColour]);
   await page.locator('.recog .dd[aria-label="Add a colour"]').click();
-  await page.locator('.ddlist:not(.out) .ddopt', { hasText: /^Orange$/ }).click();
+  await page.locator('.ddlist[data-motion-open="true"] .ddopt', { hasText: /^Orange$/ }).click();
   await page.waitForFunction((id) => (NB.S.snap.items.find((i) => i.id === id).labels.colours || []).includes('orange'), coat.id);
   assert.ok(onDisk().items.find((i) => i.id === coat.id).labels.colours.includes('orange'), 'saved');
   await page.locator('.recog .linkbtn', { hasText: 'Use the colours the PC saw' }).click();
@@ -216,9 +215,9 @@ const idle = (page) => page.waitForFunction(async () => (await nb.aiStatus()).st
   const firstPin = await page.locator('.ideaview').getAttribute('data-pin');
   await page.waitForFunction(() => { const i = document.querySelector('.ideaview img'); return i && /-big\.jpg$/.test(i.src); });
   await page.keyboard.press('ArrowRight');
-  assert.notEqual(await page.locator('.ideaview').getAttribute('data-pin'), firstPin, 'the next idea');
+  assert.notEqual(await page.locator('.ideaview:not([inert])').getAttribute('data-pin'), firstPin, 'the next idea');
   await page.keyboard.press('Escape');
-  await page.locator('.ideaview').waitFor({ state: 'detached' });
+  await page.waitForFunction(() => !document.querySelector('.ideaview'));
   ok('clicking a pin opens a close-up straight away (sharper picture, next with →, Esc closes)');
 
   // Direct search and related pins stay inside Notebook, with a return to the original feed.

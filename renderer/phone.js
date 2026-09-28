@@ -64,6 +64,8 @@
           h('div', { class: 'row' },
             h('button', { type: 'button', class: 'btn small', id: 'phone-new-code', disabled: !s.running, onclick: () => call('syncNewCode') }, 'New code'),
             h('span', { class: 'hint' }, 'Each code works once and lasts 10 minutes.')),
+          h('button', { type: 'button', class: 'btn small', disabled: !s.securePort, onclick: async () => { const r=await nb.syncCopyLink(); NB.toast(r.error || 'Secure pairing link copied'); } }, 'Copy secure pairing link'),
+          s.secureError ? h('p', { class: 'hint' }, s.secureError) : null,
           h('h4', { class: 'micro' }, 'Paired phones'),
           devices(s),
           h('label', { class: 'keep', for: 'keep-ready' }, keep,

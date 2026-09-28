@@ -19,7 +19,7 @@ Electron app for Windows (plus an Android phone app in `phone/`). The owner is a
 ## Rules
 - Everything works offline except what the user asks to go online: saving from TikTok/Pinterest links (the downloader tools, run from the main process), the Pinterest panel (its own session) and Ideas (the main process asks Pinterest with the panel's session when Ideas are looked at; the page only sees pictures through `nb://notebook/feed/`). The page itself stays blocked from the web. Recognition must stay fully offline once the models are downloaded (`allowRemoteModels` off). No cloud storage, no uploads, no paid APIs, no Supabase. Phone sync stays on the home network (private addresses only), as set out in `docs/SYNC.md`. That file is the contract with the phone app: don't change behaviour without changing both.
 - The user's corrections (`item.labels`) must never be overwritten by a re-scan; recognition only writes `item.ai`.
-- Never modify or delete the user's original files. Imports copy into the library.
+- Imports always copy; the library and its Bin never change originals. The explicitly requested Phone Gallery feature is the only exception: a reviewed PC batch may trash or restore exact MediaStore items through Android system consent. Never permanently delete phone media or silently fall back to deletion. See `docs/GALLERY.md`.
 - Dark mode only. Liquid glass, fun motion, but every element needs a purpose (no decorative dots or gradients).
 - Don't change data shape in library.json without a migration. It's version 2 now (board `updatedAt`, `tombstones`), migrated from v1 on load. Changes that should sync must bump the item's `updatedAt`.
 
@@ -41,3 +41,5 @@ These scoped preferences supersede older conflicting preference summaries. Prese
 <!-- preference:notebook-design -->
 - [Notebook] Keep Notebook a purposeful dark mood board with details on demand and continuous interactions.
 <!-- /preference:notebook-design -->
+
+- Gallery checks: `node scripts/test-gallery.js` (TLS/protocol/journals) and `node scripts/test-gallery-ui.js` (real Electron with synthetic phone; also supports NOTEBOOK_EXE).

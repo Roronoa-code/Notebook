@@ -46,6 +46,7 @@ public class MainActivity extends Activity {
     private static final String LOCAL_NET = "android.permission.ACCESS_LOCAL_NETWORK";
     private static final int REQ_PICK = 1, REQ_CAMERA = 2, REQ_NET = 3;
     private WebView web;
+    private GallerySession gallery;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final ExecutorService feedWorker = Executors.newSingleThreadExecutor(); // Ideas never wait behind a long sync
     private String pendingBoard = "";
@@ -105,6 +106,7 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Native(), "NBNative");
         root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
+        gallery = new GallerySession(this);
         web.loadUrl(ORIGIN + "/www/index.html");
 
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::goBack);
@@ -116,9 +118,14 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (gallery != null) gallery.destroy();
         Core.onLibraryChanged = null;
         super.onDestroy();
     }
+
+    @Override protected void onResume() { super.onResume(); if (gallery != null) gallery.resumed = true; }
+    @Override protected void onPause() { if (gallery != null) gallery.pause(); super.onPause(); }
+    void galleryMessage(String value) { js("nbOnGallery", value); }
 
     // ---------- serving the page and the library to the WebView ----------
 
@@ -257,6 +264,11 @@ public class MainActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == GallerySession.PERMISSIONS) {
+            if (!gallery.store.scope().equals("No access")) withLocalNetwork(() -> gallery.start());
+            else gallery.message("Photo access was not granted. You can change access when ready.");
+            return;
+        }
         if (code != REQ_NET) return;
         Runnable r = afterNetPermission;
         afterNetPermission = null;
@@ -269,6 +281,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
+        if (req == GalleryOperations.REQUEST) { gallery.operations.receivedResult(result); return; }
         if (req == REQ_PICK && result == RESULT_OK && data != null) {
             List<Uri> uris = new ArrayList<>();
             if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());
@@ -325,6 +338,25 @@ public class MainActivity extends Activity {
 
     private class Native {
         @JavascriptInterface public String state() { try { return stateJson(); } catch (Exception e) { return error(e); } }
+        @JavascriptInterface public String galleryStatus() { return gallery.status(); }
+        @JavascriptInterface public void galleryStart() { runOnUiThread(() -> withLocalNetwork(() -> gallery.start())); }
+        @JavascriptInterface public void galleryStop() { runOnUiThread(() -> gallery.stop()); }
+        @JavascriptInterface public void galleryPermissions() { runOnUiThread(() -> gallery.permissions()); }
+        @JavascriptInterface public void galleryManage() { runOnUiThread(() -> gallery.manage()); }
+        @JavascriptInterface public void pairSecure(String link) {
+            runOnUiThread(() -> withLocalNetwork(() -> {
+                if (Uri.parse(link.trim()).getQueryParameter("f") == null) { gallery.message("Copy the secure pairing link from Notebook on your PC."); return; }
+                pairWith(link);
+            }));
+        }
+        @JavascriptInterface public void pastePairingLink() {
+            runOnUiThread(() -> {
+                android.widget.EditText input = new android.widget.EditText(MainActivity.this);
+                input.setHint("Paste the pairing link copied from your PC");
+                new android.app.AlertDialog.Builder(MainActivity.this).setTitle("Pair securely with your PC").setView(input)
+                    .setNegativeButton("Cancel", null).setPositiveButton("Pair", (d, w) -> pairSecure(input.getText().toString())).show();
+            });
+        }
 
         @JavascriptInterface public void tick() {
             runOnUiThread(() -> web.performHapticFeedback(Build.VERSION.SDK_INT >= 34 ? HapticFeedbackConstants.SEGMENT_FREQUENT_TICK : HapticFeedbackConstants.CLOCK_TICK));

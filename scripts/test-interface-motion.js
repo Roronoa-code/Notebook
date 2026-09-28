@@ -118,7 +118,7 @@ async function bridgeChecks(files) {
 
     await page.getByRole('button', { name: 'Sort', exact: true }).click();
     await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter'); await page.waitForTimeout(180);
-    assert.equal(await page.locator('.ddlist').count(), 0);
+    await page.locator('.ddlist').waitFor({state:'detached'});
     await page.evaluate(() => { NB.S.snap.types = ['outfit']; NB.S.snap.items[0].ai = { type: { main: 'outfit' } }; NB.refreshGrid(); });
     await page.getByRole('button', { name: 'Styles', exact: true }).click(); await page.locator('.stylepop').waitFor();
     await page.keyboard.press('Escape'); await page.waitForTimeout(180); assert.equal(await page.locator('.stylepop').count(), 0);
@@ -176,7 +176,8 @@ async function bridgeChecks(files) {
     await page.locator('#pin-btn').click();
     await page.waitForTimeout(450);
     await app.evaluate(async ({ webContents }) => {
-      const wc = webContents.getAllWebContents().find(w => w.getURL().includes('pinterest.com'));
+      let wc;
+      for(let n=0;n<100 && !wc;n++){wc=webContents.getAllWebContents().find(w=>w.getURL().includes('pinterest.com'));if(!wc)await new Promise(r=>setTimeout(r,100));}
       if (!wc) throw new Error('Pinterest stand-in did not open');
       wc.emit('context-menu', {}, { linkURL: 'https://www.pinterest.com/pin/123/', x: 60, y: 60 });
       await new Promise(r => setTimeout(r, 230));

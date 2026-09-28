@@ -8,6 +8,14 @@ window.addEventListener('error', (e) => ipcRenderer.send('log:error', `${e.messa
 window.addEventListener('unhandledrejection', (e) => ipcRenderer.send('log:error', 'unhandled: ' + (e.reason && (e.reason.stack || e.reason.message) || String(e.reason))));
 
 contextBridge.exposeInMainWorld('nb', {
+  galleryStatus: call('gallery:status'),
+  galleryList: call('gallery:list'),
+  galleryMedia: call('gallery:media'),
+  galleryMutate: call('gallery:mutate'),
+  galleryHistory: call('gallery:history'),
+  galleryCancelReads: call('gallery:cancelReads'),
+  galleryReconcile: call('gallery:reconcile'),
+  galleryOpenPhone: call('gallery:openPhone'),
   onTrayMenu: fn => ipcRenderer.on('ui:tray', () => fn()),
   quit: call('app:quit'),
   onUIRequest: fn => ipcRenderer.on('ui:request', (_e, request) => fn(request)),
@@ -83,6 +91,7 @@ contextBridge.exposeInMainWorld('nb', {
   onFeedChanged: (fn) => ipcRenderer.on('feed:changed', (_e, s) => fn(s)),
   // Phone sync
   syncOpen: call('sync:open'),
+  syncCopyLink: call('sync:copyLink'),
   syncStatus: call('sync:status'),
   syncNewCode: call('sync:newCode'),
   syncUnpair: call('sync:unpair'),

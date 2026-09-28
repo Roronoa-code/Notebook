@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self'">
 <title>Notebook</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="gallery.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -74,6 +75,7 @@
     <button type="button" class="navrow" id="pin-btn" aria-pressed="false"><svg class="i"><use href="#i-pin"/></svg><span>Pinterest</span></button>
     <button type="button" class="navrow" id="links-btn" aria-expanded="false"><svg class="i"><use href="#i-link"/></svg><span>Links</span><span class="n" id="links-count"></span></button>
     <button type="button" class="navrow" id="phone"><svg class="i"><use href="#i-phone"/></svg><span>Phone</span></button>
+    <button type="button" class="navrow" id="gallery-btn"><svg class="i"><use href="#i-photo"/></svg><span>Phone Gallery</span></button>
     <button type="button" class="navrow" id="lib-btn" aria-expanded="false" aria-controls="lib-pop"><svg class="i"><use href="#i-folder"/></svg><span>Library</span></button>
   </div>
 </aside>
@@ -134,6 +136,7 @@
 <script src="sort.js"></script>
 <script src="search.js"></script>
 <script src="phone.js"></script>
+<script src="gallery.js"></script>
 <script src="previews.js"></script>
 <script src="shortcuts.js"></script>
 <script src="app.js"></script>

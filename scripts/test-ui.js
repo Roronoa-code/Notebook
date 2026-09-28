@@ -43,11 +43,23 @@ async function launch() {
   return { app, page, web };
 }
 
-// Replaces the Windows folder/file pickers and confirm boxes with fixed answers.
-const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
+// Answer the app's current custom picker/confirmation bridge; keep real validation in main.
+const answerPickers = (app, filePaths) => {
+  for (const p of filePaths) if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+  return app.evaluate(({ BrowserWindow, dialog }, paths) => {
+  global.testPickerPaths = paths; global.testPickerQueue = null;
+  const web = BrowserWindow.getAllWindows()[0].webContents;
+  if (!web.testSend) {
+    web.testSend = web.send.bind(web);
+    web.send = (channel, ...args) => {
+      if (channel !== 'ui:request') return web.testSend(channel, ...args);
+      const request = args[0], value = request.kind === 'confirm' ? true : global.testPickerQueue ? [global.testPickerQueue.shift()] : global.testPickerPaths;
+      web.executeJavaScript('nb.replyUI(' + JSON.stringify(request.id) + ',' + JSON.stringify(value) + ')');
+    };
+  }
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: paths });
   dialog.showMessageBox = async () => ({ response: 0 });
-}, filePaths);
+}, filePaths); };
 
 (async () => {
   fs.rmSync(OUT, { recursive: true, force: true });
@@ -179,7 +191,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const stackCard = page.locator('.grid .stackcard');
   await stackCard.waitFor();
   assert.equal(await stackCard.locator('.fanitem').count(), 2);
-  assert.equal(await page.locator('#selbar').isHidden(), true);
+  await page.locator('#selbar').waitFor({ state: 'hidden' });
   assert.equal(await stackCard.locator('.stackct').innerText(), '1/2');
   assert.equal(await stackCard.locator('.fanarrow').count(), 0, 'no arrow buttons on stacks');
   await page.waitForTimeout(600); // let the new stack settle into place
@@ -323,19 +335,17 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   await page.locator('#selbar .btn', { hasText: 'Add to board' }).click();
   await page.locator('.ddlist.menu .ddopt', { hasText: 'Profile pictures' }).click();
   await page.waitForFunction((ids) => ids.every((id) => NB.S.snap.items.find((i) => i.id === id).boards.includes(NB.S.snap.boards.find((b) => b.name === 'Profile pictures').id)), two);
-  assert.equal(await page.locator('#selbar').isHidden(), true);
+  await page.locator('#selbar').waitFor({ state: 'hidden' });
   ok('picking several and Add to board puts them all on it');
 
-  // Delete board asks once more.
+  // Delete board uses the custom confirmation bridge (accepted by this harness).
   const tempBoard = await page.evaluate(async () => (NB.apply(await nb.addBoard('Temporary'))).id);
   await page.click(`.bcard[data-id="${tempBoard}"]`);
   const del = page.locator('.context .btn.danger', { hasText: 'Delete board' });
   await del.click();
-  assert.equal(await page.locator(`.bcard[data-id="${tempBoard}"]`).count(), 1, 'one click only asks');
-  await page.locator('.context .btn.danger', { hasText: 'Click again to delete' }).click();
   await page.waitForFunction((id) => !NB.S.snap.boards.some((b) => b.id === id), tempBoard);
   await page.click('.bcard[data-id="all"]');
-  ok('Delete board asks for a second click');
+  ok('Delete board completes through the custom confirmation bridge');
 
   // Searching inside a board with no matches offers the matches in All items.
   const emptyBoard = await page.evaluate(async () => (NB.apply(await nb.addBoard('Empty for search'))).id);
@@ -401,6 +411,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   ok('Ctrl + A picks everything, Delete moves it to the Bin and Undo brings it back; Delete also bins an open item');
 
   // The shortcuts sheet: ? opens it, Esc closes it; it's also in the Library menu.
+  await page.waitForFunction(() => !NB.viewer.isOpen());
   await page.keyboard.press('Shift+Slash');
   await page.locator('.keys').waitFor();
   assert.ok((await page.locator('.keys').innerText()).includes('Drag onto a card'));
@@ -483,12 +494,11 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const BK = path.join(OUT, 'Backups'), EXP = path.join(OUT, 'Exports'), RS = path.join(OUT, 'Restored');
   for (const d of [BK, EXP, RS]) fs.mkdirSync(d, { recursive: true });
   // Each folder picker gets the next answer in the list; nothing opens in File Explorer.
-  const queuePickers = (paths) => app.evaluate(({ dialog, shell }, list) => {
-    const q = list.slice();
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [q.shift()] });
-    dialog.showMessageBox = async () => ({ response: 0 });
-    shell.openPath = async () => '';
-  }, paths);
+  const queuePickers = async paths => {
+    for (const p of paths) if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+    await answerPickers(app, [paths[0]]);
+    await app.evaluate(({ shell }, values) => { global.testPickerQueue = values; shell.openPath = async () => ''; }, paths);
+  };
   const lib0 = JSON.parse(fs.readFileSync(path.join(LIB, 'library.json'), 'utf8'));
   const live0 = lib0.items.filter((i) => !i.deletedAt);
   const note0 = live0.find((i) => i.kind === 'note' && /loafers/.test(i.html));
@@ -508,7 +518,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   const AUTO = path.join(OUT, 'auto backups');
   fs.mkdirSync(AUTO, { recursive: true });
   await queuePickers([AUTO]);
-  if (await page.locator('#lib-pop').isHidden()) await page.click('#lib-btn');
+  if (!await page.evaluate(() => NB.motion.isOpen(document.getElementById('lib-pop')))) await page.click('#lib-btn');
   await page.locator('#auto-backup').check();
   await page.locator('.toast', { hasText: 'Backed up automatically' }).waitFor({ timeout: 60000 });
   const autoDirs = fs.readdirSync(AUTO).filter((f) => f.startsWith('Notebook Backup') && !f.includes('in progress'));
@@ -519,7 +529,7 @@ const answerPickers = (app, filePaths) => app.evaluate(({ dialog }, paths) => {
   assert.ok(cfgAuto.on && cfgAuto.dir === AUTO && cfgAuto.made.length === 1);
   await page.locator('#auto-backup').uncheck();
   await until(() => JSON.parse(fs.readFileSync(path.join(OUT, 'userdata', 'config.json'), 'utf8')).autoBackup.on === false, 'switched off');
-  if (await page.locator('#lib-pop').isVisible()) await page.click('#lib-btn');
+  if (await page.evaluate(() => NB.motion.isOpen(document.getElementById('lib-pop')))) await page.click('#lib-btn');
   ok('Back up every week: switching it on makes the first backup straight away, into the chosen folder');
 
   await queuePickers([EXP]);

@@ -1,10 +1,27 @@
 // The Sync screen: pairing with the PC, sync status, and what the app reports while syncing.
 window.NBSyncScreen = function NBSyncScreen({ S, $, db, esc, svg, P, ago, plural, live, binned, statusText, home, toast }) {
   let phase = '', since = 0;
+  window.nbOnGallery = json => {
+    const s = JSON.parse(json), el = document.getElementById('gallery-status');
+    if (el) el.textContent = `${s.scope || ''} · ${s.message || ''}`;
+  };
+  setInterval(() => {
+    if (document.getElementById('gallery-status') && window.NBNative?.galleryStatus) window.nbOnGallery(NBNative.galleryStatus());
+  }, 1500);
   function syncHTML() {
     return `<div class="screen" style="padding:calc(var(--st) + 20px) 20px calc(var(--sb) + 120px);display:flex;flex-direction:column;gap:16px">
       <div style="display:flex;flex-direction:column;gap:6px"><div class="poster" style="font-size:64px">Sync</div><div style="font-size:14px;color:#9A9A9A">Phone and PC, over your home Wi-Fi. Nothing goes online.</div></div>
-      <div id="syncbody"></div>
+      <div id="syncbody">${syncBodyHTML()}</div>
+      <div class="glass panel" id="gallery-session">
+        <div style="font-size:26px;font-weight:400">Gallery cleanup</div>
+        <p style="font-size:14px;color:#aaa">Review your phone's photos and videos from Notebook on your PC. Keep this app open and your phone unlocked.</p>
+        <p id="gallery-status" role="status" style="font-size:13px">Start a session to connect.</p>
+        <button class="btn white" type="button" data-a="galleryStart">Start cleanup</button>
+        <button class="btn" type="button" data-a="galleryStop">Stop</button>
+        <button class="linkbtn" type="button" data-a="galleryPermissions">Change photo access</button>
+        <button class="linkbtn" type="button" data-a="galleryManage">Allow fewer confirmation prompts</button>
+        <button class="linkbtn" type="button" data-a="pastePairingLink">Paste secure pairing link</button>
+      </div>
       <button type="button" class="glass panel binrow" data-a="openBin"><span style="display:flex;align-items:center;gap:12px">${svg(P.bin, 20, 1.8)}<span style="font-size:16px;font-weight:600">Bin</span></span><span class="micro" id="binrowcount">${plural(binned().length, 'item')}</span></button>
     </div>`;
   }
