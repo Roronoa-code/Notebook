@@ -9,3 +9,4 @@ promo/tiktok/out/
 !.env.example
 *.jks
 *.keystore
+promo/motion/out/
