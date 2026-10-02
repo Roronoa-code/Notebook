@@ -7,20 +7,39 @@
 <title>Notebook</title>
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="effects.css">
+<link rel="stylesheet" href="confirm.css">
 </head>
 <body>
 <div id="app" class="app"></div>
+<!-- Liquid surfaces (libraries.dev Gooey technique): blur the shapes together, then sharpen their edge -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <filter id="nbgoo" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="9" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"/></filter>
+  <filter id="nbgoo-thin" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"/></filter>
+</defs></svg>
 <script src="vendor/thinking-orbs.js"></script>
+<script src="vendor/liquid.js"></script>
+<script src="fluid.js"></script>
+<script src="surface.js"></script>
+<script src="confirm.js"></script>
 <script src="effects.js"></script>
+<script src="goo.js"></script>
 <script src="mock.js"></script>
 <script src="text.js"></script>
 <script src="media.js"></script>
 <script src="viewer.js"></script>
 <script src="item.js"></script>
 <script src="motion.js"></script>
-<script src="wheel.js"></script>
+<script src="dock.js"></script>
+<script src="drag.js"></script>
+<script src="stacks.js"></script>
+<script src="pager.js"></script>
+<script src="fan.js"></script>
+<script src="mani-dots.js"></script>
+<script src="dots.js"></script>
+<script src="tilt.js"></script>
 <script src="sync.js"></script>
 <script src="ideas.js"></script>
+<script src="ideaview.js"></script>
 <script src="sort.js"></script>
 <script src="forms.js"></script>
 <script src="app.js"></script>

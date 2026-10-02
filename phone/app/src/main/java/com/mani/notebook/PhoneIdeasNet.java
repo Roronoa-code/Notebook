@@ -300,6 +300,11 @@ final class PhoneIdeasNet {
             out.put("id", id).put("url", BASE + "/pin/" + id + "/").put("title", clean(raw.optString("grid_title", raw.optString("title", raw.optString("description", "")))))
                 .put("img", image).put("small", thumb).put("w", Math.max(1, big.optInt("width", 474))).put("h", Math.max(1, big.optInt("height", 600)))
                 .put("video", hasVideo(raw)).put("sig", signature(image));
+            // What PhoneTaste learns from: Pinterest's own words for the picture and its main colour.
+            String about = clean(raw.optString("description", "") + " " + raw.optString("auto_alt_text", "") + " " + raw.optString("closeup_unified_description", ""));
+            if (!about.isEmpty()) out.put("about", about.substring(0, Math.min(300, about.length())));
+            String colour = raw.optString("dominant_color", "");
+            if (colour.matches("#[0-9a-fA-F]{6}")) out.put("colour", colour);
             return out;
         } catch (Exception e) { return null; }
     }

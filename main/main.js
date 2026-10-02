@@ -7,6 +7,7 @@ const { Readable } = require('stream');
 const { Library, PHOTO_EXT, VIDEO_EXT } = require('./library');
 const { SyncServer } = require('./sync-server');
 const { Gallery } = require('./gallery');
+const { GooglePhotos } = require('./gphotos');
 const { setupFeatures } = require('./features');
 const { setupAutoBackup } = require('./autobackup');
 const { rawPreview, isRaw } = require('./raw');
@@ -85,6 +86,7 @@ const sync = new SyncServer({
   onKeepReady: (on) => applyKeepReady(on)
 });
 const gallery = new Gallery(path.join(app.getPath('userData'), 'gallery'));
+const photos = new GooglePhotos(app.getPath('userData'));
 sync.gallery = gallery;
 ipcMain.handle('sync:copyLink', () => { const url=sync.pairUrl(); if(!url || !sync.securePort)return {error:'Show a new secure pairing code first.'}; require('electron').clipboard.writeText(url); return {ok:true}; });
 for (const [method, fn] of Object.entries({
@@ -95,7 +97,11 @@ for (const [method, fn] of Object.entries({
   history: device => gallery.history(device),
   cancelReads: (device, previewsOnly) => gallery.cancelReads(device, previewsOnly),
   reconcile: (device, id) => gallery.reconcile(device, id),
-  openPhone: (device, item) => gallery.command(device, 'open', { item }).promise
+  openPhone: (device, item) => gallery.command(device, 'open', { item }).promise,
+  cloudStatus: async () => (photos.connected() ? photos.status().catch(e => ({ signedIn: false, error: e.message })) : { signedIn: false }),
+  cloudSignIn: async () => { await photos.signIn(); return photos.status().catch(e => ({ signedIn: false, error: e.message })); },
+  cloudTrash: (device, id) => gallery.cloudTrash(device, id, photos),
+  cloudRestore: (device, id) => gallery.cloudRestore(device, id, photos)
 })) ipcMain.handle('gallery:' + method, async (_e, ...args) => {
   try { return { ok: true, value: await fn(...args) }; } catch (e) { return { error: e.message }; }
 });

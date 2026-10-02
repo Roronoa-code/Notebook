@@ -18,6 +18,7 @@ import android.util.Size;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -63,6 +64,18 @@ final class GalleryStore {
         args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE);
         String volume=key.split(":")[0];
         try (Cursor c=resolver.query(u, COLUMNS, args, null)) { return c!=null && c.moveToFirst() ? row(c, volume, MediaStore.getVersion(ctx,volume)) : null; }
+    }
+    // The file's SHA-1 (base64), the fingerprint Google Photos keeps for a backed-up copy. Read in place, also while
+    // the item waits in the phone's trash, so the PC can find and remove the cloud copy of exactly this file.
+    String sha1(String key, CancellationSignal cancel) throws Exception {
+        java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-1");
+        Uri u=uri(key);
+        try (InputStream in=resolver.openInputStream(u)) {
+            if (in==null) throw new IOException("Unreadable");
+            byte[] buffer=new byte[1<<16]; int n;
+            while ((n=in.read(buffer))!=-1) { cancel.throwIfCanceled(); digest.update(buffer,0,n); }
+        }
+        return android.util.Base64.encodeToString(digest.digest(),android.util.Base64.NO_WRAP);
     }
     JSONObject validate(JSONObject expected, boolean trashed) throws Exception {
         JSONObject actual=inspect(expected.getString("key"));

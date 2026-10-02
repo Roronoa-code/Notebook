@@ -39,6 +39,7 @@ final class PhoneIdeas {
     private final ExecutorService imageWorker = Executors.newSingleThreadExecutor();
     private final Set<String> busy = new HashSet<>();
     private final Map<String, JSONObject> sessionFeeds = new HashMap<>();
+    private final PhoneVision vision;
 
     PhoneIdeas(Context ctx, Library lib, SyncClient pc) {
         this.lib = lib;
@@ -46,6 +47,7 @@ final class PhoneIdeas {
         stateFile = new File(ctx.getFilesDir(), "ideas.json");
         cacheDir = new File(ctx.getFilesDir(), "ideas");
         imageDir = new File(cacheDir, "img");
+        vision = new PhoneVision(ctx, lib, cacheDir);
     }
 
     synchronized String feedJson() { return response(null, null).toString(); }
@@ -63,9 +65,11 @@ final class PhoneIdeas {
             long at = current.optLong("at", 0);
             if (!more && !force && oldPins.length() > 0 && System.currentTimeMillis() - at < STALE_MS) return response(key, null).toString();
             List<PhoneIdeasNet.Source> sources = sources(key, current, more);
-            if (sources.isEmpty()) return response(key, more ? "There are no more ideas in this feed yet." : "There is nothing to search for yet.").toString();
+            JSONArray pool = current.optJSONArray("pool"); // fetched before, not shown yet (most already fingerprinted)
+            boolean poolOnly = more && sources.isEmpty() && pool != null && pool.length() > 0;
+            if (sources.isEmpty() && !poolOnly) return response(key, more ? "There are no more ideas in this feed yet." : "There is nothing to search for yet.").toString();
             List<Result> pages = fetch(sources);
-            boolean anySuccess = false, anyPins = false;
+            boolean anySuccess = poolOnly, anyPins = poolOnly;
             for (Result result : pages) {
                 if (result.page != null) { anySuccess = true; anyPins |= !result.page.pins.isEmpty(); updateSource(result.source, result.page); }
             }
@@ -78,20 +82,35 @@ final class PhoneIdeas {
             Set<String> ids = new HashSet<>(), sigs = new HashSet<>();
             Set<String> hidden = hiddenIds(), saved = savedIds();
             if (more) addPins(current.optJSONArray("pins"), candidates, ids, sigs, true, hidden);
-            int existing = candidates.size();
-            for (Result result : pages) if (result.page != null) for (JSONObject pin : result.page.pins) addPin(pin, candidates, ids, sigs, hidden, saved);
-            if (more) {
-                List<JSONObject> tail = new ArrayList<>(candidates.subList(existing, candidates.size()));
-                rank(tail, key, false);
-                candidates = new ArrayList<>(candidates.subList(0, existing));
-                candidates.addAll(tail);
-            } else rank(candidates, key, false);
-            JSONArray nextPins = new JSONArray();
+
+            // The sources take turns (as on the PC), so every screen of ideas mixes them rather than one source's pins (one
+            // theme), then the next's; what Save and Not for me have taught (PhoneTaste) sets how often and in what order.
+            List<String> srcs = new ArrayList<>(); List<List<JSONObject>> lists = new ArrayList<>();
+            for (Result result : pages) {
+                if (result.page == null) continue;
+                String src = result.source.kind + ":" + result.source.arg;
+                for (JSONObject pin : result.page.pins) pin.put("src", src);
+                srcs.add(src); lists.add(result.page.pins);
+            }
+            JSONObject taste = PhoneTaste.of(state);
+            List<JSONObject> next = new ArrayList<>();
+            for (int i = 0; pool != null && i < pool.length(); i++) if (pool.optJSONObject(i) != null) addPin(pool.optJSONObject(i), next, ids, sigs, hidden, saved);
+            for (JSONObject pin : PhoneTaste.blend(taste, srcs, lists)) addPin(pin, next, ids, sigs, hidden, saved);
+            rank(next, key, true);
+            next = byLook(next, key, taste);
+            // A first page of BATCH (a search or a pin's related ones: all of them), the next pages 40 at a time; the rest
+            // wait in the pool for the next page or New ideas, by then fingerprinted.
+            boolean all = key.startsWith("search:") || key.startsWith("pin:");
+            int take = all ? next.size() : Math.min(next.size(), more ? 40 : BATCH);
+            candidates.addAll(next.subList(0, take));
+            JSONArray nextPins = new JSONArray(), rest = new JSONArray();
             for (JSONObject pin : candidates) nextPins.put(pin);
-            current.put("pins", nextPins).put("at", more ? current.optLong("at", System.currentTimeMillis()) : System.currentTimeMillis())
-                .put("signedIn", false).put("error", JSONObject.NULL).put("offline", false).put("sources", sourcesJson(sources)).put("more", hasMore(sources));
+            for (JSONObject pin : next.subList(take, Math.min(next.size(), take + 300))) rest.put(pin);
+            current.put("pins", nextPins).put("pool", rest).put("at", more ? current.optLong("at", System.currentTimeMillis()) : System.currentTimeMillis())
+                .put("signedIn", false).put("error", JSONObject.NULL).put("offline", false).put("sources", sourcesJson(sources)).put("more", hasMore(sources) || rest.length() > 0);
             synchronized (this) { sessionFeeds.put(key, current); writeState(stateWithFeed(key, current)); }
             prefetch(current);
+            vision.want(next); // (shown first, then the pool: fingerprinted in the background for next time)
             return response(key, null).toString();
         } catch (Exception e) {
             synchronized (this) {
@@ -108,6 +127,8 @@ final class PhoneIdeas {
             JSONObject state = readState();
             JSONArray hidden = state.optJSONArray("hidden");
             if (hidden == null) hidden = new JSONArray();
+            JSONObject pin = findPinById(id);
+            if (pin != null) PhoneTaste.learn(PhoneTaste.of(state), pin, false); // (less like this from now on)
             for (int i = hidden.length() - 1; i >= 0; i--) if (id.equals(hidden.optString(i))) hidden.remove(i);
             hidden.put(id);
             while (hidden.length() > 3000) hidden.remove(0);
@@ -136,8 +157,15 @@ final class PhoneIdeas {
             String title = titleFor(id);
             String board = validBoard(boardId);
             lib.importDownloaded(tmp, title + ext, mime, board, url);
+            learnSaved(id);
             return new JSONObject().put("url", url).put("ok", true).put("message", "Saved to your notebook.").toString();
         } finally { tmp.delete(); }
+    }
+
+    // A saved pin makes For you lean towards its source, words and colour.
+    private synchronized void learnSaved(String id) {
+        try { JSONObject pin = findPinById(id), state = readState(); if (pin == null) return; PhoneTaste.learn(PhoneTaste.of(state), pin, true); writeState(state); }
+        catch (Exception ignored) { /* the save itself has worked */ }
     }
 
     // The WebView asks for /feed/<sig>.jpg. It gets a native cached file or a native allowlisted fetch.
@@ -235,10 +263,24 @@ final class PhoneIdeas {
         }
     }
 
+    // With the picture model: pins in order of how much they look like your pictures (the whole library for For you, a
+    // board's own for its Ideas, the pin itself for More like this; a search keeps Pinterest's order) and your saves,
+    // turned-down look-alikes left out (PhoneVision).
+    private List<JSONObject> byLook(List<JSONObject> pins, String key, JSONObject taste) {
+        if (!vision.available()) return pins;
+        List<float[]> mine = new ArrayList<>();
+        if ("all".equals(key)) mine = vision.library(null);
+        else if (key.startsWith("pin:")) { try { JSONObject seed = findPinById(key.substring(4)); float[] v = seed == null ? null : vision.pin(seed.optString("sig")); if (v != null) mine.add(v); } catch (Exception ignored) { } }
+        else if (!key.startsWith("search:")) mine = vision.library(key);
+        return vision.rank(pins, mine, vision.pins(taste.optJSONArray("liked")), vision.pins(taste.optJSONArray("disliked")), taste);
+    }
+
     private void rank(List<JSONObject> pins, String key, boolean more) {
         final String want = key.startsWith("search:") ? key.substring(7) : key.startsWith("pin:") ? "" : key.equals("all") ? "aesthetic mood board" : boardName(key);
         final String[] words = want.toLowerCase(Locale.ROOT).split("\\W+");
-        pins.sort((a, b) -> Integer.compare(score(b, words), score(a, words)));
+        // (For you keeps the sources' turns: its words are only a fallback search, and sorting by them would pull one
+        // source's pins back together at the top.)
+        if (!key.equals("all")) pins.sort((a, b) -> Integer.compare(score(b, words), score(a, words)));
         if (!more && pins.size() > BATCH && !key.startsWith("search:") && !key.startsWith("pin:")) pins.subList(BATCH, pins.size()).clear();
     }
 

@@ -1,18 +1,22 @@
-// Motion and touch on the phone screens: screen changes (photos fly between their card and the screen),
-// the items panel's spring, flicking through stacks and press-and-hold to pick. (An open photo's own
-// gestures: viewer.js.)
+// Motion on the phone screens: screen changes (photos fly between their card and the screen, notes and boards
+// open out of what you tapped), floating sheets, the Home header and the tap that follows a long press.
+// (Picking and carrying cards: drag.js. Stacks: stacks.js. The bottom action area: dock.js. An open photo: viewer.js.)
 // app.js owns the state and passes it in through `ctx`.
 window.NBMotion = (ctx) => {
-  const { S, app, tick } = ctx;
+  const { S, tick } = ctx;
 
   // Transform and opacity stay on compositor layers; clipping a whole frosted screen repaints it.
   // The same timing as the stylesheet's --ease and --t-screen.
   const tokens = getComputedStyle(document.documentElement);
   const EASE = tokens.getPropertyValue('--ease').trim(), DUR = parseFloat(tokens.getPropertyValue('--t-screen'));
   const FAST = parseFloat(tokens.getPropertyValue('--t-fast')), NORMAL = parseFloat(tokens.getPropertyValue('--t-normal'));
+  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const smooth = (a, b, t) => { const k = Math.max(0, Math.min(1, (t - a) / (b - a))); return k * k * (3 - 2 * k); };
 
-  // Reversing a sheet starts at the position currently on screen, including a held drag.
-  function showSheet(el, on) {
+  // Reversing a sheet starts at the position currently on screen, including a held drag. A sheet that is riding the
+  // bottom surface (becoming a message) is the dock's to move.
+  function showSheet(el, on, done) {
+    if (el.classList.contains('riding')) return;
     if (on ? !el.hidden && !el.dataset.leaving : el.hidden || el.dataset.leaving) return;
     const scrim = el.id === 'popscrim', style = getComputedStyle(el);
     const from = el.hidden ? { opacity: 0, transform: scrim ? 'none' : 'translateY(28px) scale(.97)' }
@@ -22,8 +26,8 @@ window.NBMotion = (ctx) => {
     if (on) { delete el.dataset.leaving; el.hidden = false; }
     else el.dataset.leaving = '1';
     el.inert = !on;
-    const finish = () => { if (!on) { el.hidden = true; delete el.dataset.leaving; } el.inert = false; };
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+    const finish = () => { if (!on) { el.hidden = true; delete el.dataset.leaving; } el.inert = false; if (done) done(); };
+    if (calm()) { finish(); return; }
     const y = new DOMMatrix(from.transform === 'none' ? undefined : from.transform).m42;
     const to = on ? { opacity: 1, transform: 'none' } : { opacity: 0, transform: scrim ? 'none' : `translateY(${y + 28}px) scale(.97)` };
     const a = el.animate([from, to], { duration: on ? NORMAL : FAST, easing: EASE, fill: 'both' });
@@ -32,7 +36,7 @@ window.NBMotion = (ctx) => {
 
   // An open photo or video is an overlay on the screen underneath: the picture itself grows out of
   // its card (and shrinks back into it), the backdrop fades, and nothing else moves.
-  const cardOf = (screen) => screen.querySelector(`[data-a="open"][data-v="${CSS.escape(S.item || '')}"] .media`);
+  const cardOf = (screen) => screen.querySelector(`.grid:not(.peek) [data-a="open"][data-v="${CSS.escape(S.item || '')}"] .media`);
   const onScreen = (r) => r && r.width && r.bottom > 0 && r.top < innerHeight;
   // The transform that puts `media` (at its untransformed place) exactly over `r`.
   function overRect(media, r) {
@@ -50,8 +54,8 @@ window.NBMotion = (ctx) => {
     const media = mediaOf(el), scrim = el.querySelector('.scrim');
     const card = cardOf(under), r = card && card.getBoundingClientRect();
     const o = { duration: DUR, easing: EASE };
-    scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR * 0.8, easing: EASE });
-    el.querySelector('.sheet').animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], o);
+    scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FAST * 0.6, easing: EASE });
+    el.querySelector('.sheet').animate([{ opacity: 0, transform: 'translateY(24px)' }, { opacity: 1, transform: 'none' }], { ...o, delay: DUR * 0.35, fill: 'backwards' });
     // Back fades in once the backdrop covers the screen underneath (never on top of its header).
     el.querySelector('.lbback').animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { ...o, delay: DUR * 0.35, fill: 'backwards' });
     if (media && onScreen(r)) {
@@ -65,9 +69,9 @@ window.NBMotion = (ctx) => {
   // scrolls (instantly, while still covered) so it can fly back into its card.
   function revealCard(under) {
     const card = cardOf(under), r = card && card.getBoundingClientRect();
-    if (!card || onScreen(r) && r.top > 60 && r.bottom < innerHeight - 60) return;
-    const scroller = card.closest('.lift.up') || (card.closest('.lift') ? null : card.closest('.screen'));
-    if (scroller) scroller.scrollTop += r.top + r.height / 2 - innerHeight * 0.45;
+    if (!card || onScreen(r)) return;
+    const scroller = card.closest('.screen');
+    if (scroller) scroller.scrollTop += r.top - innerHeight * 0.25;
   }
   function lightboxClose(el, under) {
     const media = mediaOf(el), scrim = el.querySelector('.scrim');
@@ -76,7 +80,8 @@ window.NBMotion = (ctx) => {
     const o = { duration: DUR, easing: EASE, fill: 'forwards' };
     const from = media ? media.style.transform || 'none' : 'none';
     stillVideo(el);
-    scrim.animate([{ opacity: getComputedStyle(scrim).opacity }, { opacity: 0 }], o);
+    const backdrop = getComputedStyle(scrim).opacity;
+    scrim.animate([{ opacity: backdrop }, { opacity: backdrop, offset: 0.8 }, { opacity: 0 }], o);
     chromeOf(el).forEach((c) => c.animate([{ opacity: getComputedStyle(c).opacity }, { opacity: 0 }], { duration: FAST, fill: 'forwards' }));
     let a;
     if (media && onScreen(r)) {
@@ -87,29 +92,116 @@ window.NBMotion = (ctx) => {
     el.style.pointerEvents = 'none';
   }
 
-  // When a grid's contents change (added, binned, stacked, synced), cards glide from where they were to
-  // where they are now and new ones pop in, instead of the whole grid jumping.
-  function flipGrid(grid, mutate) {
-    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches || grid.classList.contains('anim');
+  // A short-lived picture of something that has just gone (binned, deleted, moved to another column): drawn where it
+  // was, inside the same scroller, so it moves with the page. The real change has already been made; this is only
+  // how it looks leaving.
+  function ghost(el, r, host) {
+    const hr = host.getBoundingClientRect(), g = el.cloneNode(true);
+    g.classList.add('ghost'); g.removeAttribute('data-a'); g.removeAttribute('id'); g.setAttribute('aria-hidden', 'true'); g.inert = true;
+    g.querySelectorAll('[data-a], [id]').forEach((n) => { n.removeAttribute('data-a'); n.removeAttribute('id'); });
+    Object.assign(g.style, { position: 'absolute', left: (r.left - hr.left + host.scrollLeft) + 'px', top: (r.top - hr.top + host.scrollTop) + 'px', width: r.width + 'px', height: r.height + 'px', margin: '0', pointerEvents: 'none', zIndex: '-1', animation: 'none' }); // (under the cards closing the gap)
+    host.appendChild(g);
+    return g;
+  }
+  const hostOf = (el) => el.closest('.screen') || el.parentNode;
+  // How far along the standard curve (--ease) a glide is at time share t: when a card that is making room has left a
+  // place, so what comes back into that place can arrive exactly then (no pile-up, no waiting hole).
+  const curve = (() => { const [x1, y1, x2, y2] = (EASE.match(/[-\d.]+/g) || [0.22, 1, 0.36, 1]).map(Number); const b = (a1, a2, u) => 3 * a1 * u * (1 - u) ** 2 + 3 * a2 * u * u * (1 - u) + u ** 3; return (t) => { let lo = 0, hi = 1; for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (b(x1, x2, m) < t) lo = m; else hi = m; } return b(y1, y2, (lo + hi) / 2); }; })();
+
+  // When a grid's contents change (added, binned, stacked, synced, cards carried off it), every card is traced by its
+  // id from where it is drawn now (mid-glide included) to its new place: cards that stay glide there; cards that
+  // leave are drawn leaving where they were (shrinking and fading) while the others close the gap, so the grid never
+  // flashes empty; cards that change column cross-fade (they never fly diagonally over the others); new ones grow in
+  // their already-reserved place at once. A card coming back while its leaving picture is still on screen (a quick
+  // Undo) grows back from that picture. `skip(card)`: a card something else is bringing in (a new stack its cards
+  // are flying into) keeps still. Returns every shown card's new place (before any of the gliding), for aiming at.
+  function flipGrid(grid, mutate, skip) {
+    const still = calm() || grid.classList.contains('anim');
     const key = (c) => (c.classList.contains('stackcard') ? 's:' + c.dataset.stack : 'i:' + c.dataset.v);
-    const before = new Map();
-    if (!calm) for (const c of grid.querySelectorAll(':scope > .card')) {
+    const before = new Map(), gone = grid.__ghosts || (grid.__ghosts = new Map()), host = hostOf(grid);
+    if (!still) for (const c of grid.querySelectorAll(':scope > .card')) {
       const r = c.getBoundingClientRect();
-      before.set(key(c), r);
-      c.querySelectorAll('.fanitem').forEach((f) => before.set('i:' + f.dataset.v, r));
+      if (!r.width) continue; // not shown (carried off): it has no place to come from
+      before.set(key(c), { r, c, own: true });
+      c.querySelectorAll('.fanitem').forEach((f) => before.set('i:' + f.dataset.v, { r, c, own: false }));
     }
     mutate();
-    if (calm) return;
-    const near = (r) => r.bottom > -200 && r.top < innerHeight + 200;
+    const after = new Map(), now = new Set();
     for (const c of grid.querySelectorAll(':scope > .card')) {
-      let r0 = before.get(key(c));
-      if (!r0 && c.classList.contains('stackcard')) { const f = [...c.querySelectorAll('.fanitem')].find((x) => before.has('i:' + x.dataset.v)); if (f) r0 = before.get('i:' + f.dataset.v); }
-      const r1 = c.getBoundingClientRect();
-      if (!near(r1) && (!r0 || !near(r0))) continue;
-      if (r0) {
+      const r = c.getBoundingClientRect();
+      now.add(key(c)); c.querySelectorAll('.fanitem').forEach((f) => now.add('i:' + f.dataset.v));
+      if (r.width) after.set(c, r);
+    }
+    if (still) { for (const g of gone.values()) g.remove(); gone.clear(); return after; }
+    const near = (r) => r.bottom > -200 && r.top < innerHeight + 200;
+    // Leaving: drawn where they were, then gone.
+    for (const [k, b] of before) {
+      if (!b.own || now.has(k) || !near(b.r) || gone.has(k)) continue;
+      if (b.c.classList.contains('stackcard') && [...b.c.querySelectorAll('.fanitem')].some((f) => now.has('i:' + f.dataset.v))) continue; // unstacked: its cards are still here
+      const g = ghost(b.c, b.r, host);
+      gone.set(k, g);
+      g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.82)' }], { duration: NORMAL, easing: EASE, fill: 'forwards' })
+        .onfinish = () => { g.remove(); if (gone.get(k) === g) gone.delete(k); };
+    }
+    // Where every card that glides is at each moment, to know when a returning card's place is free.
+    const gliding = [];
+    for (const [c, r1] of after) { const b = before.get(key(c)); if (b && Math.abs(b.r.left - r1.left) <= r1.width / 2 && Math.abs(b.r.top - r1.top) > 1) gliding.push({ r1, dy: b.r.top - r1.top, dx: b.r.left - r1.left }); }
+    const freeAt = (r) => {
+      for (let t = 0; t <= 1; t += 0.05) {
+        const k = 1 - curve(t);
+        if (!gliding.some((g) => { const x = Math.max(0, Math.min(r.right, g.r1.right + g.dx * k) - Math.max(r.left, g.r1.left + g.dx * k)), y = Math.max(0, Math.min(r.bottom, g.r1.bottom + g.dy * k) - Math.max(r.top, g.r1.top + g.dy * k)); return x * y > 0.4 * r.width * r.height; })) return t;
+      }
+      return 1;
+    };
+    for (const [c, r1] of after) {
+      if (skip && skip(c)) continue;
+      const k = key(c);
+      let r0 = before.get(k)?.r, back = null;
+      if (!r0 && c.classList.contains('stackcard')) { const f = [...c.querySelectorAll('.fanitem')].find((x) => before.has('i:' + x.dataset.v)); if (f) r0 = before.get('i:' + f.dataset.v).r; }
+      if (!r0 && gone.has(k)) { back = gone.get(k); r0 = back.getBoundingClientRect(); } // Undo while it was still leaving
+      if (!near(r1) && (!r0 || !near(r0))) { if (back) { back.remove(); gone.delete(k); } continue; }
+      if (back) {
+        const o = +getComputedStyle(back).opacity;
+        back.getAnimations().forEach((a) => a.cancel()); back.remove(); gone.delete(k);
+        const sx = r0.width / r1.width, sy = r0.height / r1.height;
+        c.animate([{ opacity: Math.max(o, 0.2), transformOrigin: '0 0', transform: `translate(${r0.left - r1.left}px,${r0.top - r1.top}px) scale(${sx},${sy})` }, { opacity: 1, transformOrigin: '0 0', transform: 'none' }], { duration: NORMAL, easing: EASE });
+      } else if (r0) {
         const dx = r0.left - r1.left, dy = r0.top - r1.top;
-        if (Math.abs(dx) + Math.abs(dy) > 1) c.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: DUR, easing: EASE });
-      } else c.animate([{ opacity: 0, transform: 'scale(.86)' }, { opacity: 1, transform: 'none' }], { duration: DUR, delay: 80, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: 'backwards' });
+        if (Math.abs(dx) > r1.width / 2) { // another column: it fades in here as its picture fades out there
+          const g = ghost(c, r0, host);
+          g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FAST, easing: EASE, fill: 'forwards' }).onfinish = () => g.remove();
+          c.animate([{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }], { duration: NORMAL, delay: Math.round(freeAt(r1) * NORMAL * 0.6), easing: EASE, fill: 'backwards' });
+        } else if (Math.abs(dx) + Math.abs(dy) > 1) c.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: NORMAL, easing: EASE });
+      } else { // new or back: it grows into its place at once, above the cards still sliding out of the way (no gap)
+        c.style.zIndex = '2';
+        c.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'scale(.97)', offset: 0.45 }, { opacity: 1, transform: 'none' }], { duration: NORMAL, easing: EASE }).onfinish = () => { c.style.zIndex = ''; };
+      }
+    }
+    return after;
+  }
+
+  // The rail of boards changes (pinned to the front, made, deleted, put back): every pile glides from where it was
+  // drawn to its new place, keeping the rail where it was scrolled (when it gets shorter the browser pulls it back,
+  // and the piles glide through that too, instead of jumping a whole slot); a deleted board is drawn leaving where it
+  // was, a new one grows in.
+  function flipRail(rail, mutate) {
+    const before = new Map([...rail.querySelectorAll('.pile')].map((p) => [p.dataset.v || 'new', { r: p.getBoundingClientRect(), p }]));
+    const keep = rail.scrollLeft;
+    mutate();
+    rail.scrollLeft = keep;
+    if (calm()) return;
+    const host = hostOf(rail), seen = new Set();
+    for (const p of rail.querySelectorAll('.pile')) {
+      const id = p.dataset.v || 'new', b = before.get(id);
+      seen.add(id);
+      if (!b) { p.animate([{ opacity: 0, transform: 'scale(.86)' }, { opacity: 1, transform: 'none' }], { duration: NORMAL + 80, easing: 'cubic-bezier(.34,1.18,.5,1)' }); continue; }
+      const dx = b.r.left - p.getBoundingClientRect().left;
+      if (Math.abs(dx) > 1) p.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: NORMAL + 80, easing: 'cubic-bezier(.34,1.18,.5,1)' });
+    }
+    for (const [id, b] of before) {
+      if (seen.has(id) || b.r.right < 0 || b.r.left > innerWidth) continue;
+      const g = ghost(b.p, b.r, host);
+      g.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.8)' }], { duration: NORMAL, easing: EASE, fill: 'forwards' }).onfinish = () => g.remove();
     }
   }
 
@@ -125,15 +217,171 @@ window.NBMotion = (ctx) => {
     el.style.pointerEvents = 'none';
   }
 
+  // A note opens out of its card: the whole note screen starts drawn at the card's size and place and grows to the
+  // screen, then folds back into the card, landing exactly on it (it slows down into it; the card appears in the
+  // same frame the note goes). Its own controls arrive once it has nearly filled the screen, and leave first. A
+  // change of mind mid-way turns it round from where it is.
+  function zoomAt(rect, radius, e) {
+    const W = innerWidth, H = innerHeight, s0 = rect.width / W, s = s0 + (1 - s0) * e;
+    const crop = Math.max(0, H - rect.height / s0) * (1 - e), rr = (radius / s0) * (1 - e);
+    return { transform: `translate(${(rect.left * (1 - e)).toFixed(1)}px,${(rect.top * (1 - e)).toFixed(1)}px) scale(${s.toFixed(4)})`, clipPath: `inset(0px 0px ${crop.toFixed(1)}px 0px round ${rr.toFixed(1)}px)` };
+  }
+  function noteMorph(note, rect, opening, radius = 20) {
+    const z = note.__zoom;
+    const e = z && z.anim ? Math.max(0, Math.min(1, z.anim.effect.getComputedTiming().progress ?? (z.opening ? 1 : 0))) : opening ? 0 : 1;
+    if (z && z.real) z.real.cancel();
+    note.style.transformOrigin = '0 0';
+    const span = Math.abs((opening ? 1 : 0) - e) || 1;
+    const anim = note.animate([zoomAt(rect, radius, e), zoomAt(rect, radius, opening ? 1 : 0)], { duration: DUR * Math.max(0.4, span), easing: EASE, fill: 'forwards' });
+    // eased progress of this run → the note's overall openness, for a later turn-round
+    const prog = { effect: { getComputedTiming: () => { const p = anim.effect.getComputedTiming().progress ?? 1; return { progress: e + ((opening ? 1 : 0) - e) * p }; } } };
+    note.__zoom = { anim: prog, opening, real: anim };
+    note.querySelectorAll('.sheet, .lbback, .kindpill, .notebar').forEach((x) => {
+      x.getAnimations().forEach((a) => a.cancel());
+      x.animate(opening ? [{ opacity: 0 }, { opacity: 0, offset: .55 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0, offset: .35 }, { opacity: 0 }], { duration: DUR * Math.max(0.4, span), easing: 'linear', fill: 'both' });
+    });
+    anim.addEventListener('finish', () => { if (note.__zoom && note.__zoom.real === anim) note.__zoom = null; });
+    return anim;
+  }
+
+  // Binned from an open note: the same drop as a binned photo, back towards the collection.
+  function noteBin(note) {
+    note.style.transformOrigin = '50% 30%';
+    const a = note.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(45vh) scale(.25) rotate(-10deg)', opacity: 0 }], { duration: DUR, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
+    note.style.pointerEvents = 'none';
+    a.onfinish = () => note.remove();
+  }
+
+  // Screens that open out of something (a board's cover, Search and Sync's buttons, a new note out of the orb) share
+  // one progress number, 0 closed to 1 open, so a change of mind mid-way turns round from exactly where it is.
+  // `look(screen, under)` draws one progress: { paint(p), end() }. One owner: the opening screen is an opaque shell
+  // growing from the source; its contents arrive only once the shell is nearly full size (no clipped words), and
+  // leave first on the way back.
+  function route(oldEl, el, kind, look) {
+    const L = window.NBLiquid, opening = kind === 'open', screen = opening ? el : oldEl, under = opening ? oldEl : el;
+    const st = screen.__route || (screen.__route = { p: opening ? 0 : 1, raf: 0 });
+    cancelAnimationFrame(st.raf);
+    if (st.end) st.end();
+    const lk = look(screen, under);
+    st.end = lk.end;
+    screen.style.zIndex = '1';
+    screen.classList.add('route-morph');
+    oldEl.style.pointerEvents = 'none';
+    const paint = (p) => { st.p = p; lk.paint(Math.max(0, Math.min(1, p))); };
+    const done = () => {
+      st.raf = 0; lk.end(); st.end = null;
+      screen.style.clipPath = ''; screen.style.removeProperty('--route-content-opacity'); screen.classList.remove('route-morph'); screen.style.zIndex = ''; under.style.opacity = ''; screen.__route = null;
+      if (opening) { if (ctx.current() === screen) oldEl.style.visibility = 'hidden'; }
+      else if (oldEl !== ctx.home()) oldEl.remove(); else oldEl.style.visibility = 'hidden';
+      if (lk.after) lk.after(opening);
+    };
+    const from = st.p, to = opening ? 1 : 0, ms = (opening ? DUR + 40 : DUR - 40) * Math.max(0.35, Math.abs(to - from));
+    if (calm()) { paint(to); done(); return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const t = Math.max(0, Math.min(1, (now - t0) / ms));
+      paint(from + (to - from) * (opening ? L.fluidOpen(t) : 1 - Math.pow(1 - t, 3)));
+      if (t < 1) st.raf = requestAnimationFrame(step); else done();
+    };
+    paint(from);
+    st.raf = requestAnimationFrame(step);
+  }
+  const inset = (r, W, H, rad) => `inset(${r.top.toFixed(1)}px ${(W - r.right).toFixed(1)}px ${(H - r.bottom).toFixed(1)}px ${r.left.toFixed(1)}px round ${rad.toFixed(1)}px)`;
+  const lerpRect = (a, W, H, p) => ({ left: a.left * (1 - p), top: a.top * (1 - p), right: a.right + (W - a.right) * p, bottom: a.bottom + (H - a.bottom) * p });
+
+  // A board opens out of its pile: the pile's cover grows into the page and dissolves into it, the page's own
+  // title and pictures arrive once there is room, and Home dims evenly underneath (no strips of it left behind).
+  const coverLook = (source) => (screen, under) => {
+    const W = innerWidth, H = innerHeight, r = source.getBoundingClientRect();
+    const pic = source.querySelector('.pile-img, .pile-ph');
+    const pr = pic ? pic.getBoundingClientRect() : r, rad = pic ? parseFloat(getComputedStyle(pic).borderRadius) || 10 : 16;
+    const ghost = (pic || source).cloneNode(true);
+    ghost.removeAttribute('id'); ghost.setAttribute('aria-hidden', 'true'); ghost.classList.add('route-ghost', 'coverghost');
+    Object.assign(ghost.style, { position: 'fixed', left: '0', top: '0', margin: '0', zIndex: '8', pointerEvents: 'none', transform: 'none', inset: 'auto' });
+    ctx.app.appendChild(ghost);
+    source.style.visibility = 'hidden';
+    return {
+      paint(p) {
+        const e = 1 - (1 - p) ** 2, b = lerpRect(pr, W, H, e), round = rad * (1 - e); // the shell gets to full size early
+        screen.style.clipPath = inset(b, W, H, round);
+        Object.assign(ghost.style, { left: b.left.toFixed(1) + 'px', top: b.top.toFixed(1) + 'px', width: (b.right - b.left).toFixed(1) + 'px', height: (b.bottom - b.top).toFixed(1) + 'px', borderRadius: round.toFixed(1) + 'px', opacity: (1 - smooth(0, 0.45, p)).toFixed(3) });
+        screen.style.setProperty('--route-content-opacity', smooth(0.74, 1, p).toFixed(3)); // once it holds all of the page's words
+        under.style.opacity = (1 - 0.6 * smooth(0, 0.6, p)).toFixed(3);
+      },
+      end() { ghost.remove(); source.style.visibility = ''; }
+    };
+  };
+  // Search and Sync grow from their header button as a liquid circle. The opaque surface opens first; its contents
+  // arrive only after there is room, so no word is cut by the moving edge.
+  const liquidLook = (source) => (screen, under) => {
+    const r = source.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const r0 = Math.min(r.width, r.height) / 2, far = Math.hypot(Math.max(cx, innerWidth - cx), Math.max(cy, innerHeight - cy)) + 2;
+    const ghost = source.cloneNode(true);
+    ghost.removeAttribute('id'); ghost.setAttribute('aria-hidden', 'true'); ghost.classList.add('route-ghost');
+    Object.assign(ghost.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', margin: '0', zIndex: '8', pointerEvents: 'none' });
+    ctx.app.appendChild(ghost);
+    source.style.visibility = 'hidden';
+    return {
+      paint(q) {
+        const spread = Math.min(1, q / 0.55);
+        screen.style.clipPath = `circle(${(r0 + (far - r0) * spread).toFixed(1)}px at ${cx.toFixed(1)}px ${cy.toFixed(1)}px)`;
+        const shade = Math.round(11 + 11 * (1 - q));
+        screen.style.background = `url(img/grain-soft.png) repeat 0 0 / 160px, rgb(${shade} ${shade} ${shade})`;
+        screen.style.setProperty('--route-content-opacity', String(Math.max(0, Math.min(1, (q - 0.55) / 0.3))));
+        ghost.style.opacity = String(1 - spread);
+        under.style.opacity = String(1 - Math.min(1, q / 0.08));
+      },
+      end() { ghost.remove(); source.style.visibility = ''; screen.style.background = ''; }
+    };
+  };
+  // A new note out of the orb: the round button opens up into the note, one opaque shell growing from the orb's own
+  // circle. Its purple and small plus fade before it has grown much (the plus never grows); the note's words and
+  // controls arrive once it nearly fills the screen. An untouched note folds back into the orb the same way.
+  const orbLook = () => (screen, under) => {
+    const W = innerWidth, H = innerHeight, o = window.NBSurface.orb();
+    const r = { left: o.x, top: o.y, right: o.x + o.w, bottom: o.y + o.h };
+    const face = document.createElement('div');
+    face.className = 'growface'; face.setAttribute('aria-hidden', 'true');
+    face.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="left:${(o.x + o.w / 2 - 14).toFixed(1)}px;top:${(o.y + o.h / 2 - 14).toFixed(1)}px"><path d="M12 5v14M5 12h14"/></svg>`;
+    screen.appendChild(face);
+    return {
+      paint(p) {
+        const e = 1 - (1 - p) ** 2;
+        screen.style.clipPath = inset(lerpRect(r, W, H, e), W, H, 30 * (1 - e));
+        face.style.opacity = (1 - smooth(0, 0.14, e)).toFixed(3); // purple only while it is still about the orb's size
+        screen.style.setProperty('--route-content-opacity', smooth(0.8, 1, p).toFixed(3));
+        under.style.opacity = '';
+      },
+      end() { face.remove(); },
+      after(opening) { if (!opening) ctx.orbBack(); }
+    };
+  };
+
+  // Runs fn (which moves `el` in the page) and puts back every scroll position inside it.
+  function keepScroll(el, fn) {
+    const saved = [el, ...el.querySelectorAll('.rail, .grid, .covertiles')].map((n) => [n, n.scrollTop, n.scrollLeft]);
+    fn();
+    for (const [n, top, left] of saved) { if (n.scrollTop !== top) n.scrollTop = top; if (n.scrollLeft !== left) n.scrollLeft = left; }
+  }
+
   function animateSwap(oldEl, el, kind) {
     const stage = ctx.$('#stage');
     if (!oldEl || oldEl === el) return;
     oldEl.inert = true;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { if (oldEl !== ctx.home()) oldEl.remove(); else oldEl.style.visibility = 'hidden'; return; }
-    const back = kind === 'unzoom' || kind === 'pop';
-    if (back) stage.insertBefore(el, oldEl); // the screen being left stays on top while it goes
+    if (calm() && !['grow', 'open', 'close'].includes(kind)) { if (oldEl !== ctx.home()) oldEl.remove(); else oldEl.style.visibility = 'hidden'; return; }
+    const back = kind === 'unzoom' || kind === 'pop' || kind === 'close' || kind === 'binned';
+    // The screen being left stays on top while it goes. Only move the one returned to if it isn't already
+    // underneath: moving an element in the page throws away its scroll positions (the board rail's included).
+    if (back && el.compareDocumentPosition(oldEl) !== Node.DOCUMENT_POSITION_FOLLOWING) keepScroll(el, () => stage.insertBefore(el, oldEl));
     const o = { duration: DUR, easing: EASE };
-    const card = (kind === 'zoom' ? oldEl : el).querySelector(`[data-a="open"][data-v="${CSS.escape(S.item || '')}"]`);
+    if (kind === 'open' || kind === 'close') {
+      const source = S.origin && S.origin.isConnected ? S.origin : null;
+      S.origin = null;
+      if (source && source.getBoundingClientRect().width) { route(oldEl, el, kind, source.dataset.route === 'liquid' ? liquidLook(source) : coverLook(source)); return; }
+      kind = kind === 'open' ? 'push' : 'pop';
+    }
+    if (kind === 'grow') { route(oldEl, el, 'open', orbLook()); return; }
+    const card = (kind === 'zoom' ? oldEl : el).querySelector(`.grid:not(.peek) [data-a="open"][data-v="${CSS.escape(S.item || '')}"]`);
     const rect = card?.getBoundingClientRect();
     const scale = rect ? Math.min(rect.width / innerWidth, rect.height / innerHeight) : .84;
     const origin = rect ? `translate(${rect.x + rect.width / 2 - innerWidth / 2}px,${rect.y + rect.height / 2 - innerHeight / 2}px) scale(${scale})` : 'translateY(70px) scale(.84)';
@@ -144,29 +392,30 @@ window.NBMotion = (ctx) => {
       outAnim.onfinish = () => { if (ctx.current() === el) oldEl.style.visibility = 'hidden'; };
       return;
     } else if (kind === 'binned' && oldEl.classList.contains('media-screen')) {
-      if (back) stage.insertBefore(el, oldEl);
       lightboxBin(oldEl);
+      return;
+    } else if (kind === 'binned' && oldEl.classList.contains('note-screen')) {
+      noteBin(oldEl);
       return;
     } else if (kind === 'unzoom' && oldEl.classList.contains('media-screen')) {
       lightboxClose(oldEl, el);
       return;
+    } else if (kind === 'unzoom' && oldEl.classList.contains('note-screen') && (!onScreen(rect) || oldEl.__route) && oldEl.dataset.draft) {
+      route(oldEl, el, 'close', orbLook()); // an untouched new note goes back into the orb it came from
+      return;
     } else if ((kind === 'zoom' || kind === 'unzoom') && onScreen(rect)) {
-      // Notes: the card itself opens up into the note (its edges grow to the screen's; nothing shrinks),
-      // and folds back into the card on the way out. The screen underneath stays put.
-      const W = innerWidth, H = innerHeight;
-      const card = `inset(${rect.top.toFixed(1)}px ${(W - rect.right).toFixed(1)}px ${(H - rect.bottom).toFixed(1)}px ${rect.left.toFixed(1)}px round 20px)`;
-      const full = 'inset(0px 0px 0px 0px round 0px)';
+      // Notes: the note itself grows out of its card and folds back into it. The screen underneath stays put.
       const note = kind === 'zoom' ? el : oldEl;
-      const fold = note.animate([{ clipPath: kind === 'zoom' ? card : full }, { clipPath: kind === 'zoom' ? full : card }], { ...o, fill: 'forwards' });
-      note.querySelectorAll('.notestage > *, .sheet').forEach((x) => x.animate(kind === 'zoom'
-        ? [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }]
-        : [{ opacity: 1 }, { opacity: 0 }], { duration: kind === 'zoom' ? DUR : DUR * 0.5, delay: kind === 'zoom' ? DUR * 0.25 : 0, easing: EASE, fill: 'both' }));
+      if (note.__route) { cancelAnimationFrame(note.__route.raf); if (note.__route.end) note.__route.end(); note.__route = null; note.classList.remove('route-morph'); note.style.clipPath = ''; note.style.removeProperty('--route-content-opacity'); }
+      card.style.visibility = 'hidden';
+      const fold = noteMorph(note, rect, kind === 'zoom');
       if (kind === 'zoom') {
-        fold.onfinish = () => { fold.cancel(); if (ctx.current() === el) oldEl.style.visibility = 'hidden'; };
+        fold.onfinish = () => { fold.cancel(); note.style.transformOrigin = ''; card.style.visibility = ''; if (ctx.current() === el) oldEl.style.visibility = 'hidden'; };
       } else {
-        fold.onfinish = () => { if (ctx.current() === el) oldEl.style.visibility = 'hidden'; }; // kept underneath, as you left it
+        fold.onfinish = () => { card.style.visibility = ''; note.remove(); };
         oldEl.style.pointerEvents = 'none';
       }
+      fold.oncancel = () => { if (!note.__zoom || note.__zoom.real === fold) card.style.visibility = ''; }; // turned round: the card stays hidden under it
       return;
     } else if (kind === 'zoom') {
       // A card that's off screen: the screen rises into place over the one underneath.
@@ -181,232 +430,100 @@ window.NBMotion = (ctx) => {
     } else if (kind === 'pop') {
       el.animate([{ transform: 'translateX(-22%)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], o);
       outAnim = oldEl.animate([{ transform: 'none' }, { transform: 'translateX(100%)' }], o);
-    } else if (kind === 'tabR' || kind === 'tabL') {
-      // Along the bottom bar: the next screen comes from the side you moved towards.
-      const d = kind === 'tabR' ? 1 : -1;
-      el.animate([{ opacity: 0, transform: `translateX(${d * 16}%)` }, { opacity: 1, transform: 'none' }], { duration: DUR, easing: EASE });
-      outAnim = oldEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-d * 10}%)` }], { duration: NORMAL, easing: EASE });
     } else {
-      el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: NORMAL, easing: EASE });
-      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FAST, easing: EASE });
+      // A plain change: the old screen clears before the new one arrives, so two headlines never overlap.
+      el.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: NORMAL, delay: FAST * 0.6, easing: EASE, fill: 'backwards' });
+      outAnim = oldEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FAST * 0.6, easing: 'linear', fill: 'forwards' });
     }
     oldEl.style.pointerEvents = 'none';
     outAnim.onfinish = () => { if (oldEl !== ctx.home()) oldEl.remove(); else oldEl.style.visibility = 'hidden'; oldEl.style.pointerEvents = ''; }; // Home is kept, just hidden
   }
 
-  // The items panel's two resting places: down under the boards, or up under the top bar.
-  const liftStops = () => ({ up: (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--st')) || 0) + 58, down: parseFloat(app.style.getPropertyValue('--hero')) || 560 });
-  const liftY = (el) => new DOMMatrix(getComputedStyle(el).transform).m42;
-  let liftFrame = 0;
-  function paintLift(el, y) {
-    const { up, down } = liftStops();
-    el.style.transform = `translateY(${y.toFixed(1)}px)`;
-    ctx.home().querySelector('#topglass').style.opacity = Math.max(0, Math.min(1, (down - y) / (down - up))).toFixed(3);
-  }
-  // A small spring: a hard flick arrives fast and bounces a little past, a gentle one just settles.
-  function springLift(el, to, v0) {
-    cancelAnimationFrame(liftFrame);
-    let y = liftY(el), v = v0 || 0, last = performance.now();
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) y = to;
-    const step = (now) => {
-      const dt = Math.min(32, now - last) / 1000; last = now;
-      const a = -210 * (y - to) - 24 * v; // stiffness, damping (slightly under-damped)
-      v += a * dt; y += v * dt;
-      if (Math.abs(y - to) < 0.4 && Math.abs(v) < 8) { liftFrame = 0; el.style.transform = ''; ctx.home().querySelector('#topglass').style.opacity = ''; return; }
-      paintLift(el, y);
-      liftFrame = requestAnimationFrame(step);
-    };
-    liftFrame = requestAnimationFrame(step);
-  }
-  function setLift(v, velocity) {
-    S.lift = v;
-    const el = ctx.home() && ctx.home().querySelector('#lift');
-    if (!el) return;
-    const from = liftY(el);
-    el.classList.toggle('up', v);
-    ctx.home().querySelector('#topglass').classList.toggle('on', v);
-    el.querySelector('.grip').setAttribute('aria-label', v ? 'Lower items' : 'Lift items up');
-    if (!v) el.scrollTop = 0;
-    paintLift(el, from); // start the spring from wherever the panel is now
-    springLift(el, v ? liftStops().up : liftStops().down, velocity);
-  }
-
+  // Home: the name at the top sinks and fades as you scroll, and the tab bar gets a rule once it sticks. Press and
+  // hold the name to change its picture. Pull down from the very top and a sync button drops; let go past the
+  // line and it syncs. The board rail ticks as each pile passes.
   function wireHome(root) {
-    const lift = root.querySelector('#lift');
-    let y0 = 0, start = 0, dragging = false, caught = false, samples = [];
-    lift.addEventListener('touchstart', (e) => {
-      caught = !!liftFrame; cancelAnimationFrame(liftFrame); liftFrame = 0; // a finger catches it mid-spring
-      y0 = e.touches[0].clientY; start = liftY(lift); dragging = false; samples = [{ y: y0, t: e.timeStamp }];
+    const mast = root.querySelector('#mast'), bar = root.querySelector('#tabsbar'), rail = root.querySelector('#rail');
+    const top = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--st')) || 0;
+    let frame = 0, pile = 0;
+    root.addEventListener('scroll', () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const y = root.scrollTop, k = Math.min(1, y / 260);
+        mast.style.opacity = (1 - k * 0.9).toFixed(3);
+        bar.classList.toggle('stuck', bar.getBoundingClientRect().top <= top() + 1);
+      });
     }, { passive: true });
-    lift.addEventListener('touchmove', (e) => {
-      const y = e.touches[0].clientY, dy = y - y0;
-      samples.push({ y, t: e.timeStamp }); if (samples.length > 6) samples.shift();
-      if (!dragging) {
-        // Down: any drag moves it. Up: only a pull-down from the very top of the list (otherwise it scrolls).
-        if (S.gesture || Math.abs(dy) < 6 || (S.lift && (lift.scrollTop > 0 || dy < 0))) return;
-        dragging = true;
-      }
-      const { up, down } = liftStops();
-      let to = start + (y - y0);
-      if (to < up) to = up - (up - to) * 0.25; // rubbery past the ends
-      if (to > down) to = down + (to - down) * 0.3;
-      paintLift(lift, to);
+    rail.addEventListener('scroll', () => { const k = Math.round(rail.scrollLeft / 146); if (k !== pile) { pile = k; tick(); } }, { passive: true });
+    // Hold a board to rename, pin or delete it.
+    let railHold = 0, railHeld = false, rx = 0, ry = 0;
+    rail.addEventListener('touchstart', (e) => {
+      const p = e.target.closest('.pile[data-v]'); clearTimeout(railHold); if (!p || e.touches.length > 1) return;
+      rx = e.touches[0].clientX; ry = e.touches[0].clientY;
+      railHeld = false; railHold = setTimeout(() => { railHold = 0; railHeld = true; swallowClick(); window.nbHap('heavy'); S.board = p.dataset.v; ctx.actions().editBoard(); }, 420);
     }, { passive: true });
-    const end = () => {
-      if (!dragging) { if (caught) setLift(S.lift); return; } // caught but not dragged: carry on to where it was going
-      dragging = false;
-      const a = samples[0], b = samples[samples.length - 1];
-      const v = b && a && b.t > a.t ? ((b.y - a.y) / (b.t - a.t)) * 1000 : 0; // px per second, + is down
-      const { up, down } = liftStops(), y = liftY(lift);
-      const goUp = Math.abs(v) > 350 ? v < 0 : y < (up + down) / 2;
-      setLift(goUp, v);
+    rail.addEventListener('touchmove', (e) => { if (railHold && Math.hypot(e.touches[0].clientX - rx, e.touches[0].clientY - ry) > 8) { clearTimeout(railHold); railHold = 0; } }, { passive: true });
+    rail.addEventListener('touchend', () => { if (railHeld) { railHeld = false; swallowClick(); } clearTimeout(railHold); railHold = 0; }, { passive: true });
+
+    // Pull down from the very top: a small purple button drops from the top edge and turns as you pull; past the
+    // line it fills and ticks; let go to sync. Nothing on the page stretches.
+    const ind = ctx.$('#pullind');
+    let y0 = null, x0 = 0, dy = 0, armed = false, hold = 0, held = false;
+    const drop = (d) => {
+      const p = Math.min(1, d / 64);
+      ind.style.opacity = Math.min(1, d / 30).toFixed(3); // a tiny accidental pull shows only a faint tip at the top edge
+      ind.style.transform = `translate(-50%, ${(-64 + d * 1.15).toFixed(1)}px) rotate(${(p * 300).toFixed(0)}deg) scale(${(0.7 + 0.3 * p).toFixed(3)})`;
+      ind.style.setProperty('--p', (p * p).toFixed(3)); // eases into the colour rather than switching
+      ind.classList.toggle('armed', p >= 1);
     };
-    lift.addEventListener('touchend', end, { passive: true });
-    lift.addEventListener('touchcancel', end, { passive: true });
-    lift.addEventListener('wheel', (e) => { if (!S.lift && e.deltaY > 0) setLift(true); else if (S.lift && lift.scrollTop <= 0 && e.deltaY < 0) setLift(false); }, { passive: true });
+    root.addEventListener('touchstart', (e) => {
+      x0 = e.touches[0].clientX;
+      y0 = root.scrollTop <= 0 && !e.target.closest('#rail') && !S.select && !ctx.coverOpen() ? e.touches[0].clientY : null; dy = 0; armed = false;
+      clearTimeout(hold);
+      if (e.target.closest('#mani') && !ctx.coverOpen()) { ctx.dots.startCharge(e.touches[0].clientX, e.touches[0].clientY); held = false; hold = setTimeout(() => { hold = 0; y0 = null; held = true; ctx.actions().cover(); }, 460); }
+    }, { passive: true });
+    root.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      if (hold && (Math.abs(t.clientY - (y0 === null ? t.clientY : y0)) > 10 || Math.abs(t.clientX - x0) > 10)) { clearTimeout(hold); hold = 0; ctx.dots && ctx.dots.cancelCharge(); }
+      if (y0 === null || S.gesture) return;
+      const d = t.clientY - y0;
+      if (root.scrollTop > 0 || d <= 0) { if (dy) { dy = 0; drop(0); } return; }
+      clearTimeout(hold); hold = 0; ctx.dots && ctx.dots.cancelCharge();
+      dy = Math.min(110, d * 0.55); drop(dy);
+      if ((dy >= 64) !== armed) { armed = dy >= 64; if (armed) window.nbHap('soft'); }
+    }, { passive: true });
+    const release = () => {
+      // The finger that opened the picture panel is still down: its lift must not also choose a picture now under it.
+      if (held) { held = false; swallowClick(); }
+      clearTimeout(hold); hold = 0;
+      if (hold === 0 && ctx.dots) ctx.dots.cancelCharge();
+      if (y0 === null) return;
+      y0 = null;
+      const fire = armed, from = dy; armed = false; dy = 0;
+      if (from) {
+        ind.style.transition = 'transform .3s cubic-bezier(.22,1,.36,1), opacity .25s, background-color .3s, border-color .3s, color .3s';
+        ind.style.setProperty('--p', fire ? '1' : '0');
+        ind.style.transform = `translate(-50%, ${fire ? 30 : -64}px) rotate(${fire ? 360 : 0}deg) scale(${fire ? 1 : .7})`;
+        setTimeout(() => { ind.style.opacity = '0'; setTimeout(() => { ind.style.transition = ''; ind.classList.remove('armed'); ind.style.removeProperty('--p'); }, 260); }, fire ? 700 : 120);
+      }
+      if (fire) ctx.actions().pullSync();
+    };
+    root.addEventListener('touchend', release, { passive: true });
+    root.addEventListener('touchcancel', release, { passive: true });
   }
 
-  // On every grid: flick a stack sideways to go through it; press and hold a card to start picking.
-  // The tap the browser makes at the end of a flick or long press is swallowed (only that one).
+  // The tap the browser makes at the end of a long press, a carry or a flick is swallowed (only that one).
   let swallow = 0;
   const takeSwallowed = () => { if (!swallow) return false; clearTimeout(swallow); swallow = 0; return true; };
   const swallowClick = () => { clearTimeout(swallow); swallow = setTimeout(() => { swallow = 0; }, 300); };
-  // Press and hold a card: it lifts. Drag it onto another card (or a stack) and let go to stack them;
-  // let go without moving to start picking instead. A sideways flick on a stack goes through it.
-  function wireGrid(grid) {
-    if (grid.dataset.wired) return;
-    grid.dataset.wired = '1';
-    let x0 = 0, y0 = 0, t0 = 0, mode = null, stack = null, topEl = null, hold = 0, target = null, over = null;
-    let fx = 0, fy = 0, scroller = null, scroll0 = 0, edgeFrame = 0;
-    // Where the held card is drawn: under the finger, allowing for any scrolling since the drag began.
-    function placeHeld() {
-      const dx = fx - x0, dy = fy - y0 + (scroller ? scroller.scrollTop - scroll0 : 0);
-      target.style.transform = `translate(${dx}px,${dy.toFixed(1)}px) scale(1.06) rotate(${(dx / 30).toFixed(2)}deg)`;
-      target.style.pointerEvents = 'none';
-      const under = document.elementFromPoint(fx, fy);
-      target.style.pointerEvents = '';
-      const next = under && under.closest('.grid .card');
-      const hit = next && next !== target ? next : null;
-      if (hit !== over) { if (over) over.classList.remove('droptarget'); if (hit) { hit.classList.add('droptarget'); tick(); } over = hit; }
-    }
-    // Holding a card near the top or bottom edge scrolls the list, faster the closer you are.
-    function edgeScroll() {
-      edgeFrame = 0;
-      if (mode !== 'drag' || !scroller) return;
-      const r = scroller.getBoundingClientRect(), top = Math.max(r.top, 0) + 110, bottom = Math.min(r.bottom, innerHeight) - 130;
-      const speed = fy < top ? -Math.min(18, (top - fy) / 5) : fy > bottom ? Math.min(18, (fy - bottom) / 5) : 0;
-      if (!speed) return;
-      const before = scroller.scrollTop;
-      scroller.scrollTop += speed;
-      if (scroller.scrollTop !== before) placeHeld();
-      edgeFrame = requestAnimationFrame(edgeScroll);
-    }
-    const reset = (c) => { c.style.transition = ''; c.style.transform = ''; c.style.zIndex = ''; c.classList.remove('lifted'); };
-    grid.addEventListener('touchstart', (e) => {
-      if (e.touches.length > 1) return;
-      const t = e.touches[0];
-      x0 = t.clientX; y0 = t.clientY; t0 = e.timeStamp; mode = 'maybe'; S.gesture = null; over = null;
-      clearTimeout(swallow); swallow = 0; // a new touch means the last gesture's stray tap never came
-      target = e.target.closest('.card:not(.idea)'); // ideas aren't yours yet: nothing to lift or stack
-      stack = e.target.closest('.stackcard');
-      topEl = stack && [...stack.querySelectorAll('.fanitem')].find((b) => !b.style.pointerEvents);
-      clearTimeout(hold);
-      if (target && !S.select && !target.closest('#bingrid')) hold = setTimeout(() => {
-        mode = 'lift'; S.gesture = 'lift'; tick();
-        target.classList.add('lifted');
-        target.style.zIndex = '20';
-        target.style.transition = 'transform .25s cubic-bezier(.2,.9,.3,1.3)';
-        target.style.transform = 'scale(1.06)';
-      }, 420);
-    }, { passive: true });
-    grid.addEventListener('touchmove', (e) => {
-      if (!mode) return;
-      const t = e.touches[0], dx = t.clientX - x0, dy = t.clientY - y0;
-      if (mode === 'lift' || mode === 'drag') {
-        e.preventDefault(); // the page doesn't scroll while a card is held
-        if (mode === 'lift' && Math.hypot(dx, dy) < 6) return;
-        if (mode === 'lift') { scroller = target.closest('.lift.up') || (target.closest('.lift') ? null : target.closest('.screen')); scroll0 = scroller ? scroller.scrollTop : 0; }
-        mode = 'drag';
-        target.style.transition = 'none';
-        fx = t.clientX; fy = t.clientY;
-        placeHeld();
-        if (!edgeFrame) edgeFrame = requestAnimationFrame(edgeScroll);
-        return;
-      }
-      if (mode === 'maybe') {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        clearTimeout(hold);
-        if (stack && topEl && !S.select && Math.abs(dx) > Math.abs(dy) * 1.2) { mode = 'stack'; S.gesture = 'stack'; topEl.style.transition = 'none'; }
-        else { mode = null; return; }
-      }
-      topEl.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
-    }, { passive: false });
-    const end = (e) => {
-      clearTimeout(hold);
-      cancelAnimationFrame(edgeFrame); edgeFrame = 0;
-      const was = mode; mode = null;
-      setTimeout(() => { S.gesture = null; }, 0);
-      if (was === 'lift') { swallowClick(); reset(target); startSelect(target); return; } // held still: start picking
-      if (was === 'drag') {
-        swallowClick();
-        const card = target, onto = over;
-        if (onto) {
-          onto.classList.remove('droptarget');
-          // Drop: the card shrinks into the middle of the one it was dropped on (its rect already includes the drag), then they become one stack.
-          const a = card.getBoundingClientRect(), b = onto.getBoundingClientRect();
-          card.style.transition = 'transform .2s ease-in, opacity .2s';
-          card.style.transform = `translate(${b.x + b.width / 2 - (a.x + a.width / 2)}px,${b.y + b.height / 2 - (a.y + a.height / 2)}px) scale(.5)`;
-          const ids = cardIds(card).concat(cardIds(onto));
-          setTimeout(() => { reset(card); ctx.actions().stackIds(ids); }, 190);
-        } else {
-          card.style.transition = 'transform .35s cubic-bezier(.2,.9,.3,1.15)';
-          card.style.transform = '';
-          setTimeout(() => reset(card), 360);
-        }
-        return;
-      }
-      if (was !== 'stack') return;
-      swallowClick();
-      const dx = (e.changedTouches[0] || {}).clientX - x0, v = dx / Math.max(1, e.timeStamp - t0);
-      const el = topEl, st = stack;
-      if (Math.abs(dx) > 60 || Math.abs(v) > 0.45) {
-        if (dx < 0) {
-          // Next: the top card flies off to the left, then tucks in at the back.
-          el.style.transition = 'transform .18s ease-out';
-          el.style.transform = `translateX(${-1.3 * el.offsetWidth}px) rotate(-14deg)`;
-          setTimeout(() => { el.style.transition = ''; el.style.transform = ''; ctx.turnStack(st, 1); }, 170);
-        } else { el.style.transition = ''; el.style.transform = ''; ctx.turnStack(st, -1); } // previous: the back card comes to the front
-      } else { el.style.transition = ''; el.style.transform = ''; }
-    };
-    grid.addEventListener('touchend', end, { passive: true });
-    grid.addEventListener('touchcancel', end, { passive: true });
-  }
+  const clearSwallow = () => { clearTimeout(swallow); swallow = 0; }; // a new touch means the last gesture's stray tap never came
 
-  // Picking: tap cards (a stack counts as all of its pictures), then Stack.
-  const cardIds = (c) => (c.classList.contains('stackcard') ? [...c.querySelectorAll('.fanitem')].map((b) => b.dataset.v) : [c.dataset.v]);
-  function startSelect(c) { S.select = new Set(); tick(); toggleSelect(c); }
-  function toggleSelect(c) {
-    const ids = cardIds(c), on = !ids.every((id) => S.select.has(id));
-    ids.forEach((id) => (on ? S.select.add(id) : S.select.delete(id)));
-    markSelection(); ctx.updateChrome();
-  }
-  function markSelection() {
-    app.querySelectorAll('.grid .card').forEach((c) => {
-      const on = !!S.select && cardIds(c).every((id) => S.select.has(id));
-      c.classList.toggle('sel', on);
-      c.setAttribute('aria-pressed', S.select ? String(on) : '');
-      if (!S.select) c.removeAttribute('aria-pressed');
-    });
-  }
-  const pickedCards = () => app.querySelectorAll('.grid .card.sel').length;
-  function endSelect() { S.select = null; markSelection(); ctx.updateChrome(); }
-
-  // Floating sheets (Add, Cover, small forms, a pin): drag one down and it follows the finger; far or fast
-  // enough and it closes, otherwise it settles back. Typing in a field is left alone.
+  // Floating sheets (small forms, a pin): drag one down and it follows the finger; far or fast enough and it
+  // closes, otherwise it settles back. Typing in a field is left alone.
   function wirePops(els, close) {
     for (const el of els) {
-      // Scrollable sheets must leave their body to the browser. Only an explicit drag handle may dismiss
-      // them; Add keeps its whole short sheet as the handle because it has no scrollable body.
+      // Scrollable sheets must leave their body to the browser. Only an explicit drag handle may dismiss them.
       const handle = el.querySelector('[data-pop-drag]') || (el.id === 'addsheet' ? el : null);
       if (!handle) continue;
       let y0 = null, dy = 0, dragging = false, samples = [];
@@ -440,7 +557,7 @@ window.NBMotion = (ctx) => {
         if (!cancelled && (dy > 70 || v > 0.5)) { close(); return; }
         const from = el.style.transform;
         el.style.transform = '';
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) el.animate([{ transform: from }, { transform: 'none' }], { duration: NORMAL, easing: EASE });
+        if (!calm()) el.animate([{ transform: from }, { transform: 'none' }], { duration: NORMAL, easing: EASE });
       };
       handle.addEventListener('pointerdown', (e) => {
         if (!e.isPrimary || e.button !== 0 || el.dataset.leaving) return;
@@ -452,5 +569,5 @@ window.NBMotion = (ctx) => {
     }
   }
 
-  return { showSheet, flipGrid, wirePops, animateSwap, setLift, wireHome, wireGrid, markSelection, toggleSelect, endSelect, takeSwallowed, pickedCards };
+  return { showSheet, flipGrid, flipRail, wirePops, animateSwap, wireHome, takeSwallowed, swallowClick, clearSwallow };
 };

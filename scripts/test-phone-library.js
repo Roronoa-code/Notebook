@@ -40,20 +40,32 @@ const { chromium } = require('playwright-core');
     const thisMonth = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase();
     assert.deepEqual(await page.locator('#homegrid .dategroup').allInnerTexts(), [thisMonth, 'JUNE 2025', 'FEBRUARY 2025'], 'no date inside: the day it was added');
     assert.equal(await page.locator('#homegrid .dategroup:nth-of-type(2) + .card').getAttribute('aria-label'), 'Open Sage cardigan fit', 'newest taken first');
-    assert.match(await page.locator('#homesort').innerText(), /Date taken/);
+    assert.match(await page.locator('#homesort .sortpill').getAttribute('aria-label'), /Date taken/);
     await page.locator('#homesort .sortpill').click();
     await page.locator('.sortmenu:not(.out) [data-a="sortPick"][data-v="name"]').click();
     await page.waitForTimeout(600);
-    const names = (await page.locator('#homegrid > .card').evaluateAll((cs) => cs.map((c) => c.getAttribute('aria-label').replace(/^Open /, ''))));
+    // (in sorted order: cards are placed column by column, each into the shorter one, so the page order is not the list order)
+    const names = (await page.locator('#homegrid > .card').evaluateAll((cs) => cs.sort((a, b) => a.dataset.n - b.dataset.n).map((c) => c.getAttribute('aria-label').replace(/^Open /, ''))));
     assert.deepEqual(names, names.slice().sort((a, b) => a.localeCompare(b, 'en-GB', { numeric: true, sensitivity: 'base' })), 'A to Z');
     await page.locator('#homesort .sortpill').click();
     await page.locator('.sortmenu:not(.out) [data-a="sortPick"][data-v="added"]').click();
     await page.waitForTimeout(500);
     assert.equal(await page.locator('#homegrid .dategroup').count(), 0);
 
+    // Search and Sync are in Home's header, Home is reached with Back; the orb's fan creates things.
+    const holdOrb = async () => { await page.locator('#orb').waitFor({ state: 'visible', timeout: 8000 }); await page.waitForTimeout(450); const b = await page.locator('#orb').boundingBox(); await page.mouse.move(b.x + 30, b.y + 30); await page.mouse.down(); await page.waitForTimeout(400); await page.mouse.up(); }; // tap = new note; hold = the arc
+    const goTo = async (label) => {
+      if (label === 'Home') { await page.evaluate(() => { while (nbBack()) { /* back to Home */ } }); await page.waitForTimeout(700); return; }
+      if (label === 'Search' || label === 'Sync') { if (!(await page.locator('#homegrid:visible').count())) { await page.evaluate(() => { while (nbBack()) { /* back to Home */ } }); await page.waitForTimeout(700); } await page.locator(label === 'Search' ? '#searchbtn' : '#pulse').click(); await page.waitForTimeout(700); return; }
+      await holdOrb();
+      await page.locator(`.fan-item[aria-label="${label}"]`).waitFor();
+      await page.waitForTimeout(520);
+      await page.locator(`.fan-item[aria-label="${label}"]`).click();
+      await page.waitForTimeout(700);
+    };
+    await page.setViewportSize({ width: 360, height: 560 });
     // In a board, scrolled down: opening a picture and closing it comes back to the same place, same cards.
-    await page.locator('.pill[data-pill="0"]').click();
-    if (!(await page.locator('#boardgrid').count())) await page.locator('.pill[data-pill="0"]').click();
+    await page.locator('.pile[data-v]:first-of-type').click();
     await page.locator('#boardgrid').waitFor();
     await page.waitForTimeout(900);
     const scr = page.locator('.screen:has(#boardgrid)');
@@ -71,7 +83,7 @@ const { chromium } = require('playwright-core');
     await page.waitForTimeout(700);
 
     // Search: titles, photo notes, note text and board names.
-    await page.locator('#nav-search').click();
+    await goTo('Search');
     await page.locator('#q').waitFor();
     const results = async (q) => { await page.locator('#q').fill(q); return page.locator('#searchgrid .card').count(); };
     assert.equal(await results('plaid'), 1, 'finds by title');
@@ -89,7 +101,7 @@ const { chromium } = require('playwright-core');
     await page.waitForTimeout(500);
     await page.locator('[data-a="bin"]').click();
     await page.waitForTimeout(700);
-    await page.locator('#nav-sync').click();
+    await goTo('Sync');
     assert.match(await page.locator('#binrowcount').innerText(), /1 item/i);
     await page.locator('[data-a="openBin"]').click();
     await page.locator('#bingrid .card').waitFor();
@@ -123,12 +135,9 @@ const { chromium } = require('playwright-core');
     await page.locator('#syncbody').waitFor();
 
     // A real library can have many boards. They must scroll without covering the note editor or Done.
-    await page.locator('#nav-home').click();
-    await page.waitForTimeout(600);
+    await goTo('Home');
     await page.evaluate(() => { for (let i = 0; i < 28; i++) NBNative.addBoard(`Test board ${i}`); nbOnState(NBNative.state()); });
-    await page.locator('#addbtn').click();
-    await page.locator('[data-a="addNote"]').click();
-    await page.waitForTimeout(650);
+    await goTo('Note');
     const noteLayout = await page.evaluate(() => {
       const editor = document.querySelector('.editor').getBoundingClientRect(), sheet = document.querySelector('.sheet.compact').getBoundingClientRect();
       const fields = document.querySelector('.sheet.compact .media-fields'), done = document.querySelector('.sheet.compact [data-a="back"]').getBoundingClientRect();
@@ -149,7 +158,7 @@ const { chromium } = require('playwright-core');
     await page.locator('.sheet.compact [data-a="back"]').click();
     await page.waitForTimeout(650);
     assert.equal(await page.locator('.note-screen').isVisible(), false, 'Done returns to Home');
-    assert.equal(await page.locator('#nav-home').getAttribute('aria-current'), 'page');
+    assert.equal(await page.locator('#homegrid').isVisible(), true);
     assert.deepEqual(errors, []);
     console.log('Phone library passed: mood-board cards, crops from the PC, search (title, note, note text, board), Bin put back, delete forever and empty Bin.');
   } finally { await browser.close(); }

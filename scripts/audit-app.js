@@ -25,7 +25,15 @@ const keep = process.argv.includes('--keep');
     await page.locator('#welcome').waitFor();
     await shot('00-welcome');
     const files = fs.readdirSync(POOL).filter((f) => /^(outfit|wallpaper)/.test(f)).slice(0, 36).map((f) => path.join(POOL, f));
-    await app.evaluate(({ dialog }, [lib, list]) => { const q = [[lib], list]; dialog.showOpenDialog = async () => ({ canceled: false, filePaths: q.shift() }); dialog.showMessageBox = async () => ({ response: 0 }); }, [LIB, files]);
+    fs.mkdirSync(LIB, { recursive: true });
+    await app.evaluate(({ BrowserWindow }, choices) => {
+      const web = BrowserWindow.getAllWindows()[0].webContents, send = web.send.bind(web);
+      web.send = (channel, ...args) => {
+        if (channel !== 'ui:request') return send(channel, ...args);
+        const request = args[0], value = request.kind === 'confirm' ? true : choices.shift();
+        web.executeJavaScript('nb.replyUI(' + JSON.stringify(request.id) + ',' + JSON.stringify(value) + ')');
+      };
+    }, [[LIB], files]);
     await page.click('#w-choose');
     await page.locator('.bcard').first().waitFor();
     await page.click('#add-photos');

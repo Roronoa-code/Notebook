@@ -1,6 +1,10 @@
 // Stand-in for the app's native side, used only when the screens are opened outside the phone app
 // (e.g. testing on the PC). Inside the app, window.NBNative is provided by MainActivity.java and this does nothing.
-if (!window.NBNative) {
+// Sample notebook: with the phone app's own bridge present and the "demo" switch on, these screens run on
+// this in-memory stand-in instead, so the real library is never read or changed.
+const NB_REAL = window.NBNative || null;
+const NB_DEMO = !!NB_REAL && NB_REAL.getPref('demo') === '1';
+if (!NB_REAL || NB_DEMO) {
   window.NB_LIB = '';
   const now = () => new Date().toISOString();
   const id = () => Math.random().toString(36).slice(2);
@@ -22,6 +26,8 @@ if (!window.NBNative) {
     tombstones: { items: [], boards: [] },
     sync: { paired: false, pcName: '', lastSync: '' }
   };
+  // Saved an hour apart, newest first, as a real library would be.
+  db.items.forEach((x, i) => { x.importedAt = new Date(Date.now() - i * 3600e3).toISOString(); });
   const prefs = {};
   // Ideas as the PC would send them (pictures from the preview images).
   window.NB_FEED = 'img/';
@@ -39,12 +45,15 @@ if (!window.NBNative) {
   const ok = (extra) => JSON.stringify(Object.assign({ ok: true, state: db }, extra || {}));
   const find = (i) => db.items.find((x) => x.id === i);
   window.NBNative = {
+    demo: NB_DEMO,
+    exitDemo() { NB_REAL.setPref('demo', '0'); NB_REAL.reload(); },
+    haptic() {},
     state: () => JSON.stringify(db),
     tick() {},
     getPref: (k) => prefs[k] || '',
     setPref: (k, v) => { prefs[k] = v; },
-    pick() { window.nbOnToast && window.nbOnToast('(PC preview) The gallery opens here on the phone'); },
-    camera() { window.nbOnToast && window.nbOnToast('(PC preview) The camera opens here on the phone'); },
+    pick() { window.nbOnToast && window.nbOnToast('Sample notebook: the gallery is off'); },
+    camera() { window.nbOnToast && window.nbOnToast('Sample notebook: the camera is off'); },
     addNote(b) { const n = { id: id(), kind: 'note', title: 'Untitled note', html: '', boards: b ? [b] : [], importedAt: now(), updatedAt: now(), deletedAt: null }; db.items.unshift(n); return ok({ id: n.id }); },
     update(i, json) { Object.assign(find(i), JSON.parse(json), { updatedAt: now() }); return ok(); },
     bin(i) { find(i).deletedAt = now(); return ok(); },
@@ -55,10 +64,10 @@ if (!window.NBNative) {
     addBoard(name) { if (!name.trim()) return JSON.stringify({ error: 'Give the board a name.' }); const b = B(name.trim()); db.boards.push(b); return ok({ id: b.id }); },
     renameBoard(i, name) { db.boards.find((b) => b.id === i).name = name.trim(); return ok(); },
     deleteBoard(i) { db.boards = db.boards.filter((b) => b.id !== i); db.items.forEach((x) => { x.boards = x.boards.filter((b) => b !== i); }); return ok(); },
-    sync() { window.nbOnSync(JSON.stringify({ phase: 'error', message: '(PC preview) Syncing only works in the phone app.' })); },
+    sync() { window.nbOnSync(JSON.stringify({ phase: 'error', message: 'Sample notebook: syncing is off. Go back to your notebook to sync.' })); },
     syncQuiet() {},
-    scan() { window.nbOnPair(JSON.stringify({ ok: false, message: '(PC preview) Scanning only works in the phone app.' })); },
-    pairManual() { window.nbOnPair(JSON.stringify({ ok: false, message: '(PC preview) Pairing only works in the phone app.' })); },
+    scan() { window.nbOnPair(JSON.stringify({ ok: false, message: 'Sample notebook: pairing is off. Go back to your notebook to pair.' })); },
+    pairManual() { window.nbOnPair(JSON.stringify({ ok: false, message: 'Sample notebook: pairing is off. Go back to your notebook to pair.' })); },
     feed: () => JSON.stringify(feed),
     feedRefresh(k) { window.NB_MOCK_CALLS.push(['feedRefresh', k]); refreshIdeas(k); },
     feedReload(k) { window.NB_MOCK_CALLS.push(['feedReload', k]); refreshIdeas(k); },

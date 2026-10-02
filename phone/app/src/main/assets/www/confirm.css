@@ -1,0 +1,249 @@
+/* Border Beam 1.4.1 (libraries.dev), Copyright (c) 2026 Jakub Antalik, MIT. See vendor/LIBRARIES-LICENSE.txt.
+   Generated from the package's own renderer: size "pulse-inner", colorVariant "sunset", theme "dark",
+   staticColors (it stays in the sunset reds), on a 15px radius. On the board bar's delete button while it waits
+   for the second tap (confirm.js). */
+@property --bw1-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh1-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bw2-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh2-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bw3-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bh3-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bgh-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-tl-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-tr-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-bl-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bop-br-nb-confirm {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --bx1-nb-confirm {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by1-nb-confirm {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --bx2-nb-confirm {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by2-nb-confirm {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --bx3-nb-confirm {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --by3-nb-confirm {
+  syntax: "<length>";
+  initial-value: 0px;
+  inherits: true;
+}
+
+@property --beam-opacity-nb-confirm {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+@property --beam-hue-nb-confirm {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+
+[data-beam="nb-confirm"] {
+  position: relative;
+  border-radius: 15px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+[data-beam="nb-confirm"][data-active] {
+  animation: beam-fade-in-nb-confirm 0.6s ease forwards;
+}
+
+[data-beam="nb-confirm"][data-fading] {
+  animation: beam-fade-out-nb-confirm 0.5s ease forwards;
+}
+
+[data-beam="nb-confirm"][data-active]::after,
+[data-beam="nb-confirm"][data-fading]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 15px;
+  padding: 1px;
+  clip-path: inset(0 round 15px);
+  background: radial-gradient(ellipse calc(70px * var(--bw1-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(40px * var(--bh1-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(33% + var(--bx1-nb-confirm)) calc(-7.4% + var(--by1-nb-confirm)), rgba(255, 80, 50, var(--bop-tl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(60px * var(--bw2-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh2-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(12% + var(--bx2-nb-confirm)) calc(-5% + var(--by2-nb-confirm)), rgba(255, 160, 40, var(--bop-tl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(40px * var(--bw3-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(70px * var(--bh3-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx3-nb-confirm)) calc(68.3% + var(--by3-nb-confirm)), rgba(255, 120, 60, var(--bop-bl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(20px * var(--bw1-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh1-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx1-nb-confirm)) calc(68.3% + var(--by1-nb-confirm)), rgba(255, 200, 50, var(--bop-bl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(180px * var(--bw2-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(32px * var(--bh2-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(74.4% + var(--bx2-nb-confirm)) calc(100% + var(--by2-nb-confirm)), rgba(255, 100, 80, var(--bop-br-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(85px * var(--bw3-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(26px * var(--bh3-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(55% + var(--bx3-nb-confirm)) calc(100% + var(--by3-nb-confirm)), rgba(255, 180, 60, var(--bop-br-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(74px * var(--bw1-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(32px * var(--bh1-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(93.9% + var(--bx1-nb-confirm)) calc(0% + var(--by1-nb-confirm)), rgba(255, 60, 60, var(--bop-tr-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(26px * var(--bw2-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(42px * var(--bh2-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx2-nb-confirm)) calc(27.1% + var(--by2-nb-confirm)), rgba(255, 140, 50, var(--bop-tr-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(52px * var(--bw3-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(48px * var(--bh3-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx3-nb-confirm)) calc(27.1% + var(--by3-nb-confirm)), rgba(255, 90, 70, var(--bop-tr-nb-confirm)), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  will-change: opacity, filter;
+  opacity: calc(var(--beam-opacity-nb-confirm) * 1.54 * var(--beam-stroke-opacity, 1) * var(--beam-strength, 1));
+  filter: brightness(0.75) saturate(1.20);
+}
+
+[data-beam="nb-confirm"][data-active]::before,
+[data-beam="nb-confirm"][data-fading]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 15px;
+  clip-path: inset(0 round 15px);
+  background: radial-gradient(ellipse calc(65px * var(--bw1-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(35px * var(--bh1-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(33% + var(--bx1-nb-confirm)) calc(-7.4% + var(--by1-nb-confirm)), rgba(255, 80, 50, var(--bop-tl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(55px * var(--bw2-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(30px * var(--bh2-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(12% + var(--bx2-nb-confirm)) calc(-5% + var(--by2-nb-confirm)), rgba(255, 160, 40, var(--bop-tl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(35px * var(--bw3-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(65px * var(--bh3-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx3-nb-confirm)) calc(68.3% + var(--by3-nb-confirm)), rgba(255, 120, 60, var(--bop-bl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(15px * var(--bw1-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(30px * var(--bh1-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(2.1% + var(--bx1-nb-confirm)) calc(68.3% + var(--by1-nb-confirm)), rgba(255, 200, 50, var(--bop-bl-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(173px * var(--bw2-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(28px * var(--bh2-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(74.4% + var(--bx2-nb-confirm)) calc(100% + var(--by2-nb-confirm)), rgba(255, 100, 80, var(--bop-br-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(80px * var(--bw3-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(22px * var(--bh3-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(55% + var(--bx3-nb-confirm)) calc(100% + var(--by3-nb-confirm)), rgba(255, 180, 60, var(--bop-br-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(69px * var(--bw1-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(28px * var(--bh1-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(93.9% + var(--bx1-nb-confirm)) calc(0% + var(--by1-nb-confirm)), rgba(255, 60, 60, var(--bop-tr-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(22px * var(--bw2-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--bh2-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx2-nb-confirm)) calc(27.1% + var(--by2-nb-confirm)), rgba(255, 140, 50, var(--bop-tr-nb-confirm)), transparent),
+    radial-gradient(ellipse calc(47px * var(--bw3-nb-confirm) * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(44px * var(--bh3-nb-confirm) * var(--bgh-nb-confirm) * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at calc(100% + var(--bx3-nb-confirm)) calc(27.1% + var(--by3-nb-confirm)), rgba(255, 90, 70, var(--bop-tr-nb-confirm)), transparent),
+    radial-gradient(ellipse 60px 60px at 0% 0%, rgba(255, 255, 255, calc(0.18 * var(--bop-tl-nb-confirm))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 100% 0%, rgba(255, 255, 255, calc(0.18 * var(--bop-tr-nb-confirm))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 0% 100%, rgba(255, 255, 255, calc(0.18 * var(--bop-bl-nb-confirm))), transparent 70%),
+    radial-gradient(ellipse 60px 60px at 100% 100%, rgba(255, 255, 255, calc(0.18 * var(--bop-br-nb-confirm))), transparent 70%);
+  -webkit-mask-image:
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  -webkit-mask-composite: source-over;
+  mask-image:
+    linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+    linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+  mask-composite: add;
+  pointer-events: none;
+  z-index: 1;
+  will-change: opacity, filter;
+  opacity: calc(var(--beam-opacity-nb-confirm) * 0.44 * var(--beam-inner-opacity, 1) * var(--beam-strength, 1));
+  filter: brightness(0.75) saturate(1.20);
+}
+
+[data-beam="nb-confirm"] [data-beam-bloom] {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 15px;
+  clip-path: inset(0 round 15px);
+  background: radial-gradient(ellipse calc(84px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(48px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 33% -7.4%, rgba(255, 80, 50, 0.76), transparent),
+    radial-gradient(ellipse calc(72px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(42px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 12% -5%, rgba(255, 160, 40, 0.76), transparent),
+    radial-gradient(ellipse calc(48px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(84px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 2.1% 68.3%, rgba(255, 120, 60, 0.76), transparent),
+    radial-gradient(ellipse calc(215px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 74.4% 100%, rgba(255, 100, 80, 0.76), transparent),
+    radial-gradient(ellipse calc(102px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(31px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 55% 100%, rgba(255, 180, 60, 0.76), transparent),
+    radial-gradient(ellipse calc(89px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(38px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 93.9% 0%, rgba(255, 60, 60, 0.76), transparent),
+    radial-gradient(ellipse calc(62px * var(--pulse-glow-sx, 1) * var(--pulse-glow-boost, 1)) calc(58px * var(--pulse-glow-sy, 1) * var(--pulse-glow-boost, 1)) at 100% 27.1%, rgba(255, 90, 70, 0.76), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 3;
+  will-change: opacity;
+  opacity: 0;
+}
+
+[data-beam="nb-confirm"][data-active] [data-beam-bloom],
+[data-beam="nb-confirm"][data-fading] [data-beam-bloom] {
+  display: block;
+  opacity: calc(var(--beam-opacity-nb-confirm) * 0.66 * var(--beam-bloom-opacity, 1) * var(--beam-strength, 1));
+  filter: blur(8px) brightness(0.75) saturate(1.20);
+}
+
+@keyframes beam-fade-in-nb-confirm { to { --beam-opacity-nb-confirm: 1; } }
+@keyframes beam-fade-out-nb-confirm { from { --beam-opacity-nb-confirm: 1; } to { --beam-opacity-nb-confirm: 0; } }
+
+[data-beam="nb-confirm"][data-paused],
+[data-beam="nb-confirm"][data-paused]::after,
+[data-beam="nb-confirm"][data-paused]::before,
+[data-beam="nb-confirm"][data-paused] [data-beam-bloom] {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-beam="nb-confirm"][data-active],
+  [data-beam="nb-confirm"][data-fading],
+  [data-beam="nb-confirm"][data-active]::after,
+  [data-beam="nb-confirm"][data-fading]::after,
+  [data-beam="nb-confirm"][data-active]::before,
+  [data-beam="nb-confirm"][data-fading]::before,
+  [data-beam="nb-confirm"][data-active] [data-beam-bloom],
+  [data-beam="nb-confirm"][data-fading] [data-beam-bloom] {
+    animation: none !important;
+  }
+}

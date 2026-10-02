@@ -46,12 +46,22 @@ const { Library } = require('../main/library');
     assert.equal(trash.id,op.id);assert.equal(trash.kind,'trash');
     await request('/api/gallery/result/'+op.id,{status:'finished',results:[{key:item.key,state:'trashed',fingerprint:'version:1024:100:2'}]},token,session);
     assert.equal(gallery.history('phone-one')[0].results[0].state,'trashed');
+    // Google Photos copies: the phone reads each trashed file's SHA-1; the cloud copies with it go to Google Photos' trash, remembered for Restore
+    const hash='A'.repeat(27)+'=', sent=[], photos={trash:async h=>(sent.push(...h),{found:{[hash]:'dedupKey1234567890abcdef'},missing:[]}),restore:async k=>(sent.push(...k),{restored:k.length})};
+    const cloud=gallery.cloudTrash('phone-one',op.id,photos);
+    const hashing=(await request('/api/gallery/poll',{ready:true},token,session)).body.command;
+    assert.equal(hashing.kind,'hash');assert.deepEqual(hashing.args.keys,[item.key]);
+    await request('/api/gallery/result/'+hashing.id,{hashes:{[item.key]:hash}},token,session);
+    assert.deepEqual((await cloud).keys,{[item.key]:'dedupKey1234567890abcdef'});assert.deepEqual(sent,[hash]);
+    assert.equal((await gallery.cloudTrash('phone-one',op.id,photos)).keys[item.key],'dedupKey1234567890abcdef','a batch is only sent to Google Photos once');assert.equal(sent.length,1);
     const restored=await gallery.mutate('phone-one','restore',[item],op.id);
     assert.equal(gallery.history('phone-one')[0].items[0].fingerprint,'version:1024:100:2');
     gallery.revoke('phone-one'); await new Promise(r=>setImmediate(r));
     assert.equal(gallery.history('phone-one').find(o=>o.id===restored.id).status,'unknown');
-    assert.throws(()=>gallery.session('phone-one'),/Open Notebook/);
+    const back={...gallery.history('phone-one').find(o=>o.id===restored.id),status:'finished',results:[{key:item.key,state:'restored'}]};gallery.saveOperation(back);
+    assert.equal((await gallery.cloudRestore('phone-one',restored.id,photos)).restored,1,'restoring the batch brings its Google Photos copy back');assert.equal(sent.at(-1),'dedupKey1234567890abcdef');
+    assert.throws(()=>gallery.session('phone-one'),/Start Gallery cleanup on your phone/);
     const reopened=new Gallery(path.join(root,'gallery'));assert.equal(reopened.history('phone-one').length,2);
-    console.log('Gallery checks passed: TLS pinning, no plaintext downgrade, cross-device/session isolation, safe batch validation, durable results, restore identity and no replay on disconnect.');
+    console.log('Gallery checks passed: TLS pinning, no plaintext downgrade, cross-device/session isolation, safe batch validation, durable results, restore identity, Google Photos copies and no replay on disconnect.');
   } finally { await server.stop();fs.rmSync(root,{recursive:true,force:true}); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

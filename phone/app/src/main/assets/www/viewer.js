@@ -19,7 +19,7 @@ window.NBViewer = (() => {
     for (const key in target) v[key] = (vel && vel[key]) || 0;
     let last = performance.now(), frame = 0;
     const step = (now) => {
-      const dt = Math.min(32, now - last) / 1000; last = now;
+      const dt = Math.max(0, Math.min(32, now - last)) / 1000; last = now;
       let rest = true;
       for (const key in target) {
         v[key] += (-k * (state[key] - target[key]) - d * v[key]) * dt;
@@ -167,6 +167,12 @@ window.NBViewer = (() => {
     const mid = () => { const [a, b = a] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) }; };
     function begin() {
       const c = mid();
+      // A second finger changes what the gesture is: put right whatever the first one had in flight (a picture
+      // half swiped or pulled down, a half dragged sheet), so nothing is left offset behind a zoom.
+      if (g && pts.size > 1 && !open) {
+        if (g.mode === 'swipe' || g.mode === 'dismiss') { m.w = 0; m.dx = 0; m.dy = 0; dropPeeks(); const u = opt.under(); if (u && g.mode === 'dismiss') u.style.visibility = 'hidden'; paint(); }
+        else if (g.mode === 'sheet') setOpen(open);
+      }
       g = { mode: pts.size > 1 && zoomable && !open ? 'pinch' : z.s > 1.01 ? 'pan' : Math.abs(m.w) > 0.5 ? 'swipe' : 'pending', x: c.x, y: c.y, d: c.d, z: { ...z }, m: { ...m }, h: sheet.getBoundingClientRect().height, samples: [[c.x, c.y, performance.now()]], moved: false };
     }
     stage.addEventListener('pointerdown', (e) => {
@@ -222,8 +228,13 @@ window.NBViewer = (() => {
       if (pts.size) { begin(); return; } // one finger lifted from a pinch: carry on with the other
       g = null;
       if (gone.moved) draggedAt = performance.now();
-      if (!gone.moved) { tap(e); return; }
+      if (!gone.moved) {
+        // A tap. But if a swipe was left half done by a finger that then joined another, put the picture back first.
+        if (Math.abs(m.w) > 0.5 || m.dx || m.dy) { stop(); stop = spring(m, { w: 0, dx: 0, dy: 0 }, null, paint, dropPeeks); return; }
+        tap(e); return;
+      }
       if (gone.mode === 'pinch' || gone.mode === 'pan') {
+        if (m.w || m.dx || m.dy) { m.w = 0; m.dx = 0; m.dy = 0; dropPeeks(); } // never leave the picture offset behind a zoom
         const t = z.s < 1.02 ? { s: 1, x: 0, y: 0 } : limits(Math.min(4, z.s), z.x, z.y);
         stop(); stop = spring(z, t, gone.mode === 'pan' ? { x: vx * 0.5, y: vy * 0.5 } : null, paint);
       } else if (gone.mode === 'swipe') {

@@ -54,9 +54,40 @@ public class MainActivity extends Activity {
     private Runnable afterNetPermission;
     private int safeTop = 0, safeBottom = 0;
 
+    // The boards on Home turn to face you as the phone tilts. The WebView doesn't pass the tilt on reliably, so the
+    // app reads it here (the game rotation sensor, no permission) and hands the page the angles about 30 times a
+    // second while it is in front; nothing runs in the background.
+    private android.hardware.SensorManager sensors;
+    private final float[] rot = new float[9], ang = new float[3];
+    private long lastTilt = 0;
+    private double sentBeta = Double.NaN, sentGamma = Double.NaN;
+    private final android.hardware.SensorEventListener tilt = new android.hardware.SensorEventListener() {
+        @Override public void onSensorChanged(android.hardware.SensorEvent e) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (web == null || now - lastTilt < 33) return;
+            lastTilt = now;
+            android.hardware.SensorManager.getRotationMatrixFromVector(rot, e.values);
+            android.hardware.SensorManager.getOrientation(rot, ang);
+            double beta = Math.toDegrees(-ang[1]), gamma = Math.toDegrees(ang[2]);
+            // Sensor noise must not keep the WebView drawing while the phone is still.
+            if (Math.abs(beta - sentBeta) < 0.15 && Math.abs(gamma - sentGamma) < 0.15) return;
+            sentBeta = beta; sentGamma = gamma;
+            web.evaluateJavascript("window.nbGaze&&nbGaze(" + String.format(java.util.Locale.ROOT, "%.2f,%.2f", beta, gamma) + ")", null);
+        }
+        @Override public void onAccuracyChanged(android.hardware.Sensor s, int a) { }
+    };
+    private void tiltOn(boolean on) {
+        sentBeta = sentGamma = Double.NaN;
+        if (sensors == null) sensors = (android.hardware.SensorManager) getSystemService(SENSOR_SERVICE);
+        if (sensors == null) return;
+        sensors.unregisterListener(tilt);
+        android.hardware.Sensor g = sensors.getDefaultSensor(android.hardware.Sensor.TYPE_GAME_ROTATION_VECTOR);
+        if (on && g != null) sensors.registerListener(tilt, g, android.hardware.SensorManager.SENSOR_DELAY_GAME);
+    }
+
     private void applySafeArea() {
         if (web == null) return;
-        web.evaluateJavascript("document.documentElement.style.setProperty('--st','" + safeTop + "px');document.documentElement.style.setProperty('--sb','" + safeBottom + "px');", null);
+        web.evaluateJavascript("document.documentElement&&(document.documentElement.style.setProperty('--st','" + safeTop + "px'),document.documentElement.style.setProperty('--sb','" + safeBottom + "px'),document.documentElement.classList.add('nobar'));", null);
     }
 
     @Override
@@ -69,10 +100,29 @@ public class MainActivity extends Activity {
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
             float d = getResources().getDisplayMetrics().density;
-            safeTop = Math.round(bars.top / d);
+            // The status bar is hidden (it slides in over the app if you swipe down), so the page uses the whole
+            // screen; the top only stays clear of the camera hole (less a little, since it sits in the middle).
+            int cut = insets.getInsets(WindowInsets.Type.displayCutout()).top;
+            safeTop = Math.max(Math.round(bars.top / d), Math.max(0, Math.round(cut / d) - 8));
             safeBottom = Math.round(bars.bottom / d);
             applySafeArea();
+            if (!imeMoving) keyboard(insets, false); // (a keyboard that appears without sliding)
             return insets;
+        });
+        // The keyboard's height every frame while it slides, so a small form rides on top of it the whole way
+        // instead of jumping to where the keyboard will end up (the page itself only hears the final size).
+        if (Build.VERSION.SDK_INT >= 30) root.setWindowInsetsAnimationCallback(new android.view.WindowInsetsAnimation.Callback(android.view.WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            @Override public void onPrepare(android.view.WindowInsetsAnimation a) { if ((a.getTypeMask() & WindowInsets.Type.ime()) != 0) imeMoving = true; }
+            @Override public WindowInsets onProgress(WindowInsets insets, List<android.view.WindowInsetsAnimation> running) {
+                for (android.view.WindowInsetsAnimation a : running) if ((a.getTypeMask() & WindowInsets.Type.ime()) != 0) { keyboard(insets, true); break; }
+                return insets;
+            }
+            @Override public void onEnd(android.view.WindowInsetsAnimation a) {
+                if ((a.getTypeMask() & WindowInsets.Type.ime()) == 0) return;
+                imeMoving = false;
+                WindowInsets now = root.getRootWindowInsets();
+                if (now != null) keyboard(now, false);
+            }
         });
         // Test builds only: lets the PC inspect the screens over USB/wireless debugging.
         if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) WebView.setWebContentsDebuggingEnabled(true);
@@ -106,7 +156,8 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new Native(), "NBNative");
         root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
-        gallery = new GallerySession(this);
+        hideStatusBar();
+        gallery = GallerySession.get(this); gallery.ui = this; // (the session itself outlives this screen)
         web.loadUrl(ORIGIN + "/www/index.html");
 
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::goBack);
@@ -118,13 +169,27 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (gallery != null) gallery.destroy();
+        if (gallery != null && gallery.ui == this) { gallery.ui = null; gallery.resumed = false; }
         Core.onLibraryChanged = null;
         super.onDestroy();
     }
 
-    @Override protected void onResume() { super.onResume(); if (gallery != null) gallery.resumed = true; }
-    @Override protected void onPause() { if (gallery != null) gallery.pause(); super.onPause(); }
+    private void hideStatusBar() {
+        android.view.WindowInsetsController c = getWindow().getInsetsController();
+        if (c == null) return;
+        c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        c.hide(WindowInsets.Type.statusBars());
+    }
+
+    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) hideStatusBar(); }
+
+    @Override protected void onResume() {
+        super.onResume(); tiltOn(true);
+        // A Gallery batch waiting for Android's consent (the confirmation notification was tapped, or the app was opened).
+        if (gallery != null) { gallery.ui = this; gallery.resumed = true; gallery.operations.launch(this); }
+    }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); }
+    @Override protected void onPause() { tiltOn(false); if (gallery != null) gallery.pause(); super.onPause(); }
     void galleryMessage(String value) { js("nbOnGallery", value); }
 
     // ---------- serving the page and the library to the WebView ----------
@@ -211,6 +276,19 @@ public class MainActivity extends Activity {
         JSONObject st = new JSONObject(Core.library(this).stateJson());
         st.put("sync", Core.sync(this).status());
         return st.toString();
+    }
+
+    private boolean imeMoving = false;
+    private int keyboardDp = -1;
+    // The keyboard's height above the gesture bar, in the page's pixels.
+    private void keyboard(WindowInsets insets, boolean moving) {
+        if (Build.VERSION.SDK_INT < 30 || web == null) return;
+        float d = getResources().getDisplayMetrics().density;
+        int ime = insets.getInsets(WindowInsets.Type.ime()).bottom, bars = insets.getInsets(WindowInsets.Type.systemBars()).bottom;
+        int dp = Math.round(Math.max(0, ime - bars) / d);
+        if (dp == keyboardDp && moving) return;
+        keyboardDp = dp;
+        web.evaluateJavascript("window.nbKeyboard&&window.nbKeyboard(" + dp + "," + moving + ")", null);
     }
 
     private void pushState() {
@@ -362,6 +440,17 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> web.performHapticFeedback(Build.VERSION.SDK_INT >= 34 ? HapticFeedbackConstants.SEGMENT_FREQUENT_TICK : HapticFeedbackConstants.CLOCK_TICK));
         }
 
+        // Richer feel than the tick: "soft" (a light tap), "heavy" (picking something up), "success" and "fail".
+        @JavascriptInterface public void haptic(String kind) {
+            int c;
+            if ("heavy".equals(kind)) c = HapticFeedbackConstants.LONG_PRESS;
+            else if ("success".equals(kind)) c = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.LONG_PRESS;
+            else if ("fail".equals(kind)) c = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.REJECT : HapticFeedbackConstants.LONG_PRESS;
+            else c = HapticFeedbackConstants.VIRTUAL_KEY;
+            final int f = c;
+            runOnUiThread(() -> web.performHapticFeedback(f));
+        }
+
         @JavascriptInterface public void pick(String boardId) {
             pendingBoard = boardId == null ? "" : boardId;
             runOnUiThread(() -> {
@@ -400,6 +489,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String renameBoard(String id, String name) { return changed(change(() -> { Core.library(MainActivity.this).renameBoard(id, name); return null; })); }
         @JavascriptInterface public String deleteBoard(String id) { return changed(change(() -> { Core.library(MainActivity.this).deleteBoard(id); return null; })); }
 
+        // The page can't reload itself (every navigation is refused), so it asks the app to open its screens again.
+        @JavascriptInterface public void reload() { runOnUiThread(() -> web.loadUrl(ORIGIN + "/www/index.html")); }
         @JavascriptInterface public String getPref(String key) { return getSharedPreferences("ui", MODE_PRIVATE).getString(key, ""); }
         @JavascriptInterface public void setPref(String key, String value) { getSharedPreferences("ui", MODE_PRIVATE).edit().putString(key, value).apply(); }
 

@@ -313,6 +313,7 @@
   // Cards that haven't changed are kept (no reload, no flash). When the list changes in place (a filter,
   // a stack, a sync) every card glides from where it was to where it goes; new ones grow in, gone ones fade.
   const kept = new Map(); // key -> { sig, el }
+  const leaving = new Map(); // ids -> the picture of a card that has just gone, while it is still fading
   const sigOf = (it) => [it.id, it.kind === 'note' ? it.updatedAt : '', it.thumbSrc, it.phone, it.waiting, S.bad.has(it.id), NB.viewBox(it), it.deletedAt ? 1 : 0].join('|');
   const idsIn = (el) => (el.classList.contains('stackcard') ? [...el.querySelectorAll('.fanitem')].map((b) => b.dataset.id) : [el.dataset.id]);
   function renderGrid() {
@@ -358,18 +359,38 @@
       const ease = 'cubic-bezier(.2,.9,.3,1)';
       const onScreen = (r) => r && r.bottom > -100 && r.top < innerHeight + 100;
       for (const el of els) {
-        const was = before.get(el) || idsIn(el).map((id) => beforeId.get(id)).find(Boolean), now = el.getBoundingClientRect();
+        let was = before.get(el) || idsIn(el).map((id) => beforeId.get(id)).find(Boolean);
+        const now = el.getBoundingClientRect(), back = !was && leaving.get(idsIn(el).join(','));
+        if (back) { was = back.getBoundingClientRect(); back.getAnimations().forEach((a) => a.cancel()); back.remove(); leaving.delete(idsIn(el).join(',')); } // Undo while it was still leaving: it grows back from there
         if (!onScreen(now) && !onScreen(was)) continue; // off screen either way: nothing to watch
-        if (!was) { el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out', delay: 60, fill: 'backwards' }); continue; } // arrives: a plain fade, no size change
+        if (!was) { // arrives: it grows in its place at once, above the cards still moving out of the way (no gap, no delay)
+          el.style.zIndex = '2';
+          el.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'scale(.97)', offset: 0.45 }, { opacity: 1, transform: 'none' }], { duration: 340, easing: ease }).onfinish = () => { el.style.zIndex = ''; };
+          continue;
+        }
         const dx = was.left - now.left, dy = was.top - now.top;
-        if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 460, easing: ease });
+        if (back) {
+          el.animate([{ transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${was.width / now.width})` }, { transformOrigin: 'top left', transform: 'none' }], { duration: 380, easing: ease });
+        } else if (Math.abs(dx) + Math.abs(dy) > 1) el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 460, easing: ease });
       }
-      // Cards that left simply go (a fading copy would sit under whatever arrives in their place),
-      // except a card joining a stack, which shrinks into it.
+      // Cards that left are drawn leaving where they were (shrinking and fading, under the cards closing the gap),
+      // so a deletion is seen, and a quick Undo can grow them back from there. A card joining a stack shrinks into it.
       for (const [el, r] of before) {
         if (els.includes(el) || r.bottom < 0 || r.top > innerHeight) continue;
         const into = els.find((x) => idsIn(el).some((id) => idsIn(x).includes(id)));
-        if (!into || !into.classList.contains('stackcard') || el.classList.contains('stackcard')) continue;
+        if (!into || !into.classList.contains('stackcard') || el.classList.contains('stackcard')) {
+          if (into) continue; // (it is still here, in another card)
+          const ghost = el.cloneNode(true), g = grid.getBoundingClientRect(), k = idsIn(el).join(',');
+          ghost.className = 'card-ghost'; ghost.setAttribute('aria-hidden', 'true');
+          ghost.querySelectorAll('.pick, .hoverplay').forEach((x) => x.remove());
+          Object.assign(ghost.style, { position: 'absolute', left: r.left - g.left + 'px', top: r.top - g.top + 'px', width: r.width + 'px', margin: 0, pointerEvents: 'none', animation: 'none', zIndex: '0' });
+          grid.prepend(ghost);
+          leaving.get(k)?.remove(); leaving.set(k, ghost);
+          const fade = ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.82)' }], { duration: 340, easing: ease, fill: 'forwards' });
+          const bye = () => { ghost.remove(); if (leaving.get(k) === ghost) leaving.delete(k); };
+          fade.onfinish = bye; setTimeout(bye, 800);
+          continue;
+        }
         const ghost = el.cloneNode(true);
         ghost.className = 'card-ghost'; // looks like the card, but isn't one (never counted, never clicked)
         ghost.setAttribute('aria-hidden', 'true');
