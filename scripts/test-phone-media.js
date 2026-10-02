@@ -96,14 +96,14 @@ const { chromium } = require('playwright-core');
     [x, y] = await centre();
     await drag([x + 30, y], [x - 30, y], { steps: 8, ms: 60, lift: false });
     assert.ok((await matrix()).x < -35, 'dragging towards the next picture follows the finger without edge resistance');
-    assert.equal(await page.locator('.peek').count() >= 1, true, 'the next picture shows beside it');
-    const peekX = await page.locator('.peek').last().evaluate((el) => el.getBoundingClientRect().left);
+    assert.equal(await page.locator('.media-screen .peek').count() >= 1, true, 'the next picture shows beside it');
+    const peekX = await page.locator('.media-screen .peek').last().evaluate((el) => el.getBoundingClientRect().left);
     assert.ok(peekX < W, 'the next picture is coming in from the right');
     await touch('touchEnd', []);
     await page.waitForTimeout(700);
     assert.equal(await title(), firstTitle, 'a short, slow swipe snaps back to the same picture');
     assert.deepEqual(await matrix(), { s: 1, x: 0, y: 0 });
-    assert.equal(await page.locator('.peek').count(), 0, 'the neighbours are put away');
+    assert.equal(await page.locator('.media-screen .peek').count(), 0, 'the neighbours are put away');
     await drag([x + 120, y], [x - 180, y], { steps: 8 });
     await page.waitForTimeout(800);
     const second = await title();
@@ -144,7 +144,9 @@ const { chromium } = require('playwright-core');
         const img = document.querySelector('#stage > .media-screen .stage img, #stage > .media-screen .stage .vbox');
         const card = document.querySelector('#homegrid .card[data-a="open"] .media');
         const r = img && img.getBoundingClientRect();
-        out.push(img ? { on: r.width > 20 && r.bottom > 0 && r.top < innerHeight && +getComputedStyle(img).opacity > 0.5 } : { gone: true, card: !!card && getComputedStyle(card).visibility === 'visible' });
+        const target = card && card.getBoundingClientRect();
+        out.push(img ? { on: r.width > 20 && r.bottom > 0 && r.top < innerHeight && +getComputedStyle(img).opacity > 0.5,
+          gap: target && Math.hypot(r.left - target.left, r.top - target.top, r.width - target.width, r.height - target.height) } : { gone: true, card: !!card && getComputedStyle(card).visibility === 'visible' });
         const done = out.findIndex((f) => f.gone);
         if (out.length < 400 && (done < 0 || out.length - done < 20)) requestAnimationFrame(frame); else resolve(out);
       };
@@ -155,6 +157,7 @@ const { chromium } = require('playwright-core');
     const gone = frames.findIndex((f) => f.gone);
     assert.ok(gone > 0, 'the picture closes');
     assert.ok(frames.slice(0, gone).every((f) => f.on), 'the picture is on screen in every frame until it lands');
+    assert.ok(frames[gone - 1].gap < 25, `the picture lands on its card instead of jumping the last ${frames[gone - 1].gap?.toFixed(1)}px`);
     assert.ok(frames.slice(gone).every((f) => f.card), 'and its card is showing from then on');
     await page.waitForTimeout(300);
     assert.equal(await page.locator('.media-screen').count(), 0);
@@ -230,7 +233,12 @@ const { chromium } = require('playwright-core');
     await page.evaluate(() => { window.nbBack(); window.nbBack(); });
     await page.waitForTimeout(900);
 
-    // A video: the same gestures (no zoom); a tap pauses, a drag doesn't.
+    // A video: the same gestures (no zoom); a tap pauses, a drag doesn't. The sample notebook's videos are only
+    // stills, so this one is given a real playable file (made with ffmpeg) to exercise the player.
+    const clip = path.resolve(__dirname, '../test-output/phone-sample.webm');
+    if (!require('fs').existsSync(clip)) require('child_process').execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x568:rate=25', '-t', '3', '-c:v', 'libvpx-vp9', '-b:v', '200k', clip]);
+    await page.evaluate((src) => { const db = JSON.parse(NBNative.state()); db.items.find((i) => i.kind === 'video').file = src; nbOnState(JSON.stringify(db)); }, pathToFileURL(clip).href);
+    await page.waitForTimeout(500);
     const videoCard = page.locator('#homegrid .card[data-a="open"]:has(.badge)').first();
     await videoCard.click();
     await page.waitForTimeout(800);
@@ -247,6 +255,33 @@ const { chromium } = require('playwright-core');
     assert.equal(await paused(), p0, 'a drag on the video doesn’t pause it');
     await page.evaluate(() => window.nbBack());
     await page.waitForTimeout(900);
+
+    // A card only partly visible at the top must not be scrolled away while its picture closes.
+    await page.locator('#homescroll').evaluate((scroller) => {
+      const r = scroller.querySelector('#homegrid .card[data-a="open"]').getBoundingClientRect();
+      scroller.scrollTop += r.bottom - 80;
+    });
+    await page.waitForTimeout(100);
+    const start = await page.locator('#homescroll').evaluate((scroller) => scroller.scrollTop);
+    await firstCard.evaluate((card) => card.click());
+    await page.waitForTimeout(500);
+    const landing = page.evaluate(() => new Promise((resolve) => {
+      const samples = [];
+      const step = () => {
+        const img = document.querySelector('#stage > .media-screen .stage img');
+        const card = document.querySelector('#homegrid .card[data-a="open"] .media');
+        if (img && card) {
+          const a = img.getBoundingClientRect(), b = card.getBoundingClientRect();
+          samples.push(Math.hypot(a.left - b.left, a.top - b.top, a.width - b.width, a.height - b.height));
+          requestAnimationFrame(step);
+        } else resolve(samples);
+      };
+      requestAnimationFrame(step);
+    }));
+    await page.evaluate(() => window.nbBack());
+    const gaps = await landing;
+    assert.ok(gaps.length > 5 && gaps.at(-1) < 25, `a partly visible card receives its picture (last gap ${gaps.at(-1)?.toFixed(1)}px)`);
+    assert.equal(await page.locator('#homescroll').evaluate((scroller) => scroller.scrollTop), start, 'closing into a visible card preserves Home scroll');
 
     // Reduced motion: everything lands at once.
     await page.emulateMedia({ reducedMotion: 'reduce' });

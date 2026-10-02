@@ -33,7 +33,7 @@ class Gallery {
   }
   session(deviceId) {
     const s = this.sessions.get(deviceId);
-    if (!s || !s.ready || Date.now() - s.seen > 30000) throw fail('Open Notebook on your phone and start Gallery cleanup.', 409);
+    if (!s || !s.ready || Date.now() - s.seen > 30000) throw fail('Start Gallery cleanup on your phone (Notebook → Sync → Start cleanup). You can put the phone away after that.', 409);
     return s;
   }
   revoke(deviceId) {
@@ -44,7 +44,7 @@ class Gallery {
   }
   close() { for (const id of this.sessions.keys()) this.revoke(id); }
   cancelReads(deviceId, previewsOnly = false) {
-    for (const [id,p] of this.pending) if(p.deviceId===deviceId && (previewsOnly ? ['preview','video'] : ['list','thumb','preview','video']).includes(p.cmd.kind)) {
+    for (const [id,p] of this.pending) if(p.deviceId===deviceId && (previewsOnly === 'video' ? ['video'] : previewsOnly ? ['preview','video'] :['list','thumb','preview','video']).includes(p.cmd.kind)) {
       p.upload?.destroy(); this.finish(id,{error:'Preview cancelled.'});
     }
   }
@@ -57,9 +57,10 @@ class Gallery {
   command(deviceId, kind, args = {}, id = crypto.randomUUID()) {
     const s = this.session(deviceId);
     if (this.pending.size >= 96) throw fail('Gallery is busy. Try again in a moment.', 429);
-    const cmd = { id, sessionId: s.id, kind, args, expiresAt: Date.now() + (kind === 'video' ? 180000 : 45000) };
+    const long = kind === 'video' || kind === 'hash'; // (hashing reads every file of a batch on the phone)
+    const cmd = { id, sessionId: s.id, kind, args, expiresAt: Date.now() + (long ? 180000 : 45000) };
     const promise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.finish(id, { error: 'Phone did not finish this request. Reconnect to check its status.' }), kind === 'video' ? 180000 : kind === 'trash' || kind === 'restore' ? 180000 : 45000);
+      const timer = setTimeout(() => this.finish(id, { error: 'Phone did not finish this request. Reconnect to check its status.' }), kind === 'video' ? 180000 : kind === 'hash' || kind === 'trash' || kind === 'restore' ? 600000 : 45000); // (a batch waits for you to tap the phone's confirmation notification)
       this.pending.set(id, { deviceId, sessionId: s.id, cmd, resolve, reject, timer });
     });
     s.queue.push(cmd); if (s.wake) s.wake();
@@ -97,11 +98,34 @@ class Gallery {
         return { key: i.key, fingerprint: r.fingerprint };
       });
     }
-    const id = crypto.randomUUID(), o = { id, deviceId, action, items, created: Date.now(), status: 'submitted', results: [] };
+    const id = crypto.randomUUID(), o = { id, deviceId, action, items, created: Date.now(), status: 'submitted', results: [], ...(action === 'restore' ? { restoreFrom } : {}) };
     this.saveOperation(o);
     try { this.command(deviceId, action, { items, restoreFrom }, id).promise.catch(() => {}); }
     catch (e) { o.status = 'failed'; o.message = e.message; this.saveOperation(o); throw e; }
     return o;
+  }
+  // The Google Photos copies of a finished trash batch (see gphotos.js): the phone reads each trashed file's SHA-1,
+  // Google Photos' copies with that SHA-1 go to its trash, and which ones did is kept with the batch for Restore.
+  async cloudTrash(deviceId, operationId, photos) {
+    const o = JSON.parse(fs.readFileSync(this.operationFile(operationId), 'utf8'));
+    if (o.deviceId !== deviceId || o.action !== 'trash') throw fail('Wrong batch.');
+    if (o.cloud?.done) return o.cloud;
+    const keys = (o.results || []).filter(r => r.state === 'trashed').map(r => r.key);
+    if (!keys.length) return { done: true, keys: {}, notBackedUp: 0, unreadable: 0 };
+    const { hashes = {} } = await this.command(deviceId, 'hash', { keys }).promise;
+    const byHash = {}; for (const k of keys) if (typeof hashes[k] === 'string') byHash[hashes[k]] = k;
+    const r = await photos.trash(Object.keys(byHash));
+    o.cloud = { done: true, at: Date.now(), keys: Object.fromEntries(Object.entries(r.found).map(([h, d]) => [byHash[h], d])), notBackedUp: r.missing.length, unreadable: keys.length - Object.keys(byHash).length };
+    this.saveOperation(o); return o.cloud;
+  }
+  // After a restore batch, its Google Photos copies come back out of Google's trash too.
+  async cloudRestore(deviceId, operationId, photos) {
+    const o = JSON.parse(fs.readFileSync(this.operationFile(operationId), 'utf8'));
+    if (o.deviceId !== deviceId || o.action !== 'restore' || !o.restoreFrom || o.cloudRestored) return { restored: 0 };
+    const from = JSON.parse(fs.readFileSync(this.operationFile(o.restoreFrom), 'utf8'));
+    const back = (o.results || []).filter(r => r.state === 'restored').map(r => from.cloud?.keys?.[r.key]).filter(Boolean);
+    const r = back.length ? await photos.restore(back) : { restored: 0 };
+    o.cloudRestored = true; this.saveOperation(o); return r;
   }
   async reconcile(deviceId, operationId) {
     const o = JSON.parse(fs.readFileSync(this.operationFile(operationId), 'utf8'));

@@ -5,13 +5,21 @@ window.NBMedia = (() => {
     const video = root.querySelector('video');
     if (!video) return;
     const box = root.querySelector('.vbox'), fill = box.querySelector('.vfill'), bar = box.querySelector('.vbar'), sound = box.querySelector('.vsound');
-    const message = root.querySelector('.media-message');
+    // Loading, playing, paused and failed are separate states on the box. Failed keeps the still picture,
+    // hides the playback controls (nothing can play) and says why, inside the picture's own bounds, with a
+    // way to try again right here. The sample notebook's videos are stills, and it says so instead.
+    const message = box.querySelector('.media-message'), words = message.querySelector('span'), retry = message.querySelector('[data-video-retry]');
     const fail = () => {
-      message.textContent = "This video couldn't load. Reopen it to retry, or sync if its file hasn't arrived yet.";
+      box.classList.add('failed'); box.classList.remove('paused', 'live');
+      const demo = !!window.NBNative?.demo;
+      words.textContent = demo ? 'Sample video: only its still picture is included.' : "This video can't play. If it's new, sync with your PC first.";
+      retry.hidden = demo;
+      message.hidden = false;
     };
+    retry.addEventListener('click', (e) => { e.stopPropagation(); box.classList.remove('failed'); message.hidden = true; video.load(); video.play().catch(() => {}); });
     // The still picture stays underneath until the video is really playing, so nothing ever flashes.
-    video.addEventListener('playing', () => { message.textContent = ''; box.classList.add('live'); box.classList.remove('paused'); });
-    video.addEventListener('pause', () => box.classList.add('paused'));
+    video.addEventListener('playing', () => { message.hidden = true; box.classList.remove('failed', 'paused'); box.classList.add('live'); });
+    video.addEventListener('pause', () => { if (!box.classList.contains('failed')) box.classList.add('paused'); });
     video.addEventListener('error', fail);
     if (video.error) fail();
     let frame = 0;
@@ -23,9 +31,9 @@ window.NBMedia = (() => {
     };
     frame = requestAnimationFrame(paint);
     new MutationObserver(() => { if (!box.isConnected) cancelAnimationFrame(frame); }).observe(document.getElementById('stage'), { childList: true });
-    video.play().catch(() => box.classList.add('paused'));
+    video.play().catch(() => { if (!box.classList.contains('failed')) box.classList.add('paused'); });
     box.addEventListener('click', (e) => {
-      if (e.target.closest('.vbar, .vsound')) return;
+      if (e.target.closest('.vbar, .vsound, .media-message') || box.classList.contains('failed')) return;
       if (video.paused) video.play().catch(() => box.classList.add('paused')); else video.pause();
     });
     sound.addEventListener('click', () => {

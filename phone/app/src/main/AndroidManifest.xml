@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
     <!-- Keeps background sync scheduled after the phone restarts. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Gallery cleanup stays available to the PC with Notebook in the background (a notification shows it, with Stop). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="Notebook"
@@ -21,13 +25,19 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".GalleryService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <service
             android:name=".SyncJob"
             android:exported="false"
