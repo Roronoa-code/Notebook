@@ -10,8 +10,8 @@ android {
         applicationId = "com.mani.notebook"
         minSdk = 28
         targetSdk = 37
-        versionCode = 79
-        versionName = "0.23.1"
+        versionCode = 81
+        versionName = "0.23.3"
         // Only the processor types phones and the emulator use, to keep the picture model's runtime small.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }

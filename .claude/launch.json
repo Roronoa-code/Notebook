@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "choices",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "phone",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8766",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "phone/app/src/main/assets/www"
+      ],
+      "port": 8766
+    }
+  ]
+}

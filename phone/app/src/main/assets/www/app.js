@@ -185,7 +185,7 @@
     }
     return html.join('');
   }
-  function gridHTML(list, empty, board, sortKey) {
+  function gridHTML(list, empty, board, sortKey, singleColumn = false) {
     const done = new Set(), out = [], est = [], months = SO.byMonth(sortKey);
     let month = null;
     const heading = (it) => { if (!months) return; const m = SO.monthOf(it); if (m !== month) { month = m; out.push(`<h3 class="dategroup">${esc(m)}</h3>`); est.push(null); } };
@@ -198,14 +198,14 @@
       heading(it);
       out.push(card(it, out.length)); est.push(tall(it));
     }
-    if (out.length) return dealt(out, est);
+    if (out.length) return singleColumn ? out.join('') : dealt(out, est);
     const [head, body] = empty.includes('|') ? empty.split('|') : ['Nothing yet', empty];
     const demo = S.screen === 'home' && head === 'Nothing yet' && !(DB.sync || {}).paired && window.NBNative.demo === undefined ? '<button type="button" class="btn" data-a="demoOn" style="margin-top:16px">Try a sample notebook</button>' : '';
     return `<div class="empty"><b>${head}</b><span>${body}</span>${demo}</div>`;
   }
   const homeList = (tab = S.tab) => (tab === 'notes' ? live().filter((x) => x.kind === 'note') : live());
   // Home's grid: Recent, Notes, or For you (Pinterest ideas, also available without the PC).
-  const homeGrid = (tab = S.tab, quiet) => (tab === 'ideas' ? I.gridHTML('all', quiet) : gridHTML(SO.apply(homeList(tab), 'all'), tab === 'notes' ? 'No notes|Tap + to write one.' : 'Nothing yet|Tap + to add photos, videos or a note.', null, 'all'));
+  const homeGrid = (tab = S.tab, quiet) => (tab === 'ideas' ? I.gridHTML('all', quiet) : gridHTML(SO.apply(homeList(tab), 'all'), tab === 'notes' ? 'No notes|Tap + to write one.' : 'Nothing yet|Tap + to add photos, videos or a note.', null, 'all', tab === 'notes'));
 
   // Boards are little piles of prints: their newest pictures fanned, the name in bold under them.
   const pileImgs = (id) => onBoard(id).filter((it) => it.thumb || (it.kind === 'photo' && it.file)).slice(0, 3);

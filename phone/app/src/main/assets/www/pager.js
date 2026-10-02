@@ -54,7 +54,7 @@ window.NBPager = (ctx) => {
     align(); document.fonts?.ready.then(align);
     const W = () => pager.clientWidth || innerWidth;
     const idx = () => cfg.order.indexOf(cfg.get());
-    let peek = null, peekTab = null, span = 0, dx = 0, stopSpring = null, x0 = 0, y0 = 0, base = 0, axis = 'no', samples = [], live = false, lag = 0, lagAt = 0;
+    let peek = null, peekTab = null, span = 0, dx = 0, stopSpring = null, x0 = 0, y0 = 0, base = 0, axis = 'no', samples = [], live = false;
     let trip = null; // a tapped journey: the line goes from where it was to its tab as the pane travels
     const ready = new Map(); // the panes either side, made ready while nothing is moving
 
@@ -150,7 +150,13 @@ window.NBPager = (ctx) => {
       else clear();
     };
     // Mid-flight and past half way: the pane coming in becomes the current one, from exactly where it is.
-    const rebase = () => { if (peek && Math.abs(dx) > W() / 2) land(peekTab, dx + Math.sign(span) * W()); };
+    const rebase = () => {
+      if (!peek || Math.abs(dx) <= W() / 2) return;
+      const was = cfg.get(), offset = dx + Math.sign(span) * W();
+      land(peekTab, offset);
+      mount(was); // both panes stay on screen when caught, including the outgoing note
+      paint(offset);
+    };
     // Critically damped: visually there in about 0.2 s, no bounce, carrying the finger's speed.
     function spring(to, v, done) {
       if (reduced()) { paint(to); done(); return; }
@@ -173,7 +179,7 @@ window.NBPager = (ctx) => {
       if (e.touches.length > 1 && axis === 'h') { axis = 'no'; return abortDrag(); } // a second finger lands mid-swipe: settle where we were
       if (e.touches.length > 1 || S.select || e.target.closest('.stackcard, input, textarea, .fanitem')) { axis = 'no'; return; }
       if (stopSpring) { stopSpring(); rebase(); } // caught mid-flight: hold it where it is
-      base = live ? dx : 0; lag = 0;
+      base = live ? dx : 0;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; axis = live ? 'h' : null; samples = [{ x: x0, t: e.timeStamp }];
       if (live) S.gesture = 'pager';
     }, { passive: true });
@@ -185,10 +191,8 @@ window.NBPager = (ctx) => {
         axis = Math.abs(mx) > Math.abs(my) * 1.25 && !S.gesture ? 'h' : 'v';
         if (axis === 'v') return;
         live = true; trip = null; tabs.classList.add('drag'); S.gesture = 'pager';
-        lag = mx; lagAt = mx; // the finger has already travelled this far: the pane starts from where it is and catches up
       }
-      const catchUp = lag ? Math.max(0, 1 - Math.abs(mx - lagAt) / 24) : 0; // all caught up after 24px more
-      const want = base + mx - lag * catchUp, dir = want < 0 ? 1 : -1, next = cfg.order[idx() + dir];
+      const want = base + mx, dir = want < 0 ? 1 : -1, next = cfg.order[idx() + dir];
       if (span !== 0 && Math.sign(span) !== dir) { park(peek); peek = null; peekTab = null; span = 0; }
       if (next && !peek && want) mount(next);
       const eff = next ? want : want * 0.28; // no pane that way: a rubbery edge

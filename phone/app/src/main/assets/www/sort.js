@@ -22,9 +22,14 @@ window.NBSort = function NBSort({ N, esc }) {
   const batch = (it) => Math.floor((time(it.importedAt) || 0) / 60000);
   const byAdded = (dir) => (a, b) => (dir * (batch(b) - batch(a))) || (dir * (dated(b) - dated(a))) || 0;
   // Pinned things stay at the top whatever the order, the most recently pinned first. Kept on this phone.
-  const pins = () => { try { const p = JSON.parse(N.getPref('itemPins') || '[]'); return Array.isArray(p) ? p : []; } catch (e) { return []; } };
+  let pinnedItems;
+  const pins = () => {
+    if (pinnedItems) return pinnedItems;
+    try { const p = JSON.parse(N.getPref('itemPins') || '[]'); pinnedItems = Array.isArray(p) ? p : []; } catch (e) { pinnedItems = []; }
+    return pinnedItems;
+  };
   const isPinned = (id) => pins().includes(id);
-  function setPins(ids, on) { const p = pins().filter((x) => !ids.includes(x)); N.setPref('itemPins', JSON.stringify(on ? ids.concat(p) : p)); }
+  function setPins(ids, on) { const p = pins().filter((x) => !ids.includes(x)); pinnedItems = on ? ids.concat(p) : p; N.setPref('itemPins', JSON.stringify(pinnedItems)); }
   function apply(list, key) {
     const how = get(key), out = list.slice();
     if (how === 'added') out.sort(byAdded(1));

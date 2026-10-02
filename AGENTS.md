@@ -48,3 +48,4 @@ These scoped preferences supersede older conflicting preference summaries. Prese
 <!-- /preference:notebook-design -->
 
 - Gallery checks: `node scripts/test-gallery.js` (TLS/protocol/journals) and `node scripts/test-gallery-ui.js` (real Electron with synthetic phone; also supports NOTEBOOK_EXE).
+- Fast phone tab swipes: `node scripts/test-phone-pager.js` (2 October recording: first movement follows the finger, interrupted Notes / For you swipes preserve both panes, no notes mixed into For you, one native pin-preference read per grid).
